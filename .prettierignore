@@ -1,0 +1,10 @@
+dist/
+node_modules/
+.next/
+coverage/
+build/
+*.lock
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+supabase/migrations/*.sql
