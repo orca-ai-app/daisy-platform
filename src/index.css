@@ -1,0 +1,47 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-daisy-primary: #006fac;
+  --color-daisy-primary-deep: #005589;
+  --color-daisy-primary-soft: #d4e8f5;
+  --color-daisy-primary-tint: #edf5fa;
+  --color-daisy-yellow: #ffcb05;
+  --color-daisy-orange: #df542f;
+  --color-daisy-cyan: #3ac1ea;
+  --color-daisy-green: #67a671;
+  --color-daisy-amber: #fcaf17;
+  --color-daisy-red: #df542f;
+  --color-daisy-ink: #1a4359;
+  --color-daisy-ink-soft: #2d5570;
+  --color-daisy-muted: #5a7a8f;
+  --color-daisy-line: #d4e1e9;
+  --color-daisy-line-soft: #e8f0f5;
+  --color-daisy-bg: #f5f9fb;
+  --color-daisy-paper: #ffffff;
+
+  --font-sans: 'Poppins', system-ui, sans-serif;
+  --font-display: 'Quicksand', sans-serif;
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 18px;
+
+  --shadow-card: 0 2px 8px rgba(0, 60, 100, 0.06);
+  --shadow-lift: 0 6px 20px rgba(0, 60, 100, 0.1);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-daisy-bg);
+  color: var(--color-daisy-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
