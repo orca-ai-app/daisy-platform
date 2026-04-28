@@ -1,18 +1,48 @@
-interface EmptyStateProps {
-  title: string
-  body?: string
-  action?: React.ReactNode
+import type { ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
+
+interface EmptyStateCTA {
+  label: string;
+  onClick?: () => void;
+  href?: string;
 }
 
-export function EmptyState({ title, body, action }: EmptyStateProps) {
+interface EmptyStateProps {
+  icon?: ReactNode;
+  title: string;
+  body?: string;
+  cta?: EmptyStateCTA;
+}
+
+/**
+ * Centred empty-state placeholder used across HQ and franchisee pages.
+ * Pass any lucide-react icon as `icon`. The icon is rendered at 48px.
+ */
+export function EmptyState({ icon, title, body, cta }: EmptyStateProps) {
   return (
     <div
-      className="flex flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed border-daisy-line p-10 text-center"
+      className="border-daisy-line flex flex-col items-center justify-center gap-3 rounded-[12px] border border-dashed p-10 text-center"
       data-daisy-stub="EmptyState"
     >
-      <h2 className="font-display text-xl font-bold text-daisy-ink">{title}</h2>
-      {body ? <p className="max-w-md text-sm text-daisy-muted">{body}</p> : null}
-      {action}
+      {icon ? (
+        <div
+          className="text-daisy-muted flex h-12 w-12 items-center justify-center"
+          aria-hidden="true"
+        >
+          <span className="[&>svg]:h-12 [&>svg]:w-12">{icon}</span>
+        </div>
+      ) : null}
+      <h2 className="font-display text-daisy-ink text-[20px] font-bold">{title}</h2>
+      {body ? <p className="text-daisy-muted max-w-md text-sm">{body}</p> : null}
+      {cta ? (
+        cta.href ? (
+          <Button asChild variant="default">
+            <a href={cta.href}>{cta.label}</a>
+          </Button>
+        ) : (
+          <Button onClick={cta.onClick}>{cta.label}</Button>
+        )
+      ) : null}
     </div>
-  )
+  );
 }
