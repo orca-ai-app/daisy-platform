@@ -1,14 +1,17 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Toaster } from 'sonner'
-import { TooltipProvider } from '@/components/ui/tooltip'
-import { RoleContextProvider } from '@/features/auth/RoleContext'
-import { RequireRole } from '@/features/auth/RequireRole'
-import LoginPage from '@/features/auth/LoginPage'
-import AuthCallback from '@/features/auth/AuthCallback'
-import Unauthorized from '@/features/auth/Unauthorized'
-import HQDashboard from '@/features/hq/HQDashboard'
-import FranchiseeDashboard from '@/features/franchisee/FranchiseeDashboard'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from 'sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { RoleContextProvider } from '@/features/auth/RoleContext';
+import { RequireRole } from '@/features/auth/RequireRole';
+import LoginPage from '@/features/auth/LoginPage';
+import AuthCallback from '@/features/auth/AuthCallback';
+import Unauthorized from '@/features/auth/Unauthorized';
+import { HQLayout } from '@/features/hq/HQLayout';
+import Dashboard from '@/features/hq/Dashboard';
+import FranchiseeDashboard from '@/features/franchisee/FranchiseeDashboard';
+import { EmptyState } from '@/components/daisy';
+import { PageHeader } from '@/components/daisy';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,7 +20,24 @@ const queryClient = new QueryClient({
       staleTime: 30_000,
     },
   },
-})
+});
+
+/**
+ * Sibling-coordination placeholder. Wave 2B and 2C replace these as
+ * they land their pages. Each line is self-contained so a three-way
+ * merge doesn't collide.
+ */
+function ComingSoon({ wave, title }: { wave: string; title: string }) {
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader title={title} subtitle={`Coming in ${wave}.`} />
+      <EmptyState
+        title={`${title} — coming in ${wave}`}
+        body="A sibling agent in this wave is wiring this page. Once their PR merges, this placeholder will be replaced."
+      />
+    </div>
+  );
+}
 
 export default function App() {
   return (
@@ -30,14 +50,49 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/unauthorized" element={<Unauthorized />} />
+
+              {/* HQ — sticky topbar shell wraps every nested route. */}
               <Route
-                path="/hq/dashboard"
+                path="/hq"
                 element={
                   <RequireRole hq>
-                    <HQDashboard />
+                    <HQLayout />
                   </RequireRole>
                 }
-              />
+              >
+                <Route index element={<Navigate to="/hq/dashboard" replace />} />
+                <Route path="dashboard" element={<Dashboard />} />
+
+                {/* Wave 2B — Franchisees (placeholders for sibling) */}
+                <Route
+                  path="franchisees"
+                  element={<ComingSoon wave="Wave 2B" title="Franchisees" />}
+                />
+                <Route
+                  path="franchisees/:id"
+                  element={<ComingSoon wave="Wave 2B" title="Franchisee detail" />}
+                />
+
+                {/* Wave 2C — Course templates + activity log */}
+                <Route path="courses" element={<ComingSoon wave="Wave 2C" title="Courses" />} />
+                <Route
+                  path="courses/templates"
+                  element={<ComingSoon wave="Wave 2C" title="Course templates" />}
+                />
+                <Route
+                  path="activity"
+                  element={<ComingSoon wave="Wave 2C" title="Activity log" />}
+                />
+
+                {/* Wave 3 — territories, bookings, billing */}
+                <Route
+                  path="territories"
+                  element={<ComingSoon wave="Wave 3" title="Territories" />}
+                />
+                <Route path="bookings" element={<ComingSoon wave="Wave 3" title="Bookings" />} />
+                <Route path="billing" element={<ComingSoon wave="Wave 4" title="Billing" />} />
+              </Route>
+
               <Route
                 path="/franchisee/dashboard"
                 element={
@@ -53,5 +108,5 @@ export default function App() {
         </RoleContextProvider>
       </BrowserRouter>
     </QueryClientProvider>
-  )
+  );
 }
