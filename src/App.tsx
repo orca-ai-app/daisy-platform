@@ -9,6 +9,7 @@ import AuthCallback from '@/features/auth/AuthCallback';
 import Unauthorized from '@/features/auth/Unauthorized';
 import { HQLayout } from '@/features/hq/HQLayout';
 import Dashboard from '@/features/hq/Dashboard';
+import { FranchiseeList, FranchiseeDetail } from '@/features/hq/franchisees';
 import FranchiseeDashboard from '@/features/franchisee/FranchiseeDashboard';
 import { EmptyState } from '@/components/daisy';
 import { PageHeader } from '@/components/daisy';
@@ -23,9 +24,8 @@ const queryClient = new QueryClient({
 });
 
 /**
- * Sibling-coordination placeholder. Wave 2B and 2C replace these as
- * they land their pages. Each line is self-contained so a three-way
- * merge doesn't collide.
+ * Sibling-coordination placeholder. Wave 2C replaces the courses /
+ * activity entries when its PR lands; later waves replace the rest.
  */
 function ComingSoon({ wave, title }: { wave: string; title: string }) {
   return (
@@ -63,15 +63,9 @@ export default function App() {
                 <Route index element={<Navigate to="/hq/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
 
-                {/* Wave 2B — Franchisees (placeholders for sibling) */}
-                <Route
-                  path="franchisees"
-                  element={<ComingSoon wave="Wave 2B" title="Franchisees" />}
-                />
-                <Route
-                  path="franchisees/:id"
-                  element={<ComingSoon wave="Wave 2B" title="Franchisee detail" />}
-                />
+                {/* Wave 2B — Franchisees (real pages) */}
+                <Route path="franchisees" element={<FranchiseeList />} />
+                <Route path="franchisees/:id" element={<FranchiseeDetail />} />
 
                 {/* Wave 2C — Course templates + activity log */}
                 <Route path="courses" element={<ComingSoon wave="Wave 2C" title="Courses" />} />
