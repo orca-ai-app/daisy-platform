@@ -1,0 +1,3 @@
+# Supabase CLI ephemeral state — never commit.
+.temp/
+.branches/
