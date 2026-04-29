@@ -15,6 +15,7 @@ import { ActivityPage } from '@/features/hq/activity';
 import { TerritoriesPage } from '@/features/hq/territories';
 import { BookingsList, BookingDetail } from '@/features/hq/bookings';
 import { ReportsPage } from '@/features/hq/reports';
+import { InterestFormsPage } from '@/features/hq/interest-forms';
 import FranchiseeDashboard from '@/features/franchisee/FranchiseeDashboard';
 import { EmptyState } from '@/components/daisy';
 import { PageHeader } from '@/components/daisy';
@@ -88,6 +89,8 @@ export default function App() {
                     Network revenue KPI card; not in topbar nav). */}
                 <Route path="reports" element={<ReportsPage />} />
 
+                {/* Wave 3C — Interest form queue */}
+                <Route path="interest-forms" element={<InterestFormsPage />} />
 
                 <Route path="billing" element={<ComingSoon wave="Wave 4" title="Billing" />} />
               </Route>

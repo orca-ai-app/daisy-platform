@@ -204,7 +204,7 @@ export function useAttentionItems() {
           meta: 'Vacant territories · waiting for review',
           severity: 'blue',
           count: enquiries.count ?? 0,
-          href: '/hq/activity',
+          href: '/hq/interest-forms',
         });
       }
 
