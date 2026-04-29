@@ -13,6 +13,8 @@ import { FranchiseeList, FranchiseeDetail } from '@/features/hq/franchisees';
 import { TemplatesPage } from '@/features/hq/templates';
 import { ActivityPage } from '@/features/hq/activity';
 import { TerritoriesPage } from '@/features/hq/territories';
+import { BookingsList, BookingDetail } from '@/features/hq/bookings';
+import { ReportsPage } from '@/features/hq/reports';
 import FranchiseeDashboard from '@/features/franchisee/FranchiseeDashboard';
 import { EmptyState } from '@/components/daisy';
 import { PageHeader } from '@/components/daisy';
@@ -75,9 +77,18 @@ export default function App() {
                 <Route path="courses/templates" element={<TemplatesPage />} />
                 <Route path="activity" element={<ActivityPage />} />
 
-                {/* Wave 3 — territories (3A), bookings (3B), billing (4) */}
+                {/* Wave 3A — Territories (real page) */}
                 <Route path="territories" element={<TerritoriesPage />} />
-                <Route path="bookings" element={<ComingSoon wave="Wave 3" title="Bookings" />} />
+
+                {/* Wave 3B — Bookings list + detail (real pages) */}
+                <Route path="bookings" element={<BookingsList />} />
+                <Route path="bookings/:id" element={<BookingDetail />} />
+
+                {/* Wave 3B — Reports (reachable from the Dashboard's
+                    Network revenue KPI card; not in topbar nav). */}
+                <Route path="reports" element={<ReportsPage />} />
+
+
                 <Route path="billing" element={<ComingSoon wave="Wave 4" title="Billing" />} />
               </Route>
 

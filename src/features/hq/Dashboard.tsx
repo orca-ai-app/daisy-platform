@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { CalendarDays, Coins, Map, Users } from 'lucide-react';
 import { AttentionList, PageHeader, StatCard, type StatDeltaTone } from '@/components/daisy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -118,14 +119,22 @@ export default function Dashboard() {
                 stats.data?.revenueMtd ?? 0,
                 stats.data?.revenueLastMonth ?? 0,
               );
+              // Wave 3B: this card is the entry point to the Reports
+              // page (no top-bar nav link to keep the bar uncrowded).
               return (
-                <StatCard
-                  label="Network revenue"
-                  value={formatPence(stats.data?.revenueMtd ?? 0)}
-                  delta={delta.label}
-                  tone={delta.tone}
-                  icon={Coins}
-                />
+                <Link
+                  to="/hq/reports"
+                  aria-label="Open network revenue report"
+                  className="hover:shadow-lift focus-visible:ring-daisy-primary rounded-[12px] transition-shadow focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                >
+                  <StatCard
+                    label="Network revenue"
+                    value={formatPence(stats.data?.revenueMtd ?? 0)}
+                    delta={delta.label}
+                    tone={delta.tone}
+                    icon={Coins}
+                  />
+                </Link>
               );
             })()}
             <StatCard
