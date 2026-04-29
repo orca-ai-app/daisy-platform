@@ -1,17 +1,26 @@
-import { useRole } from '@/features/auth/RoleContext'
-import { TopBar, PageHeader } from '@/components/daisy'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { useRole } from '@/features/auth/RoleContext';
+import { TopBar, PageHeader } from '@/components/daisy';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 export default function FranchiseeDashboard() {
-  const { user, signOut } = useRole()
+  const { user, signOut } = useRole();
   return (
-    <div className="min-h-screen bg-daisy-bg">
-      <TopBar email={user?.email ?? null}>
-        <Button variant="ghost" onClick={() => void signOut()}>
-          Sign out
-        </Button>
-      </TopBar>
+    <div className="bg-daisy-bg min-h-screen">
+      <TopBar
+        actions={
+          <>
+            <span className="text-sm font-semibold text-white/85">{user?.email ?? ''}</span>
+            <Button
+              variant="ghost"
+              onClick={() => void signOut()}
+              className="text-white hover:bg-white/10"
+            >
+              Sign out
+            </Button>
+          </>
+        }
+      />
       <main className="mx-auto max-w-[1240px] px-10 py-12">
         <PageHeader
           title="Franchisee dashboard"
@@ -19,13 +28,13 @@ export default function FranchiseeDashboard() {
         />
         <Card>
           <CardContent className="py-6">
-            <p className="text-sm text-daisy-ink">
+            <p className="text-daisy-ink text-sm">
               Authenticated as <span className="font-semibold">{user?.email ?? 'unknown'}</span>
             </p>
-            <p className="text-sm text-daisy-muted">role: franchisee</p>
+            <p className="text-daisy-muted text-sm">role: franchisee</p>
           </CardContent>
         </Card>
       </main>
     </div>
-  )
+  );
 }
