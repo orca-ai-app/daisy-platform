@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { formatInTimeZone } from 'date-fns-tz';
+import { Pencil } from 'lucide-react';
 import { PageHeader, DataTable, StatusPill, EmptyState } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,7 @@ import {
   useFranchiseeBookings,
   useFranchiseeTerritories,
 } from './queries';
+import EditFranchiseeDialog from './EditFranchiseeDialog';
 import type { ActivityRow, FranchiseeBookingRow, Territory } from '@/types/franchisee';
 
 function formatLondonDateTime(iso: string): string {
@@ -41,6 +43,7 @@ export default function FranchiseeDetail() {
   const { data: territories = [], isLoading: territoriesLoading } = useFranchiseeTerritories(id);
   const { data: bookings = [], isLoading: bookingsLoading } = useFranchiseeBookings(id);
   const { data: activity = [], isLoading: activityLoading } = useFranchiseeActivity(id);
+  const [editing, setEditing] = useState(false);
 
   const bookingColumns = useMemo<ColumnDef<FranchiseeBookingRow>[]>(
     () => [
@@ -105,121 +108,127 @@ export default function FranchiseeDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-        <Link
-          to="/hq/franchisees"
-          className="text-daisy-primary mb-3 inline-flex items-center gap-1 text-sm font-semibold hover:underline"
-        >
-          ← Back to franchisees
-        </Link>
+      <Link
+        to="/hq/franchisees"
+        className="text-daisy-primary mb-3 inline-flex items-center gap-1 text-sm font-semibold hover:underline"
+      >
+        ← Back to franchisees
+      </Link>
 
-        {error ? (
-          <div className="my-4 rounded-[8px] border border-[#FDEAE5] bg-[#FDEAE5]/40 p-4 text-sm text-[#8A2A2A]">
-            Could not load franchisee: {error.message}
-          </div>
-        ) : null}
+      {error ? (
+        <div className="my-4 rounded-[8px] border border-[#FDEAE5] bg-[#FDEAE5]/40 p-4 text-sm text-[#8A2A2A]">
+          Could not load franchisee: {error.message}
+        </div>
+      ) : null}
 
-        {isLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-10 w-72" />
-            <Skeleton className="h-4 w-96" />
-          </div>
-        ) : !franchisee ? (
-          <EmptyState
-            title="Franchisee not found"
-            body="This franchisee may have been removed or the link is incorrect."
-            action={
-              <Button asChild variant="outline">
-                <Link to="/hq/franchisees">Back to list</Link>
-              </Button>
+      {isLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-72" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+      ) : !franchisee ? (
+        <EmptyState
+          title="Franchisee not found"
+          body="This franchisee may have been removed or the link is incorrect."
+          action={
+            <Button asChild variant="outline">
+              <Link to="/hq/franchisees">Back to list</Link>
+            </Button>
+          }
+        />
+      ) : (
+        <>
+          <PageHeader
+            title={franchisee.name}
+            subtitle={`Franchisee · ${franchisee.email}`}
+            actions={
+              <>
+                <Badge variant="primary">#{franchisee.number.padStart(4, '0')}</Badge>
+                <StatusPill variant={franchisee.status}>{franchisee.status}</StatusPill>
+                <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+              </>
             }
           />
-        ) : (
-          <>
-            <PageHeader
-              title={franchisee.name}
-              subtitle={`Franchisee · ${franchisee.email}`}
-              actions={
-                <>
-                  <Badge variant="primary">#{franchisee.number.padStart(4, '0')}</Badge>
-                  <StatusPill variant={franchisee.status}>{franchisee.status}</StatusPill>
-                </>
-              }
-            />
 
-            <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-              <Tabs defaultValue="profile" className="w-full">
-                <TabsList>
-                  <TabsTrigger value="profile">Profile</TabsTrigger>
-                  <TabsTrigger value="territories">
-                    Territories ({franchisee.territory_count})
-                  </TabsTrigger>
-                  <TabsTrigger value="bookings">
-                    Bookings ({franchisee.recent_bookings_count})
-                  </TabsTrigger>
-                  <TabsTrigger value="activity">Activity</TabsTrigger>
-                </TabsList>
+          {editing ? (
+            <EditFranchiseeDialog franchisee={franchisee} open onClose={() => setEditing(false)} />
+          ) : null}
 
-                <TabsContent value="profile">
-                  <ProfileCard franchisee={franchisee} />
-                </TabsContent>
+          <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+            <Tabs defaultValue="profile" className="w-full">
+              <TabsList>
+                <TabsTrigger value="profile">Profile</TabsTrigger>
+                <TabsTrigger value="territories">
+                  Territories ({franchisee.territory_count})
+                </TabsTrigger>
+                <TabsTrigger value="bookings">
+                  Bookings ({franchisee.recent_bookings_count})
+                </TabsTrigger>
+                <TabsTrigger value="activity">Activity</TabsTrigger>
+              </TabsList>
 
-                <TabsContent value="territories">
-                  <TerritoriesList territories={territories} isLoading={territoriesLoading} />
-                </TabsContent>
+              <TabsContent value="profile">
+                <ProfileCard franchisee={franchisee} />
+              </TabsContent>
 
-                <TabsContent value="bookings">
-                  <DataTable<FranchiseeBookingRow>
-                    columns={bookingColumns}
-                    data={bookings}
-                    isLoading={bookingsLoading}
-                    searchable={false}
-                    pageSize={10}
-                    emptyState={
-                      <EmptyState
-                        title="No bookings yet"
-                        body="Bookings for this franchisee will appear here."
-                      />
-                    }
-                  />
-                </TabsContent>
+              <TabsContent value="territories">
+                <TerritoriesList territories={territories} isLoading={territoriesLoading} />
+              </TabsContent>
 
-                <TabsContent value="activity">
-                  <ActivityTimeline activity={activity} isLoading={activityLoading} />
-                </TabsContent>
-              </Tabs>
+              <TabsContent value="bookings">
+                <DataTable<FranchiseeBookingRow>
+                  columns={bookingColumns}
+                  data={bookings}
+                  isLoading={bookingsLoading}
+                  searchable={false}
+                  pageSize={10}
+                  emptyState={
+                    <EmptyState
+                      title="No bookings yet"
+                      body="Bookings for this franchisee will appear here."
+                    />
+                  }
+                />
+              </TabsContent>
 
-              <aside className="flex flex-col gap-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Stripe Connect</CardTitle>
-                    <CardDescription>
-                      Wired in Wave 8 (M2). The flag below reflects the stored DB state only.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <StatusPill
-                      variant={franchisee.stripe_connected ? 'connected' : 'not-connected'}
-                    >
-                      {franchisee.stripe_connected ? 'Connected' : 'Not connected'}
-                    </StatusPill>
-                  </CardContent>
-                </Card>
+              <TabsContent value="activity">
+                <ActivityTimeline activity={activity} isLoading={activityLoading} />
+              </TabsContent>
+            </Tabs>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Billing status</CardTitle>
-                    <CardDescription>
-                      Live billing-run status arrives in Phase 2 (Wave 5).
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <StatusPill variant="pending">Pending wiring</StatusPill>
-                  </CardContent>
-                </Card>
-              </aside>
-            </div>
-          </>
-        )}
+            <aside className="flex flex-col gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Stripe Connect</CardTitle>
+                  <CardDescription>
+                    Wired in Wave 8 (M2). The flag below reflects the stored DB state only.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <StatusPill variant={franchisee.stripe_connected ? 'connected' : 'not-connected'}>
+                    {franchisee.stripe_connected ? 'Connected' : 'Not connected'}
+                  </StatusPill>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Billing status</CardTitle>
+                  <CardDescription>
+                    Live billing-run status arrives in Phase 2 (Wave 5).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <StatusPill variant="pending">Pending wiring</StatusPill>
+                </CardContent>
+              </Card>
+            </aside>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -233,7 +242,7 @@ function ProfileCard({ franchisee }: ProfileCardProps) {
     <Card>
       <CardHeader>
         <CardTitle>Profile</CardTitle>
-        <CardDescription>Read-only in Wave 2; editing ships in Wave 4.</CardDescription>
+        <CardDescription>Use the Edit button above to change any of these fields.</CardDescription>
       </CardHeader>
       <CardContent>
         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">

@@ -9,7 +9,7 @@ import AuthCallback from '@/features/auth/AuthCallback';
 import Unauthorized from '@/features/auth/Unauthorized';
 import { HQLayout } from '@/features/hq/HQLayout';
 import Dashboard from '@/features/hq/Dashboard';
-import { FranchiseeList, FranchiseeDetail } from '@/features/hq/franchisees';
+import { FranchiseeList, FranchiseeDetail, NewFranchiseePage } from '@/features/hq/franchisees';
 import { TemplatesPage } from '@/features/hq/templates';
 import { InstancesList, InstanceDetail } from '@/features/hq/courses/instances';
 import { ActivityPage } from '@/features/hq/activity';
@@ -70,8 +70,9 @@ export default function App() {
                 <Route index element={<Navigate to="/hq/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
 
-                {/* Wave 2B — Franchisees (real pages) */}
+                {/* Wave 2B — Franchisees (real pages); Wave 4A adds /new + edit dialog */}
                 <Route path="franchisees" element={<FranchiseeList />} />
+                <Route path="franchisees/new" element={<NewFranchiseePage />} />
                 <Route path="franchisees/:id" element={<FranchiseeDetail />} />
 
                 {/* Wave 2C — Course templates + activity log (real pages) */}
