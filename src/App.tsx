@@ -17,9 +17,8 @@ import { TerritoriesPage } from '@/features/hq/territories';
 import { BookingsList, BookingDetail } from '@/features/hq/bookings';
 import { ReportsPage } from '@/features/hq/reports';
 import { InterestFormsPage } from '@/features/hq/interest-forms';
+import { BillingPage, BillingRunDetail } from '@/features/hq/billing';
 import FranchiseeDashboard from '@/features/franchisee/FranchiseeDashboard';
-import { EmptyState } from '@/components/daisy';
-import { PageHeader } from '@/components/daisy';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,22 +28,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-
-/**
- * Sibling-coordination placeholder for routes still owned by later
- * waves (Wave 3 territories/bookings, Wave 4 billing).
- */
-function ComingSoon({ wave, title }: { wave: string; title: string }) {
-  return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title={title} subtitle={`Coming in ${wave}.`} />
-      <EmptyState
-        title={`${title} — coming in ${wave}`}
-        body="A later wave wires this page. Once that PR merges, this placeholder will be replaced."
-      />
-    </div>
-  );
-}
 
 export default function App() {
   return (
@@ -97,7 +80,9 @@ export default function App() {
                 {/* Wave 3C — Interest form queue */}
                 <Route path="interest-forms" element={<InterestFormsPage />} />
 
-                <Route path="billing" element={<ComingSoon wave="Wave 4" title="Billing" />} />
+                {/* Wave 4C — Billing preview + accountant export */}
+                <Route path="billing" element={<BillingPage />} />
+                <Route path="billing/:run_id" element={<BillingRunDetail />} />
               </Route>
 
               <Route
