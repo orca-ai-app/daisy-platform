@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type {
   ActivityRow,
@@ -252,5 +252,166 @@ export function useFranchiseeActivity(franchiseeId: string | undefined, limit = 
       if (error) throw error;
       return (data ?? []) as ActivityRow[];
     },
+  });
+}
+
+// ----- Wave 4A: create + update mutations -----------------------------------
+
+/**
+ * Input shape for `useCreateFranchisee`. Mirrors the Edge Function contract
+ * locked in the build plan: flat fields, no nested {id, fields} envelope.
+ */
+export interface CreateFranchiseeInput {
+  number: string;
+  name: string;
+  email: string;
+  fee_tier: 100 | 120;
+  billing_date: number;
+  phone?: string | null;
+  notes?: string | null;
+  is_hq?: boolean;
+}
+
+/**
+ * The shape returned by the `create-franchisee` Edge Function.
+ * `magic_link` is null only if Supabase's admin generate_link API failed
+ * after the franchisee was already created (a system activity logs that
+ * case so HQ can re-issue the link manually).
+ */
+export interface CreateFranchiseeResult {
+  franchisee: Franchisee;
+  auth_user_id: string;
+  magic_link: string | null;
+}
+
+async function callCreateFranchisee(input: CreateFranchiseeInput): Promise<CreateFranchiseeResult> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) {
+    throw new Error('You must be signed in to onboard a franchisee.');
+  }
+
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-franchisee`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    let message = `Create failed (${response.status})`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // body wasn't JSON
+    }
+    throw new Error(message);
+  }
+
+  return (await response.json()) as CreateFranchiseeResult;
+}
+
+export function useCreateFranchisee() {
+  const queryClient = useQueryClient();
+  return useMutation<CreateFranchiseeResult, Error, CreateFranchiseeInput>({
+    mutationFn: callCreateFranchisee,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['hq', 'franchisees'] });
+      void queryClient.invalidateQueries({ queryKey: ['activities'] });
+      void queryClient.invalidateQueries({ queryKey: ['hq', 'attention'] });
+    },
+  });
+}
+
+/**
+ * Editable subset for `useUpdateFranchisee`. Stripe / GoCardless / number /
+ * auth_user_id are NOT editable through this surface.
+ */
+export interface FranchiseeUpdateFields {
+  name?: string;
+  email?: string;
+  phone?: string | null;
+  fee_tier?: 100 | 120;
+  billing_date?: number;
+  status?: FranchiseeStatus;
+  notes?: string | null;
+  vat_registered?: boolean;
+  is_hq?: boolean;
+}
+
+export interface UpdateFranchiseeInput {
+  id: string;
+  fields: FranchiseeUpdateFields;
+}
+
+async function callUpdateFranchisee(input: UpdateFranchiseeInput): Promise<Franchisee> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) {
+    throw new Error('You must be signed in to edit a franchisee.');
+  }
+
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-franchisee`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    let message = `Update failed (${response.status})`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // body wasn't JSON
+    }
+    throw new Error(message);
+  }
+
+  return (await response.json()) as Franchisee;
+}
+
+export function useUpdateFranchisee() {
+  const queryClient = useQueryClient();
+  return useMutation<Franchisee, Error, UpdateFranchiseeInput>({
+    mutationFn: callUpdateFranchisee,
+    onSuccess: (updated) => {
+      void queryClient.invalidateQueries({ queryKey: ['hq', 'franchisees'] });
+      void queryClient.invalidateQueries({ queryKey: ['hq', 'franchisee', updated.id] });
+      void queryClient.invalidateQueries({ queryKey: ['activities'] });
+    },
+  });
+}
+
+/**
+ * Reads the current franchisee numbers and returns the next zero-padded
+ * 4-digit string. Used by the New franchisee form to pre-fill a sensible
+ * default while still allowing override.
+ */
+export function useNextFranchiseeNumber() {
+  return useQuery<string>({
+    queryKey: ['hq', 'franchisees', 'next-number'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('da_franchisees')
+        .select('number')
+        .order('number', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      const top = data?.[0]?.number ?? '0000';
+      const asInt = Number.parseInt(top, 10);
+      const next = (Number.isFinite(asInt) ? asInt : 0) + 1;
+      return next.toString().padStart(4, '0');
+    },
+    // Refresh on focus so two HQ tabs don't both pre-fill the same number.
+    staleTime: 0,
   });
 }

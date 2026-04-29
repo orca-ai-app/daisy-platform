@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { PageHeader, DataTable, StatusPill, EmptyState } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useFranchisees, type FranchiseeRow } from './queries';
 import type { FranchiseeStatus } from '@/types/franchisee';
 
@@ -140,73 +139,68 @@ export default function FranchiseeList() {
 
   return (
     <div className="flex flex-col gap-6">
-        <PageHeader
-          title="Franchisees"
-          subtitle="Browse the network. Read-only in Wave 2; editing comes in Wave 4."
-          actions={
-            <>
-              <Badge variant="primary">{totalCount} total</Badge>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button disabled>+ New franchisee</Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Adding franchisees ships in Wave 4.</TooltipContent>
-              </Tooltip>
-            </>
-          }
-        />
+      <PageHeader
+        title="Franchisees"
+        subtitle="Browse the network and onboard new franchisees."
+        actions={
+          <>
+            <Badge variant="primary">{totalCount} total</Badge>
+            <Button asChild>
+              <Link to="/hq/franchisees/new">+ New franchisee</Link>
+            </Button>
+          </>
+        }
+      />
 
-        {/*
-         * Filter bar — search hits the Supabase query (so the result
-         * span isn't capped at the current page), the dropdown filters
-         * by status. The DataTable below adds in-table search across
-         * the loaded page, so users get both server- and client-side
-         * filtering for free.
-         */}
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, number, or email…"
-            className="h-10 max-w-sm flex-1 rounded-full"
-            aria-label="Search franchisees"
-          />
-          <Select value={status} onValueChange={(v) => setStatus(v as FranchiseeStatus | 'all')}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {/*
+       * Filter bar — search hits the Supabase query (so the result
+       * span isn't capped at the current page), the dropdown filters
+       * by status. The DataTable below adds in-table search across
+       * the loaded page, so users get both server- and client-side
+       * filtering for free.
+       */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name, number, or email…"
+          className="h-10 max-w-sm flex-1 rounded-full"
+          aria-label="Search franchisees"
+        />
+        <Select value={status} onValueChange={(v) => setStatus(v as FranchiseeStatus | 'all')}>
+          <SelectTrigger className="w-[200px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {STATUS_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {error ? (
+        <div className="mb-4 rounded-[8px] border border-[#FDEAE5] bg-[#FDEAE5]/40 p-4 text-sm text-[#8A2A2A]">
+          Could not load franchisees: {error.message}
         </div>
+      ) : null}
 
-        {error ? (
-          <div className="mb-4 rounded-[8px] border border-[#FDEAE5] bg-[#FDEAE5]/40 p-4 text-sm text-[#8A2A2A]">
-            Could not load franchisees: {error.message}
-          </div>
-        ) : null}
-
-        <DataTable<FranchiseeRow>
-          columns={columns}
-          data={rows}
-          isLoading={isLoading}
-          searchable={false}
-          onRowClick={(row) => navigate(`/hq/franchisees/${row.id}`)}
-          emptyState={
-            <EmptyState
-              title="No franchisees match"
-              body="Try adjusting the search or status filter, or seed some franchisees first."
-            />
-          }
-        />
+      <DataTable<FranchiseeRow>
+        columns={columns}
+        data={rows}
+        isLoading={isLoading}
+        searchable={false}
+        onRowClick={(row) => navigate(`/hq/franchisees/${row.id}`)}
+        emptyState={
+          <EmptyState
+            title="No franchisees match"
+            body="Try adjusting the search or status filter, or seed some franchisees first."
+          />
+        }
+      />
     </div>
   );
 }
