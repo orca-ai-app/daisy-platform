@@ -13,4 +13,5 @@ export { PageHeader } from './PageHeader';
 export { DataTable } from './DataTable';
 export { EmptyState } from './EmptyState';
 export { TopBar } from './TopBar';
-export { TerritoryMap } from './TerritoryMap';
+export { TerritoryMap, useTerritoryMapSelection } from './TerritoryMap';
+export type { TerritoryMapItem } from './TerritoryMap';

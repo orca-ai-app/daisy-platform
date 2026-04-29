@@ -12,6 +12,7 @@ import Dashboard from '@/features/hq/Dashboard';
 import { FranchiseeList, FranchiseeDetail } from '@/features/hq/franchisees';
 import { TemplatesPage } from '@/features/hq/templates';
 import { ActivityPage } from '@/features/hq/activity';
+import { TerritoriesPage } from '@/features/hq/territories';
 import FranchiseeDashboard from '@/features/franchisee/FranchiseeDashboard';
 import { EmptyState } from '@/components/daisy';
 import { PageHeader } from '@/components/daisy';
@@ -70,18 +71,12 @@ export default function App() {
                 <Route path="franchisees/:id" element={<FranchiseeDetail />} />
 
                 {/* Wave 2C — Course templates + activity log (real pages) */}
-                <Route
-                  path="courses"
-                  element={<Navigate to="/hq/courses/templates" replace />}
-                />
+                <Route path="courses" element={<Navigate to="/hq/courses/templates" replace />} />
                 <Route path="courses/templates" element={<TemplatesPage />} />
                 <Route path="activity" element={<ActivityPage />} />
 
-                {/* Wave 3 — territories, bookings, billing */}
-                <Route
-                  path="territories"
-                  element={<ComingSoon wave="Wave 3" title="Territories" />}
-                />
+                {/* Wave 3 — territories (3A), bookings (3B), billing (4) */}
+                <Route path="territories" element={<TerritoriesPage />} />
                 <Route path="bookings" element={<ComingSoon wave="Wave 3" title="Bookings" />} />
                 <Route path="billing" element={<ComingSoon wave="Wave 4" title="Billing" />} />
               </Route>
