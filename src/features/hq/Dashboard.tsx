@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRole } from '@/features/auth/RoleContext';
 import { formatPence } from '@/lib/format';
+import { formatActivityDescription } from '@/lib/queries/activities';
 import { useAttentionItems, useNetworkStats, useRecentActivity } from './queries';
 
 const dateFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -293,10 +294,7 @@ export default function Dashboard() {
                     {timeFormatter.format(new Date(row.created_at))}
                   </span>
                   <span className="text-daisy-ink flex-1">
-                    <span className="font-semibold">{row.action}</span>
-                    {row.description ? (
-                      <span className="text-daisy-muted"> · {row.description}</span>
-                    ) : null}
+                    <span className="font-semibold">{formatActivityDescription(row)}</span>
                   </span>
                   <span className="text-daisy-muted text-xs tracking-wide uppercase">
                     {row.actor_type}
