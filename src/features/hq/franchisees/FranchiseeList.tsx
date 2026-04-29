@@ -38,11 +38,11 @@ function initialsFor(name: string): string {
 }
 
 function formatRelative(iso: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   const then = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - then.getTime();
-  if (Number.isNaN(diffMs)) return '—';
+  if (Number.isNaN(diffMs)) return '-';
   const minutes = Math.round(diffMs / 60_000);
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;

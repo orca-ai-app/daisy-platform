@@ -200,7 +200,7 @@ export function useCourseInstances(filters: CourseInstancesFilters = {}) {
         price_pence: row.price_pence,
         visibility: row.visibility,
         template_id: row.template_id,
-        template_name: row.template?.name ?? '—',
+        template_name: row.template?.name ?? '-',
         franchisee_id: row.franchisee?.id ?? '',
         franchisee_number: row.franchisee?.number ?? '',
         franchisee_name: row.franchisee?.name ?? '',

@@ -129,7 +129,7 @@ export function PreviewBillingDialog({ open, onClose }: PreviewBillingDialogProp
         <DialogHeader>
           <DialogTitle>Preview billing run</DialogTitle>
           <DialogDescription>
-            Dry-run the monthly fee calculation. Nothing is written to the database — this is a
+            Dry-run the monthly fee calculation. Nothing is written to the database. This is a
             preview only. Phase 2 ships the live collection job.
           </DialogDescription>
         </DialogHeader>
@@ -154,7 +154,7 @@ export function PreviewBillingDialog({ open, onClose }: PreviewBillingDialogProp
                   <SelectItem value={ALL_VALUE}>All active franchisees</SelectItem>
                   {(franchisees.data ?? []).map((f) => (
                     <SelectItem key={f.id} value={f.id}>
-                      {f.number.padStart(4, '0')} — {f.name}
+                      {f.number.padStart(4, '0')}, {f.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -19,7 +19,7 @@ function formatLondonDateTime(iso: string): string {
 }
 
 function formatLondonDate(iso: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   try {
     return formatInTimeZone(new Date(iso), 'Europe/London', 'd MMM yyyy');
   } catch {
@@ -103,12 +103,12 @@ export default function BookingDetail() {
                 <CardHeader>
                   <CardTitle>Booking summary</CardTitle>
                   <CardDescription>
-                    Read-only — Wave 4 adds cancel and refund actions.
+                    Read-only. Wave 4 adds cancel and refund actions.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-                    <Field label="Course" value={booking.course_instance?.template?.name ?? '—'} />
+                    <Field label="Course" value={booking.course_instance?.template?.name ?? '-'} />
                     <Field
                       label="Event date"
                       value={formatLondonDate(booking.course_instance?.event_date ?? null)}
@@ -118,12 +118,12 @@ export default function BookingDetail() {
                       value={
                         booking.course_instance?.start_time
                           ? `${formatTime(booking.course_instance.start_time)} – ${formatTime(booking.course_instance.end_time)}`
-                          : '—'
+                          : '-'
                       }
                     />
                     <Field
                       label="Venue postcode"
-                      value={booking.course_instance?.venue_postcode ?? '—'}
+                      value={booking.course_instance?.venue_postcode ?? '-'}
                     />
                     {booking.course_instance?.venue_name ? (
                       <Field label="Venue name" value={booking.course_instance.venue_name} />
@@ -133,7 +133,7 @@ export default function BookingDetail() {
                       value={
                         booking.ticket_type
                           ? `${booking.ticket_type.name} · ${booking.ticket_type.seats_consumed} seat${booking.ticket_type.seats_consumed === 1 ? '' : 's'}`
-                          : '—'
+                          : '-'
                       }
                     />
                     <Field label="Quantity" value={booking.quantity.toString()} />
@@ -141,7 +141,7 @@ export default function BookingDetail() {
                     {booking.discount_code ? (
                       <Field
                         label="Discount"
-                        value={`${booking.discount_code} — ${formatPence(booking.discount_amount_pence ?? 0)}`}
+                        value={`${booking.discount_code}: ${formatPence(booking.discount_amount_pence ?? 0)}`}
                       />
                     ) : null}
                     {booking.cancellation_reason ? (
@@ -167,8 +167,8 @@ export default function BookingDetail() {
                         value={`${booking.customer.first_name} ${booking.customer.last_name}`}
                       />
                       <Field label="Email" value={booking.customer.email} />
-                      <Field label="Phone" value={booking.customer.phone ?? '—'} />
-                      <Field label="Postcode" value={booking.customer.postcode ?? '—'} />
+                      <Field label="Phone" value={booking.customer.phone ?? '-'} />
+                      <Field label="Postcode" value={booking.customer.postcode ?? '-'} />
                     </dl>
                   ) : (
                     <p className="text-daisy-muted text-sm">Customer record missing.</p>
@@ -180,7 +180,8 @@ export default function BookingDetail() {
                 <CardHeader>
                   <CardTitle>Payment</CardTitle>
                   <CardDescription>
-                    Stripe identifiers shown for traceability — refund/cancel tools ship in Wave 4.
+                    Stripe identifiers shown for traceability. Refund and cancel tools ship in Wave
+                    4.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -198,7 +199,7 @@ export default function BookingDetail() {
                       label="Stripe checkout session"
                       value={
                         <span className="font-mono text-[12px] break-all">
-                          {booking.stripe_checkout_session_id ?? '—'}
+                          {booking.stripe_checkout_session_id ?? '-'}
                         </span>
                       }
                       full
@@ -207,7 +208,7 @@ export default function BookingDetail() {
                       label="Stripe payment intent"
                       value={
                         <span className="font-mono text-[12px] break-all">
-                          {booking.stripe_payment_intent_id ?? '—'}
+                          {booking.stripe_payment_intent_id ?? '-'}
                         </span>
                       }
                       full

@@ -95,7 +95,7 @@ export function buildBillingPreviewCSV(previews: FranchiseePreview | FranchiseeP
           csvEscape(preview.fee_tier),
           csvEscape(preview.billing_period_start),
           csvEscape(preview.billing_period_end),
-          csvEscape('— no territories —'),
+          csvEscape('(no territories)'),
           '',
           '0.00',
           '0.00',
@@ -195,7 +195,7 @@ export function buildBillingPreviewPDF(previews: FranchiseePreview | FranchiseeP
   if (list.length === 0) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
-    doc.text('Daisy First Aid — billing preview', PAGE_MARGIN_MM, 30);
+    doc.text('Daisy First Aid: billing preview', PAGE_MARGIN_MM, 30);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
     doc.text('No franchisees in this preview.', PAGE_MARGIN_MM, 40);

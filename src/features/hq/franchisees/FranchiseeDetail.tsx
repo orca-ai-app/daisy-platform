@@ -28,7 +28,7 @@ function formatLondonDateTime(iso: string): string {
 }
 
 function formatLondonDate(iso: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   try {
     return formatInTimeZone(new Date(iso), 'Europe/London', 'd MMM yyyy');
   } catch {
@@ -63,10 +63,10 @@ export default function FranchiseeDetail() {
       {
         id: 'course',
         header: 'Course',
-        accessorFn: (row) => `${row.course_template_name ?? '—'} ${row.course_event_date ?? ''}`,
+        accessorFn: (row) => `${row.course_template_name ?? '-'} ${row.course_event_date ?? ''}`,
         cell: ({ row }) => (
           <span className="flex flex-col">
-            <span className="font-semibold">{row.original.course_template_name ?? '—'}</span>
+            <span className="font-semibold">{row.original.course_template_name ?? '-'}</span>
             <span className="text-daisy-muted text-[12px]">
               {formatLondonDate(row.original.course_event_date)}
             </span>
@@ -249,7 +249,7 @@ function ProfileCard({ franchisee }: ProfileCardProps) {
           <Field label="Number" value={`#${franchisee.number.padStart(4, '0')}`} />
           <Field label="Name" value={franchisee.name} />
           <Field label="Email" value={franchisee.email} />
-          <Field label="Phone" value={franchisee.phone ?? '—'} />
+          <Field label="Phone" value={franchisee.phone ?? '-'} />
           <Field label="Fee tier" value={`£${franchisee.fee_tier} / month`} />
           <Field label="Billing date" value={`${franchisee.billing_date} of each month`} />
           <Field label="VAT registered" value={franchisee.vat_registered ? 'Yes' : 'No'} />
@@ -258,7 +258,7 @@ function ProfileCard({ franchisee }: ProfileCardProps) {
             value={<StatusPill variant={franchisee.status}>{franchisee.status}</StatusPill>}
           />
           <Field label="HQ admin" value={franchisee.is_hq ? 'Yes' : 'No'} />
-          <Field label="Notes" value={franchisee.notes ? franchisee.notes : '—'} full />
+          <Field label="Notes" value={franchisee.notes ? franchisee.notes : '-'} full />
         </dl>
       </CardContent>
     </Card>

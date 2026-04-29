@@ -79,14 +79,14 @@ export default function ReportsPage() {
         header: 'Number',
         cell: ({ row }) => (
           <span className="text-daisy-ink-soft font-mono text-[13px] font-bold">
-            {row.original.number ? `#${row.original.number.padStart(4, '0')}` : '—'}
+            {row.original.number ? `#${row.original.number.padStart(4, '0')}` : '-'}
           </span>
         ),
       },
       {
         accessorKey: 'name',
         header: 'Name',
-        cell: ({ row }) => <span className="font-bold">{row.original.name || '—'}</span>,
+        cell: ({ row }) => <span className="font-bold">{row.original.name || '-'}</span>,
       },
       {
         accessorKey: 'bookingCount',
