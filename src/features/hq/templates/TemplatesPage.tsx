@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -58,52 +59,55 @@ export default function TemplatesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-        <PageHeader
-          title="Course templates"
-          subtitle="The six predefined courses Daisy offers. Edits propagate to every new instance."
+      <PageHeader
+        title="Course templates"
+        subtitle="The six predefined courses Daisy offers. Edits propagate to every new instance."
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link to="/hq/courses/instances">View course instances →</Link>
+          </Button>
+        }
+      />
+
+      {templates.isLoading ? (
+        <p className="text-daisy-muted text-sm">Loading templates...</p>
+      ) : templates.isError ? (
+        <p className="text-daisy-orange text-sm">
+          Failed to load templates: {templates.error.message}
+        </p>
+      ) : !templates.data || templates.data.length === 0 ? (
+        <EmptyState
+          icon={<BookOpen />}
+          title="Templates not loaded"
+          body="The six seed templates should be present. Contact support if this persists."
         />
+      ) : (
+        <div className="flex flex-col gap-4">
+          {templates.data.map((template) => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+              onEdit={() => setEditing(template)}
+              onToggleActive={() => void handleToggleActive(template)}
+              disabled={updateTemplate.isPending}
+            />
+          ))}
+        </div>
+      )}
 
-        {templates.isLoading ? (
-          <p className="text-daisy-muted text-sm">Loading templates...</p>
-        ) : templates.isError ? (
+      <section className="mt-12">
+        <h2 className="font-display text-daisy-ink text-xl font-bold">Recent template activity</h2>
+        <p className="text-daisy-muted mb-3 text-sm">Last ten changes across all templates.</p>
+        {activity.isLoading ? (
+          <p className="text-daisy-muted text-sm">Loading activity...</p>
+        ) : activity.isError ? (
           <p className="text-daisy-orange text-sm">
-            Failed to load templates: {templates.error.message}
+            Failed to load activity: {activity.error.message}
           </p>
-        ) : !templates.data || templates.data.length === 0 ? (
-          <EmptyState
-            icon={<BookOpen />}
-            title="Templates not loaded"
-            body="The six seed templates should be present. Contact support if this persists."
-          />
         ) : (
-          <div className="flex flex-col gap-4">
-            {templates.data.map((template) => (
-              <TemplateCard
-                key={template.id}
-                template={template}
-                onEdit={() => setEditing(template)}
-                onToggleActive={() => void handleToggleActive(template)}
-                disabled={updateTemplate.isPending}
-              />
-            ))}
-          </div>
+          <ActivitySidebar pages={activity.data?.pages} />
         )}
-
-        <section className="mt-12">
-          <h2 className="font-display text-daisy-ink text-xl font-bold">
-            Recent template activity
-          </h2>
-          <p className="text-daisy-muted mb-3 text-sm">Last ten changes across all templates.</p>
-          {activity.isLoading ? (
-            <p className="text-daisy-muted text-sm">Loading activity...</p>
-          ) : activity.isError ? (
-            <p className="text-daisy-orange text-sm">
-              Failed to load activity: {activity.error.message}
-            </p>
-          ) : (
-            <ActivitySidebar pages={activity.data?.pages} />
-          )}
-        </section>
+      </section>
 
       {editing ? (
         <EditTemplateDialog template={editing} open onClose={() => setEditing(null)} />
