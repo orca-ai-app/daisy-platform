@@ -223,7 +223,7 @@ export function useFranchiseeBookings(id: string | undefined, limit = 20) {
         payment_status: row.payment_status,
         booking_status: row.booking_status,
         created_at: row.created_at,
-        customer_name: row.customer ? `${row.customer.first_name} ${row.customer.last_name}` : '—',
+        customer_name: row.customer ? `${row.customer.first_name} ${row.customer.last_name}` : '-',
         course_template_name: row.course_instance?.template?.name ?? null,
         course_event_date: row.course_instance?.event_date ?? null,
       }));

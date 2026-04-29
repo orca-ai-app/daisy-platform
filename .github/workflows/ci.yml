@@ -9,6 +9,12 @@ jobs:
   build:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
+    # Hoisted to job scope so test + build both inherit. Real values live in
+    # Netlify env, never in CI. Module-load assertion in src/lib/supabase.ts
+    # needs these to be non-empty regardless of which step imports it.
+    env:
+      VITE_SUPABASE_URL: https://placeholder.supabase.co
+      VITE_SUPABASE_ANON_KEY: placeholder-anon-key
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,9 +38,4 @@ jobs:
         run: npm run test
 
       - name: Build
-        env:
-          # CI build needs non-empty env so the supabase client doesn't throw
-          # at module load. Real values live in Netlify env, never in CI.
-          VITE_SUPABASE_URL: https://placeholder.supabase.co
-          VITE_SUPABASE_ANON_KEY: placeholder-anon-key
         run: npm run build

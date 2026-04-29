@@ -42,7 +42,7 @@ export default function CancelInstanceDialog({ instance, open, onClose }: Props)
       });
       const n = result.bookings_affected;
       const noun = n === 1 ? 'booking' : 'bookings';
-      toast.success(n > 0 ? `Course cancelled — ${n} ${noun} affected` : 'Course cancelled');
+      toast.success(n > 0 ? `Course cancelled (${n} ${noun} affected)` : 'Course cancelled');
       setReason('');
       onClose();
     } catch (err) {
@@ -60,8 +60,8 @@ export default function CancelInstanceDialog({ instance, open, onClose }: Props)
           <DialogTitle>Cancel course</DialogTitle>
           <DialogDescription>
             This sets the course status to <strong>cancelled</strong> and stamps the reason against
-            it. Existing bookings stay in place — refunds and customer notifications are handled in
-            a later wave.
+            it. Existing bookings stay in place. Refunds and customer notifications are handled in a
+            later wave.
           </DialogDescription>
         </DialogHeader>
 

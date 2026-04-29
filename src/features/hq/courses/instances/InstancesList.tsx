@@ -41,7 +41,7 @@ const DATE_OPTIONS: ReadonlyArray<{ value: DateRangePreset; label: string }> = [
 ];
 
 function formatLondonDate(d: string | null): string {
-  if (!d) return '—';
+  if (!d) return '-';
   try {
     return formatInTimeZone(new Date(`${d}T00:00:00Z`), 'Europe/London', 'd MMM yyyy');
   } catch {
@@ -111,12 +111,12 @@ export default function InstancesList() {
               className="hover:text-daisy-primary flex flex-col"
             >
               <span className="text-daisy-ink-soft font-mono text-[12px] font-bold">
-                {row.original.franchisee_number || '—'}
+                {row.original.franchisee_number || '-'}
               </span>
               <span className="text-daisy-muted text-[12px]">{row.original.franchisee_name}</span>
             </Link>
           ) : (
-            <span className="text-daisy-muted text-[12px]">—</span>
+            <span className="text-daisy-muted text-[12px]">-</span>
           ),
       },
       {
@@ -125,7 +125,7 @@ export default function InstancesList() {
         accessorFn: (row) => `${row.venue_name ?? ''} ${row.venue_postcode}`,
         cell: ({ row }) => (
           <span className="flex flex-col">
-            <span className="font-semibold">{row.original.venue_name ?? '—'}</span>
+            <span className="font-semibold">{row.original.venue_name ?? '-'}</span>
             <span className="text-daisy-muted font-mono text-[12px]">
               {row.original.venue_postcode}
             </span>
@@ -209,7 +209,7 @@ export default function InstancesList() {
             <SelectItem value="all">All franchisees</SelectItem>
             {(franchiseeOptions.data ?? []).map((f) => (
               <SelectItem key={f.id} value={f.id}>
-                {f.number} — {f.name}
+                {f.number}, {f.name}
               </SelectItem>
             ))}
           </SelectContent>

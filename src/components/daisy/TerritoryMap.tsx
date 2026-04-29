@@ -138,7 +138,7 @@ export function TerritoryMap({
                 <AdvancedMarker
                   key={t.id}
                   position={{ lat: t.lat as number, lng: t.lng as number }}
-                  title={`${t.postcode_prefix} — ${t.name}`}
+                  title={`${t.postcode_prefix}, ${t.name}`}
                   onClick={() => onMarkerClick?.(t)}
                 >
                   <Pin
@@ -158,7 +158,7 @@ export function TerritoryMap({
 
       {ungeocodedCount > 0 ? (
         <p className="text-daisy-muted text-xs">
-          {ungeocodedCount} territor{ungeocodedCount === 1 ? 'y' : 'ies'} not yet geocoded — use the
+          {ungeocodedCount} territor{ungeocodedCount === 1 ? 'y' : 'ies'} not yet geocoded. Use the
           geocode-postcode helper to populate lat/lng.
         </p>
       ) : null}

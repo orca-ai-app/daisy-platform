@@ -78,8 +78,8 @@ export default function TemplatesPage() {
       ) : !templates.data || templates.data.length === 0 ? (
         <EmptyState
           icon={<BookOpen />}
-          title="Templates not loaded"
-          body="The six seed templates should be present. Contact support if this persists."
+          title="No course templates yet"
+          body="Daisy's six default templates haven't been loaded for this account. Contact support if this looks wrong."
         />
       ) : (
         <div className="flex flex-col gap-4">
@@ -143,7 +143,7 @@ function TemplateCard({ template, onEdit, onToggleActive, disabled }: TemplateCa
             <Field label="Duration">{template.duration_hours} hrs</Field>
             <Field label="Default price">{formatPence(template.default_price_pence)}</Field>
             <Field label="Default capacity">{template.default_capacity}</Field>
-            <Field label="Certification">{template.certification ?? '—'}</Field>
+            <Field label="Certification">{template.certification ?? '-'}</Field>
             {template.age_range ? <Field label="Age range">{template.age_range}</Field> : null}
           </dl>
         </div>

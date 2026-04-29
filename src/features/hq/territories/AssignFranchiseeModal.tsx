@@ -100,7 +100,7 @@ export function AssignFranchiseeModal({ territory, open, onClose }: AssignFranch
               ? `Reassign ${territory.postcode_prefix}`
               : `Assign ${territory.postcode_prefix}`}
           </DialogTitle>
-          <DialogDescription>{territory.name} — every change is audit-logged.</DialogDescription>
+          <DialogDescription>{territory.name}. Every change is audit-logged.</DialogDescription>
         </DialogHeader>
 
         <form className="mt-4 flex flex-col gap-5" onSubmit={(e) => void handleSubmit(e)}>
@@ -114,7 +114,7 @@ export function AssignFranchiseeModal({ territory, open, onClose }: AssignFranch
               onChange={(e) => setFranchiseeValue(e.target.value)}
               disabled={franchisees.isLoading}
             >
-              <option value={UNASSIGNED_VALUE}>— Unassigned —</option>
+              <option value={UNASSIGNED_VALUE}>(Unassigned)</option>
               {(franchisees.data ?? []).map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.number} · {f.name}

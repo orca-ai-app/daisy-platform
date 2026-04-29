@@ -76,7 +76,7 @@ function paymentStatusVariant(p: PaymentStatus): StatusVariant {
 }
 
 function formatLondonDate(iso: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   try {
     return formatInTimeZone(new Date(iso), 'Europe/London', 'd MMM yyyy');
   } catch {
@@ -136,7 +136,7 @@ export default function BookingsList() {
         accessorFn: (row) => `${row.course_template_name ?? ''} ${row.course_event_date ?? ''}`,
         cell: ({ row }) => (
           <span className="flex flex-col">
-            <span className="font-semibold">{row.original.course_template_name ?? '—'}</span>
+            <span className="font-semibold">{row.original.course_template_name ?? '-'}</span>
             <span className="text-daisy-muted text-[12px]">
               {formatLondonDate(row.original.course_event_date)}
             </span>
@@ -150,7 +150,7 @@ export default function BookingsList() {
         cell: ({ row }) => (
           <span className="flex flex-col">
             <span className="text-daisy-ink-soft font-mono text-[12px] font-bold">
-              {row.original.franchisee_number || '—'}
+              {row.original.franchisee_number || '-'}
             </span>
             <span className="text-daisy-muted text-[12px]">{row.original.franchisee_name}</span>
           </span>
@@ -189,7 +189,7 @@ export default function BookingsList() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Bookings"
-        subtitle="Every booking across the network. Read-only in Wave 3 — refund/cancel tools land in Wave 4."
+        subtitle="Every booking across the network. Read-only in Wave 3. Refund and cancel tools land in Wave 4."
         actions={<Badge variant="primary">{totalCount} total</Badge>}
       />
 

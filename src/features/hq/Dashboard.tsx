@@ -1,6 +1,12 @@
 import { Link } from 'react-router';
-import { CalendarDays, Coins, Map, Users } from 'lucide-react';
-import { AttentionList, PageHeader, StatCard, type StatDeltaTone } from '@/components/daisy';
+import { CalendarDays, Clock, Coins, Map, Users } from 'lucide-react';
+import {
+  AttentionList,
+  EmptyState,
+  PageHeader,
+  StatCard,
+  type StatDeltaTone,
+} from '@/components/daisy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRole } from '@/features/auth/RoleContext';
@@ -39,7 +45,7 @@ function formatDelta(
   tone: StatDeltaTone;
 } {
   if (previous === 0 && current === 0) {
-    return { label: 'No data yet — seeded in Wave 5', tone: 'flat' };
+    return { label: 'No data yet (seeded in Wave 5)', tone: 'flat' };
   }
   if (previous === 0) {
     return { label: `${current} this month (no prior)`, tone: 'up' };
@@ -86,7 +92,7 @@ export default function Dashboard() {
           <span>
             {greetingFor(franchisee?.name)}
             <span className="font-display text-daisy-muted ml-2 text-[18px] font-semibold">
-              — here's your network today
+              , here's your network today
             </span>
           </span>
         }
@@ -189,8 +195,9 @@ export default function Dashboard() {
               <Skeleton className="h-5 w-1/3" />
               <Skeleton className="h-5 w-1/2" />
               <p className="text-daisy-muted pt-3 text-sm">
-                Sortable table of every franchisee — number, name, territory count, MTD bookings,
-                MTD revenue and fee status. Coming through in this wave from the franchisees agent.
+                Sortable table of every franchisee, with number, name, territory count, MTD
+                bookings, MTD revenue and fee status. Coming through in this wave from the
+                franchisees agent.
               </p>
             </div>
           </CardContent>
@@ -224,7 +231,7 @@ export default function Dashboard() {
         <Card className="overflow-hidden">
           <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint border-b px-5 py-4">
             <CardTitle className="text-daisy-primary-deep text-[15px] font-extrabold tracking-[0.06em] uppercase">
-              Territory map — UK
+              Territory map, UK
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -241,7 +248,7 @@ export default function Dashboard() {
         <Card className="overflow-hidden">
           <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint border-b px-5 py-4">
             <CardTitle className="text-daisy-primary-deep text-[15px] font-extrabold tracking-[0.06em] uppercase">
-              Network revenue — last 6 months
+              Network revenue, last 6 months
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -271,9 +278,12 @@ export default function Dashboard() {
               <Skeleton className="h-4 w-3/4" />
             </div>
           ) : (activity.data ?? []).length === 0 ? (
-            <div className="text-daisy-muted px-6 py-10 text-center text-sm">
-              Nothing logged yet — when franchisees update bookings or HQ runs billing, the audit
-              trail shows up here.
+            <div className="p-6">
+              <EmptyState
+                icon={<Clock />}
+                title="No activity yet"
+                body="When franchisees update bookings or HQ runs billing, the audit trail shows up here."
+              />
             </div>
           ) : (
             <ul className="divide-daisy-line-soft divide-y">

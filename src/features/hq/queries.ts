@@ -163,7 +163,7 @@ export function useAttentionItems() {
         items.push({
           id: 'overdue-fees',
           title: 'Overdue fee payments',
-          meta: 'Billing runs with failed payments — chase or retry',
+          meta: 'Billing runs with failed payments. Chase or retry.',
           severity: 'red',
           count: overdue.count ?? 0,
           href: '/hq/billing',
@@ -182,7 +182,7 @@ export function useAttentionItems() {
         items.push({
           id: 'quiet-territories',
           title: 'Quiet territories',
-          meta: 'Vacant on the map — assign a franchisee or run a campaign',
+          meta: 'Vacant on the map. Assign a franchisee or run a campaign.',
           severity: 'amber',
           count: vacant.count ?? 0,
           href: '/hq/territories',
@@ -223,7 +223,7 @@ export function useAttentionItems() {
         items.push({
           id: 'upcoming-billing',
           title: 'Billing runs this week',
-          meta: 'Scheduled runs in the next 7 days — preview before they fire',
+          meta: 'Scheduled runs in the next 7 days. Preview before they fire.',
           severity: 'grey',
           count: upcoming.count ?? 0,
           href: '/hq/billing',

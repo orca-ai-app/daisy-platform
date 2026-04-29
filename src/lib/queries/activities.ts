@@ -102,58 +102,92 @@ const ENTITY_LABELS: Record<string, string> = {
   course_template: 'course template',
   franchisee: 'franchisee',
   territory: 'territory',
-  course_instance: 'course',
+  course_instance: 'course session',
   booking: 'booking',
   customer: 'customer',
   private_client: 'private client',
-  interest_form: 'interest form',
+  interest_form: 'enquiry',
   geocode: 'geocode lookup',
+  billing_run: 'billing run',
 };
 
+/**
+ * Verb phrases for every audit action emitted by the Edge Functions.
+ *
+ * Keep this in sync with the values written by:
+ *  - update-template (Wave 2C)
+ *  - create-franchisee + update-franchisee (Wave 4A)
+ *  - assign-territory (Wave 3A)
+ *  - update-interest-form (Wave 3C)
+ *  - update-course-instance + cancel-course-instance (Wave 4B)
+ *  - preview-billing-run (Wave 4C, no-op for activity since it's read-only)
+ *
+ * Wave 5A disambiguation: course_instance_updated must read as a
+ * different action from template_updated, and territory verbs need
+ * natural-language phrasing rather than the raw enum names.
+ */
 const ACTION_VERBS: Record<string, string> = {
-  template_updated: 'updated template',
-  template_created: 'created template',
-  template_deactivated: 'deactivated template',
-  franchisee_created: 'created franchisee',
+  // Templates (Wave 2C)
+  template_created: 'created course template',
+  template_updated: 'updated course template',
+  template_deactivated: 'deactivated course template',
+  // Franchisees (Wave 2B + Wave 4A)
+  franchisee_created: 'onboarded new franchisee',
   franchisee_updated: 'updated franchisee',
+  // Territories (Wave 3A)
   territory_assigned: 'assigned territory',
+  territory_reassigned: 'reassigned territory',
+  territory_unassigned: 'unassigned territory',
+  territory_status_changed: 'changed territory status',
   territory_vacated: 'vacated territory',
-  course_created: 'created course',
-  course_cancelled: 'cancelled course',
-  course_instance_updated: 'updated course',
-  course_instance_cancelled: 'cancelled course',
+  // Course instances (Wave 4B)
+  course_created: 'created course session',
+  course_cancelled: 'cancelled course session',
+  course_instance_updated: 'updated course session',
+  course_instance_cancelled: 'cancelled course session',
+  // Bookings (Wave 3B + Wave 4)
   booking_created: 'created booking',
   booking_cancelled: 'cancelled booking',
+  booking_refunded: 'refunded booking',
+  // Interest forms (Wave 3C)
+  interest_form_created: 'received enquiry',
+  interest_form_updated: 'updated enquiry',
+  interest_form_status_changed: 'updated enquiry status',
+  // Misc
   geocode: 'geocoded postcode',
-  interest_form_status_changed: 'updated interest form',
 };
 
 /**
  * Build a human-readable summary of an activity row.
  *
- * Prefers the `description` column when present (the Edge Function writes a
- * pre-formatted string at insert time). Falls back to entity_type + action +
- * metadata when the row didn't get a description (e.g. legacy rows or third-
- * party inserts).
+ * Lookup order:
+ *  1. `description` column when present (Edge Functions write a
+ *     pre-formatted string at insert time).
+ *  2. Verb table above + metadata subject.
+ *  3. Generic "performed {action} on {entity_type}" fall-through.
  */
 export function formatActivityDescription(row: ActivityRow): string {
   if (row.description && row.description.trim().length > 0) {
     return row.description;
   }
 
+  const verb = ACTION_VERBS[row.action];
   const entityLabel = ENTITY_LABELS[row.entity_type] ?? row.entity_type;
-  const verb = ACTION_VERBS[row.action] ?? row.action.replace(/_/g, ' ');
 
-  // If metadata has a `name` or `template_name`, use it.
+  // Pull a human-friendly subject from common metadata keys.
   const meta = row.metadata as Record<string, unknown> | null;
   const subject =
     (meta && typeof meta.name === 'string' && meta.name) ||
     (meta && typeof meta.template_name === 'string' && meta.template_name) ||
+    (meta && typeof meta.postcode_prefix === 'string' && meta.postcode_prefix) ||
+    (meta && typeof meta.postcode === 'string' && meta.postcode) ||
     null;
 
-  if (subject) {
-    return `${verb}: ${subject}`;
+  if (verb) {
+    return subject ? `${verb}: ${subject}` : verb;
   }
 
-  return `${verb} (${entityLabel})`;
+  // Unknown verb: use a friendly generic. Avoid leaking the raw enum.
+  const friendlyAction = row.action.replace(/_/g, ' ');
+  return `performed ${friendlyAction} on ${entityLabel}`;
 }

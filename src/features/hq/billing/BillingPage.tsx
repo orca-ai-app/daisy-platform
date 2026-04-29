@@ -66,7 +66,7 @@ function formatPeriod(start: string, end: string): string {
 }
 
 function formatDateOnly(iso: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: 'short',

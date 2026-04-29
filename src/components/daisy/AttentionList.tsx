@@ -37,7 +37,7 @@ export function AttentionList({ items, empty }: AttentionListProps) {
   if (items.length === 0) {
     return (
       <div data-daisy="AttentionList" className="text-daisy-muted px-4 py-10 text-center text-sm">
-        {empty ?? 'Nothing needs your attention right now — quiet week, that.'}
+        {empty ?? 'Nothing needs your attention right now. Quiet week, that.'}
       </div>
     );
   }

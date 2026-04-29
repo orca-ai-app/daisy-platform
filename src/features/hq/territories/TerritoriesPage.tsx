@@ -28,9 +28,9 @@ const STATUS_LABELS: Record<TerritoryStatus, string> = {
 };
 
 function formatRelative(iso: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '—';
+  if (Number.isNaN(then)) return '-';
   const diffMs = Date.now() - then;
   const sec = Math.floor(diffMs / 1000);
   if (sec < 60) return 'just now';
@@ -167,7 +167,7 @@ export default function TerritoriesPage() {
         <EmptyState
           icon={<MapPin />}
           title="No territories yet"
-          body="Add one via SQL or the territory import tool (M2)."
+          body="Once postcode prefixes are loaded, every territory appears here with assignment status and a marker on the map."
         />
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">

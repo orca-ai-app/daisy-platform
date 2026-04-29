@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import { NavLink, Outlet, useLocation } from 'react-router';
 import { LogOut } from 'lucide-react';
+import { ErrorBoundary } from 'react-error-boundary';
 import { TopBar } from '@/components/daisy';
+import { ErrorFallback } from '@/components/error-boundary/ErrorFallback';
 import { useRole } from '@/features/auth/RoleContext';
 import { getInitials } from '@/utils/initials';
 import { cn } from '@/lib/utils';
@@ -31,6 +33,9 @@ const HQ_NAV: HQNavItem[] = [
 export function HQLayout() {
   const { franchisee, user, signOut } = useRole();
   const initials = getInitials(franchisee?.name ?? user?.email ?? null);
+  // Reset the boundary whenever the route changes so a thrown error on
+  // one page doesn't poison subsequent navigations. Wave 5A polish.
+  const location = useLocation();
 
   return (
     <div className="bg-daisy-bg min-h-screen">
@@ -68,7 +73,18 @@ export function HQLayout() {
       />
 
       <main className="mx-auto max-w-[1240px] px-10 pt-14 pb-24">
-        <Outlet />
+        <ErrorBoundary
+          FallbackComponent={ErrorFallback}
+          resetKeys={[location.pathname]}
+          onError={(err) => {
+            // Bubble to the console so dev tooling and Sentry-like wrappers
+            // (added in M2) can pick the error up. The fallback hides the
+            // detail from the user.
+            console.error('HQLayout caught route error:', err);
+          }}
+        >
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   );

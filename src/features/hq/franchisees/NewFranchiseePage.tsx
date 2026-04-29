@@ -300,7 +300,7 @@ function SuccessCard({ result, onDone }: SuccessCardProps) {
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button onClick={onDone}>Done — view franchisee</Button>
+            <Button onClick={onDone}>Done, view franchisee</Button>
           </div>
         </CardContent>
       </Card>

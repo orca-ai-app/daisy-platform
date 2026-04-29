@@ -18,7 +18,7 @@ import EditInstanceDialog from './EditInstanceDialog';
 import CancelInstanceDialog from './CancelInstanceDialog';
 
 function formatLondonDate(d: string | null): string {
-  if (!d) return '—';
+  if (!d) return '-';
   try {
     return formatInTimeZone(new Date(`${d}T00:00:00Z`), 'Europe/London', 'd MMM yyyy');
   } catch {
@@ -138,7 +138,7 @@ export default function InstanceDetail() {
                 </CardHeader>
                 <CardContent>
                   <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-                    <Field label="Template" value={instance.template?.name ?? '—'} />
+                    <Field label="Template" value={instance.template?.name ?? '-'} />
                     <Field
                       label="Franchisee"
                       value={
@@ -147,10 +147,10 @@ export default function InstanceDetail() {
                             to={`/hq/franchisees/${instance.franchisee.id}`}
                             className="text-daisy-primary hover:underline"
                           >
-                            #{instance.franchisee.number} — {instance.franchisee.name}
+                            #{instance.franchisee.number}, {instance.franchisee.name}
                           </Link>
                         ) : (
-                          '—'
+                          '-'
                         )
                       }
                     />
@@ -186,15 +186,15 @@ export default function InstanceDetail() {
                 </CardHeader>
                 <CardContent>
                   <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-                    <Field label="Name" value={instance.venue_name ?? '—'} />
+                    <Field label="Name" value={instance.venue_name ?? '-'} />
                     <Field label="Postcode" value={instance.venue_postcode} />
-                    <Field label="Address" value={instance.venue_address ?? '—'} full />
+                    <Field label="Address" value={instance.venue_address ?? '-'} full />
                     <Field
                       label="Coordinates"
                       value={
                         typeof instance.lat === 'number' && typeof instance.lng === 'number'
                           ? `${instance.lat.toFixed(5)}, ${instance.lng.toFixed(5)}`
-                          : '—'
+                          : '-'
                       }
                     />
                   </dl>
@@ -211,7 +211,7 @@ export default function InstanceDetail() {
                 <CardContent>
                   {instance.ticket_types.length === 0 ? (
                     <p className="text-daisy-muted text-sm">
-                      No ticket types defined — defaults to a single seat per booking.
+                      No ticket types defined. Defaults to a single seat per booking.
                     </p>
                   ) : (
                     <ul className="divide-daisy-line-soft divide-y">

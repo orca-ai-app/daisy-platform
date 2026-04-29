@@ -140,7 +140,7 @@ export function useBillingRuns(
 
       return ((data ?? []) as unknown as Joined[]).map((row) => ({
         ...row,
-        franchisee_number: row.franchisee?.number ?? '—',
+        franchisee_number: row.franchisee?.number ?? '-',
         franchisee_name: row.franchisee?.name ?? 'Unknown',
       })) as BillingRunRow[];
     },
@@ -181,7 +181,7 @@ export function useBillingRun(id: string | undefined): UseQueryResult<BillingRun
       const row = data as unknown as Joined;
       return {
         ...row,
-        franchisee_number: row.franchisee?.number ?? '—',
+        franchisee_number: row.franchisee?.number ?? '-',
         franchisee_name: row.franchisee?.name ?? 'Unknown',
       } as BillingRunRow;
     },

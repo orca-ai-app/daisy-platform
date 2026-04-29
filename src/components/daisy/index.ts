@@ -15,3 +15,4 @@ export { EmptyState } from './EmptyState';
 export { TopBar } from './TopBar';
 export { TerritoryMap, useTerritoryMapSelection } from './TerritoryMap';
 export type { TerritoryMapItem } from './TerritoryMap';
+export { RouteLoadingSkeleton } from './RouteLoadingSkeleton';
