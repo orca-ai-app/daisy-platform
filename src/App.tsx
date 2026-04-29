@@ -11,6 +11,7 @@ import { HQLayout } from '@/features/hq/HQLayout';
 import Dashboard from '@/features/hq/Dashboard';
 import { FranchiseeList, FranchiseeDetail } from '@/features/hq/franchisees';
 import { TemplatesPage } from '@/features/hq/templates';
+import { InstancesList, InstanceDetail } from '@/features/hq/courses/instances';
 import { ActivityPage } from '@/features/hq/activity';
 import { TerritoriesPage } from '@/features/hq/territories';
 import { BookingsList, BookingDetail } from '@/features/hq/bookings';
@@ -76,6 +77,9 @@ export default function App() {
                 {/* Wave 2C — Course templates + activity log (real pages) */}
                 <Route path="courses" element={<Navigate to="/hq/courses/templates" replace />} />
                 <Route path="courses/templates" element={<TemplatesPage />} />
+                {/* Wave 4B — Course instances list + detail (HQ override) */}
+                <Route path="courses/instances" element={<InstancesList />} />
+                <Route path="courses/instances/:id" element={<InstanceDetail />} />
                 <Route path="activity" element={<ActivityPage />} />
 
                 {/* Wave 3A — Territories (real page) */}

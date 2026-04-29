@@ -120,6 +120,8 @@ const ACTION_VERBS: Record<string, string> = {
   territory_vacated: 'vacated territory',
   course_created: 'created course',
   course_cancelled: 'cancelled course',
+  course_instance_updated: 'updated course',
+  course_instance_cancelled: 'cancelled course',
   booking_created: 'created booking',
   booking_cancelled: 'cancelled booking',
   geocode: 'geocoded postcode',
