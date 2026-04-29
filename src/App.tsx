@@ -10,6 +10,8 @@ import Unauthorized from '@/features/auth/Unauthorized';
 import { HQLayout } from '@/features/hq/HQLayout';
 import Dashboard from '@/features/hq/Dashboard';
 import { FranchiseeList, FranchiseeDetail } from '@/features/hq/franchisees';
+import { TemplatesPage } from '@/features/hq/templates';
+import { ActivityPage } from '@/features/hq/activity';
 import FranchiseeDashboard from '@/features/franchisee/FranchiseeDashboard';
 import { EmptyState } from '@/components/daisy';
 import { PageHeader } from '@/components/daisy';
@@ -24,8 +26,8 @@ const queryClient = new QueryClient({
 });
 
 /**
- * Sibling-coordination placeholder. Wave 2C replaces the courses /
- * activity entries when its PR lands; later waves replace the rest.
+ * Sibling-coordination placeholder for routes still owned by later
+ * waves (Wave 3 territories/bookings, Wave 4 billing).
  */
 function ComingSoon({ wave, title }: { wave: string; title: string }) {
   return (
@@ -33,7 +35,7 @@ function ComingSoon({ wave, title }: { wave: string; title: string }) {
       <PageHeader title={title} subtitle={`Coming in ${wave}.`} />
       <EmptyState
         title={`${title} — coming in ${wave}`}
-        body="A sibling agent in this wave is wiring this page. Once their PR merges, this placeholder will be replaced."
+        body="A later wave wires this page. Once that PR merges, this placeholder will be replaced."
       />
     </div>
   );
@@ -67,16 +69,13 @@ export default function App() {
                 <Route path="franchisees" element={<FranchiseeList />} />
                 <Route path="franchisees/:id" element={<FranchiseeDetail />} />
 
-                {/* Wave 2C — Course templates + activity log */}
-                <Route path="courses" element={<ComingSoon wave="Wave 2C" title="Courses" />} />
+                {/* Wave 2C — Course templates + activity log (real pages) */}
                 <Route
-                  path="courses/templates"
-                  element={<ComingSoon wave="Wave 2C" title="Course templates" />}
+                  path="courses"
+                  element={<Navigate to="/hq/courses/templates" replace />}
                 />
-                <Route
-                  path="activity"
-                  element={<ComingSoon wave="Wave 2C" title="Activity log" />}
-                />
+                <Route path="courses/templates" element={<TemplatesPage />} />
+                <Route path="activity" element={<ActivityPage />} />
 
                 {/* Wave 3 — territories, bookings, billing */}
                 <Route
