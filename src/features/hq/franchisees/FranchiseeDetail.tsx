@@ -204,7 +204,7 @@ export default function FranchiseeDetail() {
                 <CardHeader>
                   <CardTitle>Stripe Connect</CardTitle>
                   <CardDescription>
-                    Wired in Wave 8 (M2). The flag below reflects the stored DB state only.
+                    Stripe Connect onboarding ships with the franchisee portal in M2. The flag below reflects the stored DB state only.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -218,7 +218,7 @@ export default function FranchiseeDetail() {
                 <CardHeader>
                   <CardTitle>Billing status</CardTitle>
                   <CardDescription>
-                    Live billing-run status arrives in Phase 2 (Wave 5).
+                    Live billing-run status arrives with Phase 2 automation (GoCardless direct debit).
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
