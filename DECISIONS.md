@@ -35,8 +35,17 @@ These are the locked decisions for the Daisy platform M1 build. They live here s
 | CI build env | Set placeholder `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` for the GitHub Actions build step only | The Supabase client throws at module load if either is missing; placeholders let the static build complete without exposing real keys to CI. Real keys live in Netlify env, never in CI. |
 | `husky`/`lint-staged`/`prettier` deps installed but not configured here | Per coordination: Agent 1C owns `.husky/`, `.prettierrc`, `.lintstagedrc`, `.prettierignore`. We install the tools and add `prepare: husky` to `package.json` so the postinstall hook works once 1C's config files land. | |
 
+## Decisions taken after M1 demo prep (2026-04-30)
+
+| Decision | Choice | Why |
+|---|---|---|
+| **Auth method for franchisees** | **Google SSO is the primary path.** Email + password kept as a fallback for fixture/test accounts. Magic links abandoned. | Real franchisees use Google or Workspace email. "Click your Google account" is a much better UX than "wait for a magic link that expires in an hour, click it before someone else does, and hope email deliverability works". Magic links in Supabase's free SMTP are also rate-limited (~2/hour) and frequently spam-foldered. |
+| **Auto-link `auth.users` → `da_franchisees`** | DB trigger (migration 012) updates `da_franchisees.auth_user_id` by case-insensitive email match on first auth-user insert (and on email change). | Lets HQ bulk-import franchisee data with `auth_user_id = NULL`, then have the link form automatically the first time the franchisee signs in via Google. RoleContext logic stays unchanged. |
+| **Bulk franchisee onboarding** | One-shot SQL via Supabase Management API with `INSERT … ON CONFLICT (email) DO UPDATE`. No new Edge Function. | Idempotent, re-runnable if the input changes. The existing `create-franchisee` Edge Function is still the right path for one-off HQ onboarding via the UI form; for 60+ rows at once, direct SQL is simpler. |
+
 ## Deferred decisions
 
 - **Stripe Connect model** — must be locked before Wave 6 kickoff (M2 Week 8).
 - **Medical declaration encryption** — must be locked before Wave 12 (M3).
 - **Custom domain cutover** — at end of M3 ahead of the Kartra/BookWhen kill.
+- **Postmark wiring** — M3. Until then, Supabase's built-in dev SMTP is the only email path; Google SSO sidesteps this for franchisee onboarding.
