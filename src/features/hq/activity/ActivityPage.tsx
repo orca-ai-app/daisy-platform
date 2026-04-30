@@ -65,7 +65,6 @@ export default function ActivityPage() {
                   <th className="px-3 py-3">Time</th>
                   <th className="px-3 py-3">Actor</th>
                   <th className="px-3 py-3">Entity</th>
-                  <th className="px-3 py-3">Action</th>
                   <th className="px-3 py-3">Description</th>
                 </tr>
               </thead>
@@ -220,13 +219,12 @@ function ActivityTableRow({ row, expanded, onToggle }: ActivityTableRowProps) {
           <Badge variant="default">{row.actor_type}</Badge>
         </td>
         <td className="text-daisy-ink-soft px-3 py-3">{row.entity_type}</td>
-        <td className="text-daisy-ink-soft px-3 py-3">{row.action}</td>
         <td className="text-daisy-ink px-3 py-3">{formatActivityDescription(row)}</td>
       </tr>
       {expanded && hasMetadata ? (
         <tr className="border-daisy-line-soft bg-daisy-bg border-b">
           <td className="px-3 py-3" />
-          <td colSpan={5} className="px-3 py-3">
+          <td colSpan={4} className="px-3 py-3">
             <pre className="bg-daisy-ink/[0.04] text-daisy-ink-soft overflow-x-auto rounded-[8px] p-3 text-xs">
               {JSON.stringify(row.metadata, null, 2)}
             </pre>

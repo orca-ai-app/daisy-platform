@@ -24,7 +24,7 @@ export default function FranchiseeDashboard() {
       <main className="mx-auto max-w-[1240px] px-10 py-12">
         <PageHeader
           title="Franchisee dashboard"
-          subtitle="Wave 1A placeholder. The franchisee portal lands in M2."
+          subtitle="The franchisee portal lands in M2 (Weeks 6 to 9)."
         />
         <Card>
           <CardContent className="py-6">

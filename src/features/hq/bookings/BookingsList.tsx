@@ -189,7 +189,7 @@ export default function BookingsList() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Bookings"
-        subtitle="Every booking across the network. Read-only in Wave 3. Refund and cancel tools land in Wave 4."
+        subtitle="Every booking across the network. Cancel and refund tools land with the franchisee portal in M2."
         actions={<Badge variant="primary">{totalCount} total</Badge>}
       />
 

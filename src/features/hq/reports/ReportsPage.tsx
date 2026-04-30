@@ -117,7 +117,7 @@ export default function ReportsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Network revenue"
-        subtitle="Gross booking revenue across the network. HQ fee splits land in Wave 4."
+        subtitle="Gross booking revenue across the network. HQ fee splits live on the Billing page."
         actions={
           network.data?.totalPence ? (
             <Badge variant="primary">{formatPence(network.data.totalPence)} total</Badge>

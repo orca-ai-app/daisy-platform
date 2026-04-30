@@ -103,7 +103,7 @@ export default function BookingDetail() {
                 <CardHeader>
                   <CardTitle>Booking summary</CardTitle>
                   <CardDescription>
-                    Read-only. Wave 4 adds cancel and refund actions.
+                    Read-only. Cancel and refund actions land with the franchisee portal in M2.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
