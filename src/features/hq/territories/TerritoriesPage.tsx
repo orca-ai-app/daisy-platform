@@ -85,14 +85,20 @@ export default function TerritoriesPage() {
         accessorKey: 'postcode_prefix',
         header: 'Postcode',
         cell: ({ row }) => (
-          <span className="text-daisy-ink font-bold">{row.original.postcode_prefix}</span>
+          <span className="text-daisy-ink font-bold whitespace-nowrap">
+            {row.original.postcode_prefix}
+          </span>
         ),
       },
       {
         id: 'name',
         accessorKey: 'name',
         header: 'Name',
-        cell: ({ row }) => <span>{row.original.name}</span>,
+        cell: ({ row }) => (
+          <span className="block max-w-[140px] truncate whitespace-nowrap" title={row.original.name}>
+            {row.original.name}
+          </span>
+        ),
       },
       {
         id: 'status',
@@ -117,7 +123,7 @@ export default function TerritoriesPage() {
           return (
             <Link
               to={`/hq/franchisees/${t.franchisee_id}`}
-              className="text-daisy-primary hover:text-daisy-primary-deep block max-w-[180px] truncate text-sm font-semibold whitespace-nowrap"
+              className="text-daisy-primary hover:text-daisy-primary-deep block max-w-[160px] truncate text-[13px] font-semibold whitespace-nowrap"
               title={`${t.franchisee_number} · ${t.franchisee_name}`}
               onClick={(e) => e.stopPropagation()}
             >
@@ -138,12 +144,13 @@ export default function TerritoriesPage() {
       },
       {
         id: 'actions',
-        header: 'Actions',
+        header: '',
         enableSorting: false,
         cell: ({ row }) => (
           <Button
             size="sm"
             variant="outline"
+            className="h-7 px-2.5 text-xs whitespace-nowrap"
             onClick={(e) => {
               e.stopPropagation();
               setAssignTarget(row.original);
@@ -217,7 +224,7 @@ export default function TerritoriesPage() {
             />
           </div>
 
-          <div className="flex flex-col gap-4 lg:w-[420px] lg:shrink-0">
+          <div className="flex flex-col gap-4 lg:w-[380px] lg:shrink-0">
             <TerritoryMap
               territories={mapItems}
               onMarkerClick={(t) => setSelectedId(t.id)}

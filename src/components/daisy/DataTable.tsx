@@ -116,7 +116,7 @@ export function DataTable<TRow>({
 
       <div className="border-daisy-line-soft bg-daisy-paper shadow-card overflow-hidden rounded-[12px] border">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[14px]">
+          <table className="w-full border-collapse text-[13px]">
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
@@ -128,7 +128,7 @@ export function DataTable<TRow>({
                         key={header.id}
                         scope="col"
                         className={cn(
-                          'border-daisy-line-soft text-daisy-muted border-b px-4 py-3 text-left text-[12px] font-bold tracking-wider whitespace-nowrap uppercase',
+                          'border-daisy-line-soft text-daisy-muted border-b px-3 py-2.5 text-left text-[11px] font-bold tracking-wider whitespace-nowrap uppercase',
                           canSort && 'cursor-pointer select-none',
                         )}
                         onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
@@ -155,8 +155,8 @@ export function DataTable<TRow>({
                 ? skeletonRows.map((_, i) => (
                     <tr key={`sk-${i}`} className="border-daisy-line border-b border-dashed">
                       {columns.map((_col, j) => (
-                        <td key={j} className="px-4 py-3.5">
-                          <Skeleton className="h-4 w-full max-w-[160px]" />
+                        <td key={j} className="px-3 py-2.5">
+                          <Skeleton className="h-4 w-full max-w-[140px]" />
                         </td>
                       ))}
                     </tr>
@@ -171,7 +171,7 @@ export function DataTable<TRow>({
                       onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="text-daisy-ink px-4 py-3.5">
+                        <td key={cell.id} className="text-daisy-ink px-3 py-2.5 align-middle">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
                       ))}
