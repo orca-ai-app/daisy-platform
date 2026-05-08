@@ -52,11 +52,18 @@ const InstanceDetail = lazy(() =>
   import('@/features/hq/courses/instances').then((m) => ({ default: m.InstanceDetail })),
 );
 
+// 5-minute staleTime by default — Daisy's data (franchisees, territories,
+// templates, billing runs) all change on a human timescale, not a real-time
+// one. The previous 30s was triggering refetches on almost every interaction
+// in long-lived sessions. Individual queries can override via their own
+// staleTime if they need fresher data.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      staleTime: 30_000,
+      refetchOnReconnect: false,
+      staleTime: 5 * 60_000,
+      gcTime: 30 * 60_000,
     },
   },
 });

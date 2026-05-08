@@ -28,6 +28,9 @@ export default [
         ...globals.browser,
         ...globals.es2022,
         React: 'readonly',
+        // Google Maps SDK is loaded at runtime by @vis.gl/react-google-maps;
+        // its types come from @types/google.maps.
+        google: 'readonly',
       },
       parser: tsparser,
       parserOptions: {

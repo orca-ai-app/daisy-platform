@@ -51,9 +51,32 @@ export default function TerritoriesPage() {
   const territories = useTerritories();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [assignTarget, setAssignTarget] = useState<TerritoryRow | null>(null);
+  // Search lives at page level so the table AND the map filter together.
+  // Typing "SE3" now shrinks the map to that single pin instead of leaving
+  // 2,800 markers on screen while the table shows 1 row.
+  const [searchQuery, setSearchQuery] = useState('');
 
   const rows = useMemo(() => territories.data ?? [], [territories.data]);
   const selected = useMemo(() => rows.find((r) => r.id === selectedId) ?? null, [rows, selectedId]);
+
+  // Filtered subset that matches the current search across postcode_prefix,
+  // name, and franchisee number/name. Same logic TanStack Table applies
+  // internally; we mirror it so the map stays in lock-step with the table.
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const haystack = [
+        r.postcode_prefix,
+        r.name,
+        r.franchisee_number ?? '',
+        r.franchisee_name ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [rows, searchQuery]);
 
   const columns = useMemo<ColumnDef<TerritoryRow>[]>(
     () => [
@@ -94,7 +117,8 @@ export default function TerritoriesPage() {
           return (
             <Link
               to={`/hq/franchisees/${t.franchisee_id}`}
-              className="text-daisy-primary hover:text-daisy-primary-deep text-sm font-semibold"
+              className="text-daisy-primary hover:text-daisy-primary-deep block max-w-[180px] truncate text-sm font-semibold whitespace-nowrap"
+              title={`${t.franchisee_number} · ${t.franchisee_name}`}
               onClick={(e) => e.stopPropagation()}
             >
               {t.franchisee_number} · {t.franchisee_name}
@@ -107,7 +131,7 @@ export default function TerritoriesPage() {
         accessorKey: 'updated_at',
         header: 'Last action',
         cell: ({ row }) => (
-          <span className="text-daisy-muted text-xs">
+          <span className="text-daisy-muted text-xs whitespace-nowrap">
             {formatRelative(row.original.updated_at)}
           </span>
         ),
@@ -133,17 +157,22 @@ export default function TerritoriesPage() {
     [],
   );
 
-  // Map items derived from the same row shape — keeps the map and table
-  // in sync without a second fetch.
-  const mapItems: TerritoryMapItem[] = rows.map((r) => ({
-    id: r.id,
-    lat: r.lat,
-    lng: r.lng,
-    status: r.status,
-    postcode_prefix: r.postcode_prefix,
-    name: r.name,
-    franchisee_name: r.franchisee_name,
-  }));
+  // Map items follow the filtered subset. Memoised so the map's marker
+  // useEffect only re-runs when the filter actually changes — not on every
+  // selection click or unrelated state update.
+  const mapItems: TerritoryMapItem[] = useMemo(
+    () =>
+      filteredRows.map((r) => ({
+        id: r.id,
+        lat: r.lat,
+        lng: r.lng,
+        status: r.status,
+        postcode_prefix: r.postcode_prefix,
+        name: r.name,
+        franchisee_name: r.franchisee_name,
+      })),
+    [filteredRows],
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -170,19 +199,25 @@ export default function TerritoriesPage() {
           body="Once postcode prefixes are loaded, every territory appears here with assignment status and a marker on the map."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-          <div className="lg:col-span-3">
+        <div className="flex flex-col gap-6 lg:flex-row">
+          {/* min-w-0 is the magic that lets a flex child shrink below its
+              content's intrinsic width — without it, long franchisee names
+              push the table wider than its share and the row needs to
+              scroll horizontally. */}
+          <div className="min-w-0 flex-1">
             <DataTable
               columns={columns}
               data={rows}
               isLoading={territories.isLoading}
               searchPlaceholder="Search postcode, name, franchisee…"
+              searchValue={searchQuery}
+              onSearchChange={setSearchQuery}
               onRowClick={(row) => setSelectedId(row.id)}
               pageSize={20}
             />
           </div>
 
-          <div className="flex flex-col gap-4 lg:col-span-2">
+          <div className="flex flex-col gap-4 lg:w-[420px] lg:shrink-0">
             <TerritoryMap
               territories={mapItems}
               onMarkerClick={(t) => setSelectedId(t.id)}

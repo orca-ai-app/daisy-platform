@@ -1,21 +1,23 @@
 /**
- * TerritoryMap. Wave 3A wires Google Maps via @vis.gl/react-google-maps
- * with VITE_GOOGLE_MAPS_API_KEY. Status-coloured markers, click → callback,
- * graceful fallback when the key is missing or coordinates are unset.
+ * TerritoryMap. Imperative Google Maps integration with marker clustering.
  *
- * Reference: docs/M1-build-plan.md §6 Wave 3 Agent 3A,
- *            daisy-flow/03-hq-dashboard.html for visual style.
+ * Why imperative? With ~2,800 territory rows, rendering one React component
+ * per pin causes a re-render storm on every state change (search, selection,
+ * filter). Using google.maps.Marker directly + MarkerClusterer means the
+ * heavy work is done by Google's native code, React only owns the surrounding
+ * shell, and clusters aggregate distant pins so the on-screen marker count
+ * stays small (typically <50 visible) at any zoom.
+ *
+ * The selected territory is panned-to via a separate effect and visually
+ * indicated by the side panel — no per-marker selection ring, which would
+ * defeat the clustering benefit.
+ *
+ * Reference: docs/M1-build-plan.md §6 Wave 3 Agent 3A.
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import {
-  AdvancedMarker,
-  APIProvider,
-  Map,
-  Pin,
-  useMap,
-  useMapsLibrary,
-} from '@vis.gl/react-google-maps';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { APIProvider, Map, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
+import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { EmptyState } from './EmptyState';
 
 export interface TerritoryMapItem {
@@ -30,101 +32,21 @@ export interface TerritoryMapItem {
 
 interface TerritoryMapProps {
   territories: TerritoryMapItem[];
-  /** Marker click handler. The parent typically uses this to drive
-   *  a side card or info panel. */
+  /** Marker click handler. Drives the side card / inspector panel. */
   onMarkerClick?: (territory: TerritoryMapItem) => void;
-  /** id of the currently-selected territory; rendered with an accent ring. */
+  /** id of the currently-selected territory; map pans to it when set. */
   selectedId?: string | null;
   className?: string;
 }
 
-const STATUS_COLOURS: Record<TerritoryMapItem['status'], { bg: string; border: string }> = {
-  active: { bg: '#67A671', border: '#3F7F4F' },
-  vacant: { bg: '#FCAF17', border: '#B97C0E' },
-  reserved: { bg: '#3AC1EA', border: '#1D88A8' },
+const STATUS_COLOURS: Record<TerritoryMapItem['status'], { fill: string; stroke: string }> = {
+  active: { fill: '#67A671', stroke: '#3F7F4F' },
+  vacant: { fill: '#FCAF17', stroke: '#B97C0E' },
+  reserved: { fill: '#3AC1EA', stroke: '#1D88A8' },
 };
 
 const UK_CENTRE = { lat: 54.5, lng: -2.5 };
 const UK_DEFAULT_ZOOM = 6;
-
-// Map ID is required by @vis.gl/react-google-maps to render AdvancedMarker.
-// Using a generated literal keeps things working without a Cloud-side
-// styled map; Daisy can register a real Map ID later for branded styles.
-const DAISY_MAP_ID = 'daisy-territory-map';
-
-/**
- * Side-effect component that frames the map sensibly when the territory
- * list changes. Three regimes:
- *
- *   - 0 geocoded territories  → default UK view
- *   - mostly ungeocoded (< 5% with coords AND < 5 absolute) → also default UK
- *     view, otherwise the map zooms hard onto the lone seeded pin (Cardiff
- *     left over from Wave 3A) before bulk-geocoding catches up.
- *   - otherwise → fitBounds to the geocoded subset.
- *
- * We deliberately do NOT respond to selectedId here — that's PanToSelection's
- * job — otherwise selection clicks would re-fit the bounds and undo a pan.
- */
-function FitBounds({ territories }: { territories: TerritoryMapItem[] }) {
-  const map = useMap();
-  const coreLib = useMapsLibrary('core');
-
-  useEffect(() => {
-    if (!map || !coreLib) return;
-    const withCoords = territories.filter(
-      (t) => typeof t.lat === 'number' && typeof t.lng === 'number',
-    );
-    const total = territories.length;
-    const coverage = total === 0 ? 0 : withCoords.length / total;
-
-    // Default UK view if nothing's geocoded, or if coverage is so thin that
-    // fitBounds would zoom onto a small handful of points and misrepresent
-    // the network.
-    if (withCoords.length === 0 || (withCoords.length < 5 && coverage < 0.05)) {
-      map.setCenter(UK_CENTRE);
-      map.setZoom(UK_DEFAULT_ZOOM);
-      return;
-    }
-
-    const bounds = new coreLib.LatLngBounds();
-    for (const t of withCoords) {
-      bounds.extend({ lat: t.lat as number, lng: t.lng as number });
-    }
-    map.fitBounds(bounds, 64);
-  }, [map, coreLib, territories]);
-
-  return null;
-}
-
-/**
- * Side-effect component that pans the map onto the currently-selected
- * territory's coordinates. Runs only when selectedId changes (or the
- * territories list updates with new coordinates for a previously-selected
- * row). Pans smoothly via panTo and zooms in only if we're zoomed too far
- * out to see the marker clearly.
- */
-function PanToSelection({
-  territories,
-  selectedId,
-}: {
-  territories: TerritoryMapItem[];
-  selectedId: string | null | undefined;
-}) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!map || !selectedId) return;
-    const sel = territories.find((t) => t.id === selectedId);
-    if (!sel || typeof sel.lat !== 'number' || typeof sel.lng !== 'number') return;
-    map.panTo({ lat: sel.lat, lng: sel.lng });
-    const currentZoom = map.getZoom() ?? 0;
-    if (currentZoom < 10) {
-      map.setZoom(11);
-    }
-  }, [map, territories, selectedId]);
-
-  return null;
-}
 
 export function TerritoryMap({
   territories,
@@ -134,18 +56,14 @@ export function TerritoryMap({
 }: TerritoryMapProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
-  const { mappable, ungeocodedCount } = useMemo(() => {
-    let unmapped = 0;
-    const ok: TerritoryMapItem[] = [];
-    for (const t of territories) {
-      if (typeof t.lat === 'number' && typeof t.lng === 'number') {
-        ok.push(t);
-      } else {
-        unmapped += 1;
-      }
-    }
-    return { mappable: ok, ungeocodedCount: unmapped };
-  }, [territories]);
+  // Stable filtered list of geocoded items. The reference is stable across
+  // renders unless lat/lng/status actually change for some row.
+  const mappable = useMemo(
+    () =>
+      territories.filter((t) => typeof t.lat === 'number' && typeof t.lng === 'number'),
+    [territories],
+  );
+  const ungeocodedCount = territories.length - mappable.length;
 
   if (!apiKey || apiKey.trim().length === 0) {
     return (
@@ -163,7 +81,6 @@ export function TerritoryMap({
       <div className="border-daisy-line-soft shadow-card h-[520px] overflow-hidden rounded-[12px] border">
         <APIProvider apiKey={apiKey}>
           <Map
-            mapId={DAISY_MAP_ID}
             defaultCenter={UK_CENTRE}
             defaultZoom={UK_DEFAULT_ZOOM}
             gestureHandling="greedy"
@@ -171,27 +88,12 @@ export function TerritoryMap({
             clickableIcons={false}
             style={{ width: '100%', height: '100%' }}
           >
-            <FitBounds territories={mappable} />
+            <ClusteredMarkers
+              territories={mappable}
+              onMarkerClick={onMarkerClick}
+            />
             <PanToSelection territories={mappable} selectedId={selectedId} />
-            {mappable.map((t) => {
-              const colours = STATUS_COLOURS[t.status];
-              const isSelected = selectedId === t.id;
-              return (
-                <AdvancedMarker
-                  key={t.id}
-                  position={{ lat: t.lat as number, lng: t.lng as number }}
-                  title={`${t.postcode_prefix}, ${t.name}`}
-                  onClick={() => onMarkerClick?.(t)}
-                >
-                  <Pin
-                    background={colours.bg}
-                    borderColor={isSelected ? '#006FAC' : colours.border}
-                    glyphColor={'#FFFFFF'}
-                    scale={isSelected ? 1.25 : 1}
-                  />
-                </AdvancedMarker>
-              );
-            })}
+            <FitBoundsOnce territories={mappable} />
           </Map>
         </APIProvider>
       </div>
@@ -200,20 +102,143 @@ export function TerritoryMap({
 
       {ungeocodedCount > 0 ? (
         <p className="text-daisy-muted text-xs">
-          {ungeocodedCount} territor{ungeocodedCount === 1 ? 'y' : 'ies'} not yet geocoded. Use the
-          geocode-postcode helper to populate lat/lng.
+          {ungeocodedCount.toLocaleString('en-GB')} territor
+          {ungeocodedCount === 1 ? 'y' : 'ies'} not yet geocoded.
         </p>
       ) : null}
     </div>
   );
 }
 
+/**
+ * Imperative marker + clusterer manager. Creates google.maps.Marker
+ * instances for every territory and wraps them in a MarkerClusterer.
+ * Re-runs only when the territories array reference changes (memoised
+ * upstream).
+ */
+function ClusteredMarkers({
+  territories,
+  onMarkerClick,
+}: {
+  territories: TerritoryMapItem[];
+  onMarkerClick?: (t: TerritoryMapItem) => void;
+}) {
+  const map = useMap();
+  const markerLib = useMapsLibrary('marker');
+  const clustererRef = useRef<MarkerClusterer | null>(null);
+  // Stash the latest click handler in a ref so we don't have to rebuild
+  // markers when the parent's callback identity changes.
+  const onClickRef = useRef(onMarkerClick);
+  onClickRef.current = onMarkerClick;
+
+  useEffect(() => {
+    if (!map || !markerLib) return;
+
+    // Build markers imperatively. google.maps.Marker is lighter than
+    // AdvancedMarkerElement and more than fast enough for this use case.
+    const markers = territories.map((t) => {
+      const colours = STATUS_COLOURS[t.status];
+      const marker = new google.maps.Marker({
+        position: { lat: t.lat as number, lng: t.lng as number },
+        title: `${t.postcode_prefix} · ${t.name}`,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: colours.fill,
+          fillOpacity: 1,
+          strokeColor: colours.stroke,
+          strokeWeight: 1.5,
+          scale: 6,
+        },
+      });
+      marker.addListener('click', () => onClickRef.current?.(t));
+      return marker;
+    });
+
+    const clusterer = new MarkerClusterer({ map, markers });
+    clustererRef.current = clusterer;
+
+    return () => {
+      clusterer.clearMarkers();
+      for (const m of markers) {
+        m.setMap(null);
+      }
+      clustererRef.current = null;
+    };
+  }, [map, markerLib, territories]);
+
+  return null;
+}
+
+/**
+ * One-shot bounds fit on initial load. We deliberately don't refit on every
+ * territories change — selection, search, and filter changes shouldn't
+ * yank the map view around. The user can pan/zoom freely after the first
+ * fit; explicit selection clicks pan to the chosen pin.
+ */
+function FitBoundsOnce({ territories }: { territories: TerritoryMapItem[] }) {
+  const map = useMap();
+  const coreLib = useMapsLibrary('core');
+  const fittedRef = useRef(false);
+
+  useEffect(() => {
+    if (!map || !coreLib || fittedRef.current) return;
+    if (territories.length === 0) return;
+
+    if (territories.length < 5) {
+      // Too few to make a useful bounds fit — keep the UK default view.
+      fittedRef.current = true;
+      return;
+    }
+
+    const bounds = new coreLib.LatLngBounds();
+    for (const t of territories) {
+      bounds.extend({ lat: t.lat as number, lng: t.lng as number });
+    }
+    map.fitBounds(bounds, 64);
+    fittedRef.current = true;
+  }, [map, coreLib, territories]);
+
+  return null;
+}
+
+/**
+ * Pans the map smoothly to the selected territory. Only adjusts zoom if
+ * we're zoomed too far out to see individual pins.
+ */
+function PanToSelection({
+  territories,
+  selectedId,
+}: {
+  territories: TerritoryMapItem[];
+  selectedId: string | null | undefined;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map || !selectedId) return;
+    const sel = territories.find((t) => t.id === selectedId);
+    if (!sel || typeof sel.lat !== 'number' || typeof sel.lng !== 'number') return;
+    const target = { lat: sel.lat, lng: sel.lng };
+    const currentZoom = map.getZoom() ?? 0;
+    if (currentZoom < 10) {
+      // Smooth single transition: pan first, then zoom in once the pan
+      // settles. Setting both simultaneously can feel jumpy.
+      map.panTo(target);
+      window.setTimeout(() => map.setZoom(11), 250);
+    } else {
+      map.panTo(target);
+    }
+  }, [map, territories, selectedId]);
+
+  return null;
+}
+
 function MapLegend() {
   return (
     <div className="text-daisy-muted flex flex-wrap items-center gap-4 text-xs font-semibold">
-      <LegendDot colour={STATUS_COLOURS.active.bg} label="Active" />
-      <LegendDot colour={STATUS_COLOURS.vacant.bg} label="Vacant" />
-      <LegendDot colour={STATUS_COLOURS.reserved.bg} label="Reserved" />
+      <LegendDot colour={STATUS_COLOURS.active.fill} label="Active" />
+      <LegendDot colour={STATUS_COLOURS.vacant.fill} label="Vacant" />
+      <LegendDot colour={STATUS_COLOURS.reserved.fill} label="Reserved" />
     </div>
   );
 }
@@ -231,13 +256,11 @@ function LegendDot({ colour, label }: { colour: string; label: string }) {
   );
 }
 
-// Re-export the selection helper for callers that need to track state
-// without redeclaring the type.
 export type { TerritoryMapItem as TerritoryMapTerritory };
 
 // ---------------------------------------------------------------------------
-// useTerritoryMapSelection — tiny convenience hook for a parent that wants
-// "selected territory" state without rolling its own useState.
+// useTerritoryMapSelection — convenience hook (unchanged from the previous
+// implementation, kept for any consumers that import it).
 // ---------------------------------------------------------------------------
 
 export function useTerritoryMapSelection<T extends TerritoryMapItem>() {
