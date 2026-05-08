@@ -152,7 +152,7 @@ export default function TerritoriesPage() {
         subtitle="Every postcode prefix Daisy covers, with assignment status and live geocodes."
         actions={
           <Badge variant="primary" className="text-xs font-bold tracking-wide uppercase">
-            {rows.length} total
+            {rows.length.toLocaleString('en-GB')} total
           </Badge>
         }
       />

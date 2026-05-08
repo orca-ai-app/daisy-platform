@@ -60,6 +60,13 @@ interface JoinedTerritory {
   franchisee: { name: string; number: string } | null;
 }
 
+// PostgREST defaults to a 1000-row response limit. Daisy's territory grid
+// is 2,814 rows (one per postcode across 312 territory_numbers), so we
+// explicitly request the full set with .range(). If the network grows
+// beyond ~10k rows we'll need to paginate; for now an explicit cap keeps
+// the query simple.
+const TERRITORIES_FETCH_LIMIT = 10_000;
+
 async function fetchTerritories(): Promise<TerritoryRow[]> {
   const { data, error } = await supabase
     .from('da_territories')
@@ -74,7 +81,8 @@ async function fetchTerritories(): Promise<TerritoryRow[]> {
        updated_at,
        franchisee:da_franchisees ( name, number )`,
     )
-    .order('postcode_prefix', { ascending: true });
+    .order('postcode_prefix', { ascending: true })
+    .range(0, TERRITORIES_FETCH_LIMIT - 1);
 
   if (error) {
     throw new Error(`useTerritories: ${error.message}`);
