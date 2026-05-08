@@ -53,8 +53,17 @@ const UK_DEFAULT_ZOOM = 6;
 const DAISY_MAP_ID = 'daisy-territory-map';
 
 /**
- * Side-effect component that fits the map bounds to the supplied territories.
- * Re-runs whenever the territory list changes.
+ * Side-effect component that frames the map sensibly when the territory
+ * list changes. Three regimes:
+ *
+ *   - 0 geocoded territories  → default UK view
+ *   - mostly ungeocoded (< 5% with coords AND < 5 absolute) → also default UK
+ *     view, otherwise the map zooms hard onto the lone seeded pin (Cardiff
+ *     left over from Wave 3A) before bulk-geocoding catches up.
+ *   - otherwise → fitBounds to the geocoded subset.
+ *
+ * We deliberately do NOT respond to selectedId here — that's PanToSelection's
+ * job — otherwise selection clicks would re-fit the bounds and undo a pan.
  */
 function FitBounds({ territories }: { territories: TerritoryMapItem[] }) {
   const map = useMap();
@@ -65,22 +74,54 @@ function FitBounds({ territories }: { territories: TerritoryMapItem[] }) {
     const withCoords = territories.filter(
       (t) => typeof t.lat === 'number' && typeof t.lng === 'number',
     );
-    if (withCoords.length === 0) {
+    const total = territories.length;
+    const coverage = total === 0 ? 0 : withCoords.length / total;
+
+    // Default UK view if nothing's geocoded, or if coverage is so thin that
+    // fitBounds would zoom onto a small handful of points and misrepresent
+    // the network.
+    if (withCoords.length === 0 || (withCoords.length < 5 && coverage < 0.05)) {
       map.setCenter(UK_CENTRE);
       map.setZoom(UK_DEFAULT_ZOOM);
       return;
     }
-    if (withCoords.length === 1) {
-      map.setCenter({ lat: withCoords[0].lat as number, lng: withCoords[0].lng as number });
-      map.setZoom(11);
-      return;
-    }
+
     const bounds = new coreLib.LatLngBounds();
     for (const t of withCoords) {
       bounds.extend({ lat: t.lat as number, lng: t.lng as number });
     }
     map.fitBounds(bounds, 64);
   }, [map, coreLib, territories]);
+
+  return null;
+}
+
+/**
+ * Side-effect component that pans the map onto the currently-selected
+ * territory's coordinates. Runs only when selectedId changes (or the
+ * territories list updates with new coordinates for a previously-selected
+ * row). Pans smoothly via panTo and zooms in only if we're zoomed too far
+ * out to see the marker clearly.
+ */
+function PanToSelection({
+  territories,
+  selectedId,
+}: {
+  territories: TerritoryMapItem[];
+  selectedId: string | null | undefined;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map || !selectedId) return;
+    const sel = territories.find((t) => t.id === selectedId);
+    if (!sel || typeof sel.lat !== 'number' || typeof sel.lng !== 'number') return;
+    map.panTo({ lat: sel.lat, lng: sel.lng });
+    const currentZoom = map.getZoom() ?? 0;
+    if (currentZoom < 10) {
+      map.setZoom(11);
+    }
+  }, [map, territories, selectedId]);
 
   return null;
 }
@@ -131,6 +172,7 @@ export function TerritoryMap({
             style={{ width: '100%', height: '100%' }}
           >
             <FitBounds territories={mappable} />
+            <PanToSelection territories={mappable} selectedId={selectedId} />
             {mappable.map((t) => {
               const colours = STATUS_COLOURS[t.status];
               const isSelected = selectedId === t.id;
