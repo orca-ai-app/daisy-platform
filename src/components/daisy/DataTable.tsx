@@ -27,6 +27,14 @@ interface DataTableProps<TRow> {
   /** Initial page size. Default 20. */
   pageSize?: number;
   className?: string;
+  /**
+   * Optional controlled search value. When supplied, the parent owns the
+   * search state (useful when the same query needs to filter both the
+   * table and a sibling component like a map).
+   */
+  searchValue?: string;
+  /** Called when the user types in the search input (controlled mode). */
+  onSearchChange?: (value: string) => void;
 }
 
 /**
@@ -51,16 +59,26 @@ export function DataTable<TRow>({
   searchPlaceholder = 'Search…',
   pageSize = 20,
   className,
+  searchValue,
+  onSearchChange,
 }: DataTableProps<TRow>) {
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [globalFilter, setGlobalFilter] = useState('');
+  const [internalFilter, setInternalFilter] = useState('');
+  const isControlled = searchValue !== undefined;
+  const globalFilter = isControlled ? searchValue : internalFilter;
+  const setGlobalFilter = isControlled
+    ? (v: string) => onSearchChange?.(v)
+    : setInternalFilter;
 
   const table = useReactTable({
     data,
     columns,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
+    onGlobalFilterChange: (updater) => {
+      const next = typeof updater === 'function' ? updater(globalFilter) : updater;
+      setGlobalFilter(next);
+    },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -82,7 +100,7 @@ export function DataTable<TRow>({
           <div className="relative max-w-sm flex-1">
             <Input
               type="search"
-              value={globalFilter}
+              value={globalFilter ?? ''}
               onChange={(e) => setGlobalFilter(e.target.value)}
               placeholder={searchPlaceholder}
               className="h-9 rounded-full pl-4"
