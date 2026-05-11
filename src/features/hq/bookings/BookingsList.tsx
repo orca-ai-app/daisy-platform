@@ -157,6 +157,16 @@ export default function BookingsList() {
         ),
       },
       {
+        id: 'ticket_type',
+        header: 'Ticket',
+        accessorFn: (row) => row.ticket_type_name ?? '',
+        cell: ({ row }) => (
+          <span className="text-daisy-ink-soft text-[13px]">
+            {row.original.ticket_type_name ?? '-'}
+          </span>
+        ),
+      },
+      {
         accessorKey: 'total_price_pence',
         header: 'Total',
         cell: ({ row }) => (
