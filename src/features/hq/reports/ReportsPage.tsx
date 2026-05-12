@@ -24,11 +24,13 @@ import {
 
 const PERIOD_OPTIONS: ReadonlyArray<{ value: RevenuePeriod; label: string }> = [
   { value: 'last-6-months', label: 'Last 6 months' },
+  { value: 'last-12-months', label: 'Last 12 months' },
   { value: 'this-year', label: 'This year' },
   { value: 'custom', label: 'Custom range' },
 ];
 
 const CHART_GRADIENT_ID = 'daisy-revenue-gradient';
+const CHART_GRADIENT_PREV_ID = 'daisy-revenue-gradient-prev';
 
 /** Format pence as £k for the Y axis label (e.g. 320000 → "£3.2k"). */
 function poundsK(pence: number): string {
@@ -45,15 +47,30 @@ interface ChartTooltipPayload {
 function ChartTooltip({ active, payload }: { active?: boolean; payload?: ChartTooltipPayload[] }) {
   if (!active || !payload || payload.length === 0) return null;
   const point = payload[0].payload;
+  const hasPrev = point.revenuePencePrev !== undefined;
   return (
-    <div className="border-daisy-line-soft bg-daisy-paper shadow-card flex flex-col gap-1 rounded-[10px] border p-3 text-[13px]">
+    <div className="border-daisy-line-soft bg-daisy-paper shadow-card flex flex-col gap-1.5 rounded-[10px] border p-3 text-[13px]">
       <span className="text-daisy-muted text-[11px] font-bold tracking-wider uppercase">
         {point.monthFull}
       </span>
-      <span className="text-daisy-ink font-extrabold">{formatPence(point.revenuePence)}</span>
-      <span className="text-daisy-muted text-[12px]">
-        {point.bookingCount} booking{point.bookingCount === 1 ? '' : 's'}
+      <span className="flex items-center gap-2">
+        <span className="bg-daisy-primary inline-block h-2 w-2 rounded-full" />
+        <span className="text-daisy-ink font-extrabold">{formatPence(point.revenuePence)}</span>
+        <span className="text-daisy-muted text-[12px]">
+          ({point.bookingCount} booking{point.bookingCount === 1 ? '' : 's'})
+        </span>
       </span>
+      {hasPrev ? (
+        <span className="flex items-center gap-2">
+          <span className="bg-daisy-cyan inline-block h-2 w-2 rounded-full" />
+          <span className="text-daisy-ink-soft font-semibold">
+            {formatPence(point.revenuePencePrev ?? 0)}
+          </span>
+          <span className="text-daisy-muted text-[12px]">
+            ({point.bookingCountPrev ?? 0} in {point.monthFullPrev})
+          </span>
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -62,15 +79,16 @@ export default function ReportsPage() {
   const [period, setPeriod] = useState<RevenuePeriod>('last-6-months');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [compare, setCompare] = useState(false);
 
   const customArgs =
     period === 'custom' ? { fromDate, toDate } : { fromDate: undefined, toDate: undefined };
 
-  const network = useNetworkRevenueByMonth(period, customArgs.fromDate, customArgs.toDate);
+  const network = useNetworkRevenueByMonth(period, customArgs.fromDate, customArgs.toDate, compare);
   const perFranchisee = usePerFranchiseeRevenue(period, customArgs.fromDate, customArgs.toDate);
 
   const buckets = network.data?.buckets ?? [];
-  const hasData = buckets.some((b) => b.revenuePence > 0);
+  const hasData = buckets.some((b) => b.revenuePence > 0 || (b.revenuePencePrev ?? 0) > 0);
 
   const franchiseeColumns = useMemo<ColumnDef<FranchiseeRevenueRow>[]>(
     () => [
@@ -167,6 +185,25 @@ export default function ReportsPage() {
             </div>
           </>
         ) : null}
+        <label className="border-daisy-line bg-daisy-paper hover:bg-daisy-primary-tint inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors">
+          <input
+            type="checkbox"
+            checked={compare}
+            onChange={(e) => setCompare(e.target.checked)}
+            className="text-daisy-primary focus:ring-daisy-primary h-4 w-4 cursor-pointer rounded border-gray-300"
+            aria-label="Compare with previous year"
+          />
+          Compare with previous year
+        </label>
+        {compare && network.data?.deltaPence !== undefined ? (
+          <Badge
+            variant={network.data.deltaPence >= 0 ? 'primary' : 'default'}
+            className={network.data.deltaPence >= 0 ? '' : 'bg-[#FDEAE5] text-[#8A2A2A]'}
+          >
+            {network.data.deltaPence >= 0 ? '+' : '−'}
+            {formatPence(Math.abs(network.data.deltaPence))} YoY ({network.data.deltaPct ?? 0}%)
+          </Badge>
+        ) : null}
       </div>
 
       {/* Chart */}
@@ -197,6 +234,10 @@ export default function ReportsPage() {
                       <stop offset="0%" stopColor="#006FAC" stopOpacity={0.95} />
                       <stop offset="100%" stopColor="#3AC1EA" stopOpacity={0.65} />
                     </linearGradient>
+                    <linearGradient id={CHART_GRADIENT_PREV_ID} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3AC1EA" stopOpacity={0.55} />
+                      <stop offset="100%" stopColor="#D4E8F5" stopOpacity={0.55} />
+                    </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 6" stroke="#E8F0F5" vertical={false} />
                   <XAxis
@@ -213,11 +254,21 @@ export default function ReportsPage() {
                     width={56}
                   />
                   <Tooltip cursor={{ fill: '#EDF5FA', opacity: 0.6 }} content={<ChartTooltip />} />
+                  {compare ? (
+                    <Bar
+                      dataKey="revenuePencePrev"
+                      name="Previous year"
+                      fill={`url(#${CHART_GRADIENT_PREV_ID})`}
+                      radius={[6, 6, 0, 0]}
+                      maxBarSize={32}
+                    />
+                  ) : null}
                   <Bar
                     dataKey="revenuePence"
+                    name="Current"
                     fill={`url(#${CHART_GRADIENT_ID})`}
                     radius={[8, 8, 0, 0]}
-                    maxBarSize={64}
+                    maxBarSize={compare ? 32 : 64}
                   />
                 </BarChart>
               </ResponsiveContainer>
