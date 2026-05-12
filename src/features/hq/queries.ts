@@ -12,7 +12,10 @@ import type { AttentionItem } from '@/components/daisy';
  * project. Wave 5 seeds real numbers.
  */
 
-const STALE_TIME = 30_000;
+// 5 min — dashboard data changes on a human timescale, not a real-time one.
+// App-level QueryClient also defaults to 5 min; this keeps the dashboard
+// in sync with everything else and stops refetches on every dashboard visit.
+const STALE_TIME = 5 * 60_000;
 
 /** Postgrest error code for "relation does not exist". */
 const TABLE_MISSING_CODES = new Set(['42P01', 'PGRST205']);
@@ -68,21 +71,19 @@ async function fetchFranchiseeCounts(): Promise<{
   active: number;
   total: number;
 }> {
-  const totalRes = await supabase
-    .from('da_franchisees')
-    .select('*', { count: 'exact', head: true });
+  const [totalRes, activeRes] = await Promise.all([
+    supabase.from('da_franchisees').select('*', { count: 'exact', head: true }),
+    supabase
+      .from('da_franchisees')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active')
+      .eq('is_hq', false),
+  ]);
 
   if (totalRes.error) {
     if (isTableMissing(totalRes.error.code)) return { active: 0, total: 0 };
     throw totalRes.error;
   }
-
-  const activeRes = await supabase
-    .from('da_franchisees')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'active')
-    .eq('is_hq', false);
-
   if (activeRes.error) {
     if (isTableMissing(activeRes.error.code)) return { active: 0, total: 0 };
     throw activeRes.error;
@@ -96,21 +97,39 @@ async function fetchTerritoryCounts(): Promise<{
   vacant: number;
   total: number;
 }> {
-  const { data, error } = await supabase.from('da_territories').select('status');
+  // 2,800+ territories — fetching every row to count statuses client-side
+  // burns ~200 KB on every dashboard load. Three head-counts in parallel
+  // give the same answer with no payload.
+  const [totalRes, activeRes, vacantRes] = await Promise.all([
+    supabase.from('da_territories').select('*', { count: 'exact', head: true }),
+    supabase
+      .from('da_territories')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active'),
+    supabase
+      .from('da_territories')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'vacant'),
+  ]);
 
-  if (error) {
-    if (isTableMissing(error.code)) return { active: 0, vacant: 0, total: 0 };
-    throw error;
+  if (totalRes.error) {
+    if (isTableMissing(totalRes.error.code)) return { active: 0, vacant: 0, total: 0 };
+    throw totalRes.error;
+  }
+  if (activeRes.error) {
+    if (isTableMissing(activeRes.error.code)) return { active: 0, vacant: 0, total: 0 };
+    throw activeRes.error;
+  }
+  if (vacantRes.error) {
+    if (isTableMissing(vacantRes.error.code)) return { active: 0, vacant: 0, total: 0 };
+    throw vacantRes.error;
   }
 
-  const rows = data ?? [];
-  let active = 0;
-  let vacant = 0;
-  for (const row of rows) {
-    if (row.status === 'active') active += 1;
-    else if (row.status === 'vacant') vacant += 1;
-  }
-  return { active, vacant, total: rows.length };
+  return {
+    active: activeRes.count ?? 0,
+    vacant: vacantRes.count ?? 0,
+    total: totalRes.count ?? 0,
+  };
 }
 
 export function useNetworkStats() {
@@ -150,16 +169,32 @@ export function useAttentionItems() {
     retry: 1,
     queryFn: async () => {
       const items: AttentionItem[] = [];
+      const weekFromNow = new Date();
+      weekFromNow.setUTCDate(weekFromNow.getUTCDate() + 7);
 
-      // Overdue / failed billing runs
-      const overdue = await supabase
-        .from('da_billing_runs')
-        .select('*', { count: 'exact', head: true })
-        .eq('payment_status', 'failed');
+      // Four head-counts in parallel — was four sequential awaits.
+      const [overdue, vacant, enquiries, upcoming] = await Promise.all([
+        supabase
+          .from('da_billing_runs')
+          .select('*', { count: 'exact', head: true })
+          .eq('payment_status', 'failed'),
+        supabase
+          .from('da_territories')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'vacant'),
+        supabase
+          .from('da_interest_forms')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'new'),
+        supabase
+          .from('da_billing_runs')
+          .select('*', { count: 'exact', head: true })
+          .eq('payment_status', 'pending')
+          .lte('billing_period_end', weekFromNow.toISOString()),
+      ]);
 
-      if (overdue.error) {
-        if (!isTableMissing(overdue.error.code)) throw overdue.error;
-      } else if ((overdue.count ?? 0) > 0) {
+      if (overdue.error && !isTableMissing(overdue.error.code)) throw overdue.error;
+      if ((overdue.count ?? 0) > 0) {
         items.push({
           id: 'overdue-fees',
           title: 'Overdue fee payments',
@@ -170,15 +205,8 @@ export function useAttentionItems() {
         });
       }
 
-      // Vacant territories — proxy for "quiet"
-      const vacant = await supabase
-        .from('da_territories')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'vacant');
-
-      if (vacant.error) {
-        if (!isTableMissing(vacant.error.code)) throw vacant.error;
-      } else if ((vacant.count ?? 0) > 0) {
+      if (vacant.error && !isTableMissing(vacant.error.code)) throw vacant.error;
+      if ((vacant.count ?? 0) > 0) {
         items.push({
           id: 'quiet-territories',
           title: 'Quiet territories',
@@ -189,15 +217,8 @@ export function useAttentionItems() {
         });
       }
 
-      // New interest forms
-      const enquiries = await supabase
-        .from('da_interest_forms')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'new');
-
-      if (enquiries.error) {
-        if (!isTableMissing(enquiries.error.code)) throw enquiries.error;
-      } else if ((enquiries.count ?? 0) > 0) {
+      if (enquiries.error && !isTableMissing(enquiries.error.code)) throw enquiries.error;
+      if ((enquiries.count ?? 0) > 0) {
         items.push({
           id: 'new-enquiries',
           title: 'New franchisee enquiries',
@@ -208,18 +229,8 @@ export function useAttentionItems() {
         });
       }
 
-      // Upcoming billing runs (this week, pending)
-      const weekFromNow = new Date();
-      weekFromNow.setUTCDate(weekFromNow.getUTCDate() + 7);
-      const upcoming = await supabase
-        .from('da_billing_runs')
-        .select('*', { count: 'exact', head: true })
-        .eq('payment_status', 'pending')
-        .lte('billing_period_end', weekFromNow.toISOString());
-
-      if (upcoming.error) {
-        if (!isTableMissing(upcoming.error.code)) throw upcoming.error;
-      } else if ((upcoming.count ?? 0) > 0) {
+      if (upcoming.error && !isTableMissing(upcoming.error.code)) throw upcoming.error;
+      if ((upcoming.count ?? 0) > 0) {
         items.push({
           id: 'upcoming-billing',
           title: 'Billing runs this week',
