@@ -127,12 +127,14 @@ BEGIN
     territory_id := fr.territory_id;
     postcode_pref := COALESCE(fr.postcode_prefix, 'SW1');
 
-    -- 6 course instances per franchisee, one per month: Dec 2025 .. May 2026
-    FOR month_offset IN -5..0 LOOP
+    -- 24 course instances per franchisee, one per month: Jun 2024 .. May 2026.
+    -- 24 months supports the reports page Last-12-months / This-year-vs-last-year
+    -- comparison views (each needs prior-year data to render the overlay).
+    FOR month_offset IN -23..0 LOOP
       event_d := (DATE '2026-05-12' + (month_offset * INTERVAL '1 month') + ((fr_idx % 20) * INTERVAL '1 day'))::date;
       inst_status := CASE WHEN month_offset < 0 THEN 'completed' ELSE 'scheduled' END;
 
-      i := 1 + ((fr_idx + month_offset + 5) % tpl_count);
+      i := 1 + ((fr_idx + month_offset + 100) % tpl_count);
 
       INSERT INTO da_course_instances
         (franchisee_id, template_id, territory_id, event_date, start_time, end_time,
@@ -160,7 +162,7 @@ BEGIN
       bk_count := CASE WHEN month_offset < 0 THEN 3 ELSE 2 END;
 
       FOR j IN 1..bk_count LOOP
-        customer_id := cust_ids[1 + ((fr_idx * 100 + (month_offset + 10) * 10 + j) % array_length(cust_ids, 1))];
+        customer_id := cust_ids[1 + ((fr_idx * 100 + (month_offset + 1000) * 10 + j) % array_length(cust_ids, 1))];
 
         SELECT first_name || ' ' || last_name, email
         INTO customer_name, customer_email

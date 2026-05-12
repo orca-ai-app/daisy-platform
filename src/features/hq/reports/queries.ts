@@ -22,7 +22,7 @@ function isTableMissing(code: string | null | undefined): boolean {
   return TABLE_MISSING_CODES.has(code ?? '');
 }
 
-export type RevenuePeriod = 'last-6-months' | 'this-year' | 'custom';
+export type RevenuePeriod = 'last-6-months' | 'last-12-months' | 'this-year' | 'custom';
 
 export interface MonthRevenuePoint {
   /** Short label for X axis, e.g. "Apr". */
@@ -35,6 +35,12 @@ export interface MonthRevenuePoint {
   bookingCount: number;
   /** Revenue in pence. */
   revenuePence: number;
+  /** Previous-year same-month full label, e.g. "Apr 2025". Present only when compare=true. */
+  monthFullPrev?: string;
+  /** Previous-year revenue in pence. Present only when compare=true. */
+  revenuePencePrev?: number;
+  /** Previous-year booking count. Present only when compare=true. */
+  bookingCountPrev?: number;
 }
 
 const SHORT_MONTH = new Intl.DateTimeFormat('en-GB', {
@@ -105,6 +111,13 @@ function windowForPeriod(
     const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
     return { fromIso: start.toISOString(), toIso: end.toISOString(), buckets };
   }
+  if (period === 'last-12-months') {
+    const buckets = lastNMonths(12);
+    const start = new Date(buckets[0].monthStart);
+    const now = new Date();
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return { fromIso: start.toISOString(), toIso: end.toISOString(), buckets };
+  }
   if (period === 'custom' && fromDate && toDate) {
     const start = new Date(`${fromDate}T00:00:00Z`);
     const end = new Date(`${toDate}T00:00:00Z`);
@@ -132,16 +145,27 @@ function windowForPeriod(
   return { fromIso: start.toISOString(), toIso: end.toISOString(), buckets };
 }
 
-/** Pick the bucket whose monthStart is the same UTC year+month as `eventDate`. */
-function bucketIndexFor(buckets: MonthRevenuePoint[], eventDate: string): number {
-  // event_date arrives as YYYY-MM-DD; treat it as UTC for bucketing.
-  const d = new Date(`${eventDate}T00:00:00Z`);
-  const y = d.getUTCFullYear();
-  const m = d.getUTCMonth();
-  return buckets.findIndex((b) => {
-    const bd = new Date(b.monthStart);
-    return bd.getUTCFullYear() === y && bd.getUTCMonth() === m;
+/**
+ * Shift a window back by one year for YoY comparison.
+ * Bucket monthStart dates and labels both shift to the prior-year same-month.
+ */
+function previousYearWindow(w: RevenueQueryWindow): RevenueQueryWindow {
+  const from = new Date(w.fromIso);
+  from.setUTCFullYear(from.getUTCFullYear() - 1);
+  const to = new Date(w.toIso);
+  to.setUTCFullYear(to.getUTCFullYear() - 1);
+  const buckets = w.buckets.map((b) => {
+    const d = new Date(b.monthStart);
+    d.setUTCFullYear(d.getUTCFullYear() - 1);
+    return {
+      month: SHORT_MONTH.format(d),
+      monthFull: FULL_MONTH.format(d),
+      monthStart: d.toISOString(),
+      bookingCount: 0,
+      revenuePence: 0,
+    };
   });
+  return { fromIso: from.toISOString(), toIso: to.toISOString(), buckets };
 }
 
 interface QualifyingBooking {
@@ -191,35 +215,109 @@ export interface NetworkRevenueResult {
   buckets: MonthRevenuePoint[];
   totalPence: number;
   totalBookings: number;
+  /** YoY total revenue change (current - previous) in pence; only present when compare=true. */
+  deltaPence?: number;
+  /** YoY total revenue change as a percentage; only present when compare=true. */
+  deltaPct?: number;
+  /** Previous-period totals; only present when compare=true. */
+  previousTotalPence?: number;
+  previousTotalBookings?: number;
 }
 
 export function useNetworkRevenueByMonth(
   period: RevenuePeriod = 'last-6-months',
   fromDate?: string,
   toDate?: string,
+  compare = false,
 ) {
   return useQuery<NetworkRevenueResult>({
-    queryKey: ['hq', 'reports', 'network-revenue', { period, fromDate, toDate }],
+    queryKey: ['hq', 'reports', 'network-revenue', { period, fromDate, toDate, compare }],
     queryFn: async () => {
-      const window = windowForPeriod(period, fromDate, toDate);
-      const rows = await fetchQualifyingBookings(window);
+      const currentWindow = windowForPeriod(period, fromDate, toDate);
+      const prevWindow = compare ? previousYearWindow(currentWindow) : null;
 
-      const buckets = window.buckets.map((b) => ({ ...b }));
+      // Single fetch of all qualifying bookings — already client-side filtered
+      // by event_date inside fetchQualifyingBookings against the current
+      // window. For compare mode we widen the window to span both periods.
+      const fetchWindow: RevenueQueryWindow = prevWindow
+        ? {
+            fromIso: prevWindow.fromIso,
+            toIso: currentWindow.toIso,
+            buckets: [],
+          }
+        : currentWindow;
+
+      const rows = await fetchQualifyingBookings(fetchWindow);
+
+      const buckets = currentWindow.buckets.map((b, idx) => ({
+        ...b,
+        ...(prevWindow
+          ? {
+              monthFullPrev: prevWindow.buckets[idx].monthFull,
+              revenuePencePrev: 0,
+              bookingCountPrev: 0,
+            }
+          : {}),
+      }));
+
       let totalPence = 0;
       let totalBookings = 0;
+      let previousTotalPence = 0;
+      let previousTotalBookings = 0;
 
       for (const row of rows) {
         const ev = row.course_instance?.event_date;
         if (!ev) continue;
-        const idx = bucketIndexFor(buckets, ev);
-        if (idx === -1) continue;
-        buckets[idx].revenuePence += row.total_price_pence;
-        buckets[idx].bookingCount += 1;
-        totalPence += row.total_price_pence;
-        totalBookings += 1;
+        const d = new Date(`${ev}T00:00:00Z`);
+        const y = d.getUTCFullYear();
+        const m = d.getUTCMonth();
+
+        // Try the current-period buckets first
+        const curIdx = buckets.findIndex((b) => {
+          const bd = new Date(b.monthStart);
+          return bd.getUTCFullYear() === y && bd.getUTCMonth() === m;
+        });
+        if (curIdx !== -1) {
+          buckets[curIdx].revenuePence += row.total_price_pence;
+          buckets[curIdx].bookingCount += 1;
+          totalPence += row.total_price_pence;
+          totalBookings += 1;
+          continue;
+        }
+
+        // Otherwise try the previous-period buckets (compare mode only)
+        if (prevWindow) {
+          const prevIdx = prevWindow.buckets.findIndex((b) => {
+            const bd = new Date(b.monthStart);
+            return bd.getUTCFullYear() === y && bd.getUTCMonth() === m;
+          });
+          if (prevIdx !== -1) {
+            buckets[prevIdx].revenuePencePrev =
+              (buckets[prevIdx].revenuePencePrev ?? 0) + row.total_price_pence;
+            buckets[prevIdx].bookingCountPrev = (buckets[prevIdx].bookingCountPrev ?? 0) + 1;
+            previousTotalPence += row.total_price_pence;
+            previousTotalBookings += 1;
+          }
+        }
       }
 
-      return { buckets, totalPence, totalBookings };
+      if (!compare) {
+        return { buckets, totalPence, totalBookings };
+      }
+
+      const deltaPence = totalPence - previousTotalPence;
+      const deltaPct =
+        previousTotalPence > 0 ? Math.round((deltaPence / previousTotalPence) * 100) : 0;
+
+      return {
+        buckets,
+        totalPence,
+        totalBookings,
+        deltaPence,
+        deltaPct,
+        previousTotalPence,
+        previousTotalBookings,
+      };
     },
   });
 }
