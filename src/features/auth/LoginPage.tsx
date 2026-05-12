@@ -1,83 +1,79 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { toast } from 'sonner'
-import { supabase } from '@/lib/supabase'
-import { useRole } from './RoleContext'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { useRole } from './RoleContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 
 const schema = z.object({
   email: z.string().email('Enter a valid email address'),
   password: z.string().min(8, 'At least 8 characters'),
-})
+});
 
-type FormValues = z.infer<typeof schema>
+type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
-  const navigate = useNavigate()
-  const { user, isHQ, notProvisioned, isLoading } = useRole()
-  const [googleSubmitting, setGoogleSubmitting] = useState(false)
+  const navigate = useNavigate();
+  const { user, isHQ, notProvisioned, isLoading } = useRole();
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
   // If already logged in, redirect to the right place.
   useEffect(() => {
-    if (isLoading) return
-    if (!user) return
+    if (isLoading) return;
+    if (!user) return;
     if (notProvisioned) {
-      navigate('/unauthorized', { replace: true })
-      return
+      navigate('/unauthorized', { replace: true });
+      return;
     }
-    navigate(isHQ ? '/hq/dashboard' : '/franchisee/dashboard', { replace: true })
-  }, [user, isHQ, notProvisioned, isLoading, navigate])
+    navigate(isHQ ? '/hq/dashboard' : '/franchisee/dashboard', { replace: true });
+  }, [user, isHQ, notProvisioned, isLoading, navigate]);
 
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) })
+  } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = handleSubmit(async ({ email, password }) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      toast.error(error.message)
-      return
+      toast.error(error.message);
+      return;
     }
-    toast.success('Signed in')
-  })
+    toast.success('Signed in');
+  });
 
   const onGoogle = async () => {
-    setGoogleSubmitting(true)
+    setGoogleSubmitting(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
       },
-    })
+    });
     if (error) {
-      setGoogleSubmitting(false)
-      toast.error(error.message)
+      setGoogleSubmitting(false);
+      toast.error(error.message);
     }
     // On success the browser is redirected to Google, so no further state to clear.
-  }
+  };
 
   return (
     <div className="bg-daisy-bg flex min-h-screen items-center justify-center p-6">
       <Card className="shadow-lift w-full max-w-md">
         <CardHeader className="items-center text-center">
-          <div className="bg-daisy-yellow mb-2 flex h-12 w-12 items-center justify-center rounded-full">
-            <span className="text-2xl">✱</span>
-          </div>
-          <CardTitle>Daisy First Aid</CardTitle>
+          <img
+            src="/daisy-logo.png"
+            alt="Daisy First Aid"
+            className="mb-3 h-14 w-auto"
+            draggable={false}
+          />
           <CardDescription>Sign in to the portal</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
@@ -135,17 +131,12 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
 
 function GoogleLogo() {
   return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" xmlns="http://www.w3.org/2000/svg">
       <path
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09Z"
         fill="#4285F4"
@@ -163,5 +154,5 @@ function GoogleLogo() {
         fill="#EA4335"
       />
     </svg>
-  )
+  );
 }

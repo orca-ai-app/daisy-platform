@@ -54,6 +54,7 @@ export interface BookingListRow {
   course_template_name: string | null;
   course_event_date: string | null;
   course_venue_postcode: string | null;
+  ticket_type_name: string | null;
   franchisee_id: string;
   franchisee_number: string;
   franchisee_name: string;
@@ -139,6 +140,7 @@ export function useBookings(filters: BookingsListFilters = {}) {
              venue_postcode,
              template:da_course_templates ( name )
            ),
+           ticket_type:da_ticket_types ( name ),
            franchisee:da_franchisees ( id, number, name )`,
           { count: 'exact' },
         )
@@ -187,6 +189,7 @@ export function useBookings(filters: BookingsListFilters = {}) {
           venue_postcode: string | null;
           template: { name: string } | null;
         } | null;
+        ticket_type: { name: string } | null;
         franchisee: { id: string; number: string; name: string } | null;
       };
 
@@ -203,6 +206,7 @@ export function useBookings(filters: BookingsListFilters = {}) {
         course_template_name: row.course_instance?.template?.name ?? null,
         course_event_date: row.course_instance?.event_date ?? null,
         course_venue_postcode: row.course_instance?.venue_postcode ?? null,
+        ticket_type_name: row.ticket_type?.name ?? null,
         franchisee_id: row.franchisee?.id ?? '',
         franchisee_number: row.franchisee?.number ?? '',
         franchisee_name: row.franchisee?.name ?? '',
