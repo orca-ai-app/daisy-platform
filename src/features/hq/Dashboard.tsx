@@ -115,13 +115,19 @@ export default function Dashboard() {
                 stats.data?.bookingsLastMonth ?? 0,
               );
               return (
-                <StatCard
-                  label="Bookings this month"
-                  value={(stats.data?.bookingsMtd ?? 0).toLocaleString('en-GB')}
-                  delta={delta.label}
-                  tone={delta.tone}
-                  icon={CalendarDays}
-                />
+                <Link
+                  to="/hq/bookings"
+                  aria-label="Open bookings list"
+                  className="hover:shadow-lift focus-visible:ring-daisy-primary rounded-[12px] transition-shadow focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                >
+                  <StatCard
+                    label="Bookings this month"
+                    value={(stats.data?.bookingsMtd ?? 0).toLocaleString('en-GB')}
+                    delta={delta.label}
+                    tone={delta.tone}
+                    icon={CalendarDays}
+                  />
+                </Link>
               );
             })()}
             {(() => {
@@ -147,35 +153,47 @@ export default function Dashboard() {
                 </Link>
               );
             })()}
-            <StatCard
-              label="Active franchisees"
-              value={
-                <span>
-                  {stats.data?.activeFranchisees ?? 0}
-                  <span className="text-daisy-muted ml-1 text-[18px] font-semibold">
-                    / {stats.data?.totalFranchisees ?? 0}
+            <Link
+              to="/hq/franchisees"
+              aria-label="Open franchisees list"
+              className="hover:shadow-lift focus-visible:ring-daisy-primary rounded-[12px] transition-shadow focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              <StatCard
+                label="Active franchisees"
+                value={
+                  <span>
+                    {stats.data?.activeFranchisees ?? 0}
+                    <span className="text-daisy-muted ml-1 text-[18px] font-semibold">
+                      / {stats.data?.totalFranchisees ?? 0}
+                    </span>
                   </span>
-                </span>
-              }
-              delta={
-                stats.data?.vacantTerritories
-                  ? `${stats.data.vacantTerritories} territories vacant`
-                  : 'All territories covered'
-              }
-              tone={stats.data?.vacantTerritories ? 'down' : 'up'}
-              icon={Users}
-            />
-            <StatCard
-              label="Territory coverage"
-              value={`${stats.data?.territoryCoverage ?? 0}%`}
-              delta={
-                (stats.data?.territoryCoverage ?? 0) >= 80
-                  ? 'Healthy coverage'
-                  : 'Coverage below 80%'
-              }
-              tone={(stats.data?.territoryCoverage ?? 0) >= 80 ? 'up' : 'flat'}
-              icon={Map}
-            />
+                }
+                delta={
+                  stats.data?.vacantTerritories
+                    ? `${stats.data.vacantTerritories} territories vacant`
+                    : 'All territories covered'
+                }
+                tone={stats.data?.vacantTerritories ? 'down' : 'up'}
+                icon={Users}
+              />
+            </Link>
+            <Link
+              to="/hq/territories"
+              aria-label="Open territories map"
+              className="hover:shadow-lift focus-visible:ring-daisy-primary rounded-[12px] transition-shadow focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              <StatCard
+                label="Territory coverage"
+                value={`${stats.data?.territoryCoverage ?? 0}%`}
+                delta={
+                  (stats.data?.territoryCoverage ?? 0) >= 80
+                    ? 'Healthy coverage'
+                    : 'Coverage below 80%'
+                }
+                tone={(stats.data?.territoryCoverage ?? 0) >= 80 ? 'up' : 'flat'}
+                icon={Map}
+              />
+            </Link>
           </>
         )}
       </section>
@@ -198,8 +216,8 @@ export default function Dashboard() {
               </span>
             </div>
             <p className="text-daisy-muted text-sm">
-              Searchable list with bookings, revenue and territory coverage per franchisee, plus
-              the full activity timeline.
+              Searchable list with bookings, revenue and territory coverage per franchisee, plus the
+              full activity timeline.
             </p>
             <Link
               to="/hq/franchisees"
@@ -252,8 +270,8 @@ export default function Dashboard() {
               </span>
             </div>
             <p className="text-daisy-muted text-sm">
-              Status-coloured markers for active, quiet, vacant and reserved territories. Click
-              any marker to assign or reassign a franchisee.
+              Status-coloured markers for active, quiet, vacant and reserved territories. Click any
+              marker to assign or reassign a franchisee.
             </p>
             <Link
               to="/hq/territories"
