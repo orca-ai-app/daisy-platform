@@ -43,12 +43,8 @@ export function TopBar({ brand, nav, actions, className }: TopBarProps) {
 
 function DefaultBrand() {
   return (
-    <span
-      className="font-display flex items-center gap-3 text-[26px] font-bold tracking-tight"
-      data-daisy="TopBar.Brand"
-    >
-      <span aria-hidden className="bg-daisy-yellow inline-block h-3.5 w-3.5 rounded-full" />
-      Daisy First Aid
+    <span className="flex items-center" data-daisy="TopBar.Brand">
+      <img src="/daisy-logo.png" alt="Daisy First Aid" className="h-9 w-auto" draggable={false} />
     </span>
   );
 }
