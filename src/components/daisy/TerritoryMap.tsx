@@ -39,10 +39,13 @@ interface TerritoryMapProps {
   className?: string;
 }
 
+// Vacant and reserved shifted to clearer yellow-orange and mid-blue —
+// the previous amber + cyan read as "red" and "blue" on some screens
+// (Jenni's feedback May 2026). Active stays green.
 const STATUS_COLOURS: Record<TerritoryMapItem['status'], { fill: string; stroke: string }> = {
   active: { fill: '#67A671', stroke: '#3F7F4F' },
-  vacant: { fill: '#FCAF17', stroke: '#B97C0E' },
-  reserved: { fill: '#3AC1EA', stroke: '#1D88A8' },
+  vacant: { fill: '#F59E0B', stroke: '#B45309' },
+  reserved: { fill: '#3B82F6', stroke: '#1E40AF' },
 };
 
 const UK_CENTRE = { lat: 54.5, lng: -2.5 };
@@ -59,8 +62,7 @@ export function TerritoryMap({
   // Stable filtered list of geocoded items. The reference is stable across
   // renders unless lat/lng/status actually change for some row.
   const mappable = useMemo(
-    () =>
-      territories.filter((t) => typeof t.lat === 'number' && typeof t.lng === 'number'),
+    () => territories.filter((t) => typeof t.lat === 'number' && typeof t.lng === 'number'),
     [territories],
   );
   const ungeocodedCount = territories.length - mappable.length;
@@ -88,10 +90,7 @@ export function TerritoryMap({
             clickableIcons={false}
             style={{ width: '100%', height: '100%' }}
           >
-            <ClusteredMarkers
-              territories={mappable}
-              onMarkerClick={onMarkerClick}
-            />
+            <ClusteredMarkers territories={mappable} onMarkerClick={onMarkerClick} />
             <PanToSelection territories={mappable} selectedId={selectedId} />
             <FitBoundsOnce territories={mappable} />
           </Map>
@@ -235,23 +234,44 @@ function PanToSelection({
 
 function MapLegend() {
   return (
-    <div className="text-daisy-muted flex flex-wrap items-center gap-4 text-xs font-semibold">
-      <LegendDot colour={STATUS_COLOURS.active.fill} label="Active" />
-      <LegendDot colour={STATUS_COLOURS.vacant.fill} label="Vacant" />
-      <LegendDot colour={STATUS_COLOURS.reserved.fill} label="Reserved" />
+    <div className="text-daisy-muted flex flex-col gap-1 text-xs">
+      <LegendDot
+        colour={STATUS_COLOURS.active.fill}
+        label="Active"
+        description="assigned to a franchisee"
+      />
+      <LegendDot
+        colour={STATUS_COLOURS.vacant.fill}
+        label="Vacant"
+        description="open for recruitment"
+      />
+      <LegendDot
+        colour={STATUS_COLOURS.reserved.fill}
+        label="Reserved"
+        description="held for a candidate in onboarding"
+      />
     </div>
   );
 }
 
-function LegendDot({ colour, label }: { colour: string; label: string }) {
+function LegendDot({
+  colour,
+  label,
+  description,
+}: {
+  colour: string;
+  label: string;
+  description: string;
+}) {
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex items-center gap-2">
       <span
         aria-hidden
-        className="inline-block h-2.5 w-2.5 rounded-full"
+        className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
         style={{ background: colour }}
       />
-      <span className="tracking-wide uppercase">{label}</span>
+      <span className="font-bold tracking-wide uppercase">{label}</span>
+      <span className="font-semibold">{description}</span>
     </span>
   );
 }

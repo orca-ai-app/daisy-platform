@@ -204,7 +204,8 @@ export default function FranchiseeDetail() {
                 <CardHeader>
                   <CardTitle>Stripe Connect</CardTitle>
                   <CardDescription>
-                    Stripe Connect onboarding ships with the franchisee portal in M2. The flag below reflects the stored DB state only.
+                    Stripe Connect onboarding ships with the franchisee portal in M2. The flag below
+                    reflects the stored DB state only.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -218,7 +219,8 @@ export default function FranchiseeDetail() {
                 <CardHeader>
                   <CardTitle>Billing status</CardTitle>
                   <CardDescription>
-                    Live billing-run status arrives with Phase 2 automation (GoCardless direct debit).
+                    Live billing-run status arrives with Phase 2 automation (GoCardless direct
+                    debit).
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -250,6 +252,11 @@ function ProfileCard({ franchisee }: ProfileCardProps) {
           <Field label="Name" value={franchisee.name} />
           <Field label="Email" value={franchisee.email} />
           <Field label="Phone" value={franchisee.phone ?? '-'} />
+          <Field label="Business name" value={franchisee.business_name ?? '—'} />
+          <Field
+            label="Territory number(s)"
+            value={franchisee.area_numbers.length > 0 ? franchisee.area_numbers.join(', ') : '—'}
+          />
           <Field label="Fee tier" value={`£${franchisee.fee_tier} / month`} />
           <Field label="Billing date" value={`${franchisee.billing_date} of each month`} />
           <Field label="VAT registered" value={franchisee.vat_registered ? 'Yes' : 'No'} />

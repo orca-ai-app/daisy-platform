@@ -10,8 +10,9 @@
 //    against da_franchisees.auth_user_id; only rows with `is_hq = TRUE` may
 //    proceed. Non-HQ users get 403.
 //  - Uses service_role to UPDATE da_course_templates. Allowed columns:
-//    name, description, default_price_pence, default_capacity, is_active.
-//    Any other key in `fields` is rejected as 400.
+//    name, description, default_price_pence, default_capacity, is_active,
+//    certification, default_ticket_types. Any other key in `fields` is
+//    rejected as 400.
 //  - Inserts a da_activities row with the diff (before / after / changed_fields)
 //    and a human-readable description.
 //  - Returns 4xx for bad input, 401/403 for auth failures, 5xx for DB issues.
@@ -32,7 +33,35 @@ const ALLOWED_FIELDS = new Set([
   'default_price_pence',
   'default_capacity',
   'is_active',
+  'certification',
+  'default_ticket_types',
 ]);
+
+const ALLOWED_CERTIFICATIONS = new Set(['yes', 'no', 'if_requested']);
+
+function isValidTicketTypes(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  if (value.length === 0) return false;
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    const row = entry as Record<string, unknown>;
+    if (typeof row.name !== 'string' || row.name.trim().length === 0) return false;
+    if (
+      typeof row.seats_consumed !== 'number' ||
+      !Number.isInteger(row.seats_consumed) ||
+      (row.seats_consumed as number) <= 0
+    ) {
+      return false;
+    }
+    if (
+      typeof row.price_modifier_pence !== 'number' ||
+      !Number.isInteger(row.price_modifier_pence)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 interface RequestBody {
   id?: string;
@@ -197,6 +226,29 @@ Deno.serve(async (req: Request) => {
   ) {
     return jsonResponse({ error: 'description must be a string or null' }, 400);
   }
+  if (
+    'certification' in updateFields &&
+    updateFields.certification !== null &&
+    (typeof updateFields.certification !== 'string' ||
+      !ALLOWED_CERTIFICATIONS.has(updateFields.certification as string))
+  ) {
+    return jsonResponse(
+      { error: 'certification must be one of: yes, no, if_requested (or null)' },
+      400,
+    );
+  }
+  if (
+    'default_ticket_types' in updateFields &&
+    !isValidTicketTypes(updateFields.default_ticket_types)
+  ) {
+    return jsonResponse(
+      {
+        error:
+          'default_ticket_types must be a non-empty array of { name, seats_consumed, price_modifier_pence }',
+      },
+      400,
+    );
+  }
 
   // ---------------------------------------------------------------------
   // Read current row (for the activity diff)
@@ -221,7 +273,15 @@ Deno.serve(async (req: Request) => {
   const afterSnapshot: Record<string, unknown> = {};
   for (const [key, newValue] of Object.entries(updateFields)) {
     const oldValue = (before.data as Record<string, unknown>)[key];
-    if (oldValue !== newValue) {
+    // JSONB columns need structural equality; primitives fall through to ===.
+    const isObjectColumn =
+      key === 'default_ticket_types' ||
+      (typeof newValue === 'object' && newValue !== null) ||
+      (typeof oldValue === 'object' && oldValue !== null);
+    const changed = isObjectColumn
+      ? JSON.stringify(oldValue ?? null) !== JSON.stringify(newValue ?? null)
+      : oldValue !== newValue;
+    if (changed) {
       changedFields[key] = newValue;
       beforeSnapshot[key] = oldValue;
       afterSnapshot[key] = newValue;

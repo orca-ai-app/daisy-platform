@@ -113,14 +113,28 @@ export function PreviewBillingDialog({ open, onClose }: PreviewBillingDialogProp
 
   const handleCSV = () => {
     if (!result) return;
-    exportBillingPreviewToCSV(result, billingExportFilename(periodStart, periodEnd, 'csv'));
-    toast.success('CSV downloaded');
+    try {
+      exportBillingPreviewToCSV(result, billingExportFilename(periodStart, periodEnd, 'csv'));
+      toast.success('CSV downloaded');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Export failed: ${message}`);
+    }
   };
 
   const handlePDF = () => {
     if (!result) return;
-    exportBillingPreviewToPDF(result, billingExportFilename(periodStart, periodEnd, 'pdf'));
-    toast.success('PDF downloaded');
+    try {
+      exportBillingPreviewToPDF(result, billingExportFilename(periodStart, periodEnd, 'pdf'));
+      toast.success('PDF downloaded');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Export failed: ${message}`);
+    }
+  };
+
+  const handleRetry = () => {
+    void handleSubmit(onSubmit)();
   };
 
   return (
@@ -182,6 +196,26 @@ export function PreviewBillingDialog({ open, onClose }: PreviewBillingDialogProp
             </Button>
           </div>
         </form>
+
+        {previewMutation.isError ? (
+          <div
+            role="alert"
+            className="mt-3 flex flex-col gap-2 rounded-[8px] border border-[#FDEAE5] bg-[#FDEAE5]/40 p-3 text-sm text-[#8A2A2A] sm:flex-row sm:items-center sm:justify-between"
+          >
+            <span>
+              <strong>Preview failed.</strong> {previewMutation.error?.message ?? 'Preview failed'}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={handleRetry}
+              disabled={previewMutation.isPending}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : null}
 
         {previews.length > 0 ? (
           <div className="mt-4 flex flex-col gap-4">

@@ -25,11 +25,15 @@ export interface FranchiseeListResult {
 }
 
 /**
- * List-row shape — Franchisee plus a derived territory_count and the
- * timestamp of the most recent activity for the "last action" column.
+ * List-row shape — Franchisee plus a derived territory_count (postcode
+ * prefix count — column shows "Postcodes"), the area numbers joined
+ * from da_territory_areas (the numbered franchise areas, e.g. "57" for
+ * Sutton), and the timestamp of the most recent activity for the "last
+ * action" column.
  */
 export interface FranchiseeRow extends Franchisee {
   territory_count: number;
+  area_numbers: number[];
   last_action_at: string | null;
 }
 
@@ -41,14 +45,19 @@ export interface FranchiseeRow extends Franchisee {
  * page snappy without us having to wait on a Postgres view.
  */
 export function useFranchisees(filters: FranchiseeListFilters = {}) {
-  const { search = '', status = 'all', page = 0, pageSize = 20 } = filters;
+  // 100 covers the current network of ~67 with headroom. No pagination
+  // UI needed at this scale — Jenni was seeing 20 of 67 with the old default.
+  const { search = '', status = 'all', page = 0, pageSize = 100 } = filters;
 
   const query = useQuery<FranchiseeListResult>({
     queryKey: ['hq', 'franchisees', { search, status, page, pageSize }],
     queryFn: async () => {
+      // Joining da_territory_areas pulls the franchisee's owned area
+      // numbers in one round-trip. PostgREST returns the join as an
+      // array under the related-table key.
       let qb = supabase
         .from('da_franchisees')
-        .select('*', { count: 'exact' })
+        .select('*, da_territory_areas(number)', { count: 'exact' })
         .order('number', { ascending: true });
 
       if (status !== 'all') {
@@ -68,7 +77,10 @@ export function useFranchisees(filters: FranchiseeListFilters = {}) {
       const { data, count, error } = await qb.range(from, to);
       if (error) throw error;
 
-      const base = (data ?? []) as Franchisee[];
+      type FranchiseeWithAreas = Franchisee & {
+        da_territory_areas: { number: number }[] | null;
+      };
+      const base = (data ?? []) as unknown as FranchiseeWithAreas[];
 
       // Fan out territory counts and last-activity timestamps. We do
       // this client-side to stay read-only and avoid a Postgres view.
@@ -88,9 +100,16 @@ export function useFranchisees(filters: FranchiseeListFilters = {}) {
               .limit(1)
               .maybeSingle(),
           ]);
+          const areaNumbers = (f.da_territory_areas ?? [])
+            .map((a) => a.number)
+            .sort((a, b) => a - b);
+          // Strip the join key so the row matches FranchiseeRow exactly.
+          const { da_territory_areas: _ignored, ...franchiseeFields } = f;
+          void _ignored;
           return {
-            ...f,
+            ...franchiseeFields,
             territory_count: tc ?? 0,
+            area_numbers: areaNumbers,
             last_action_at: latest.data?.created_at ?? null,
           } as FranchiseeRow;
         }),
@@ -112,10 +131,14 @@ export function useFranchisees(filters: FranchiseeListFilters = {}) {
 export interface FranchiseeDetailResult extends Franchisee {
   territory_count: number;
   recent_bookings_count: number;
+  area_numbers: number[];
+  area_names: string[];
 }
 
 /**
  * useFranchisee — single row plus computed counts for the detail header.
+ * The da_territory_areas join surfaces the franchisee's owned area
+ * numbers and names so the profile card can display them inline.
  */
 export function useFranchisee(id: string | undefined) {
   return useQuery<FranchiseeDetailResult | null>({
@@ -125,12 +148,21 @@ export function useFranchisee(id: string | undefined) {
       if (!id) return null;
       const { data, error } = await supabase
         .from('da_franchisees')
-        .select('*')
+        .select('*, da_territory_areas(number, name)')
         .eq('id', id)
         .maybeSingle();
       if (error) throw error;
       if (!data) return null;
-      const base = data as Franchisee;
+
+      type FranchiseeWithAreas = Franchisee & {
+        da_territory_areas: { number: number; name: string }[] | null;
+      };
+      const row = data as unknown as FranchiseeWithAreas;
+      const areas = (row.da_territory_areas ?? []).slice().sort((a, b) => a.number - b.number);
+      const areaNumbers = areas.map((a) => a.number);
+      const areaNames = areas.map((a) => a.name);
+      const { da_territory_areas: _ignored, ...base } = row;
+      void _ignored;
 
       const [{ count: territoryCount }, { count: bookingsCount }] = await Promise.all([
         supabase
@@ -144,9 +176,11 @@ export function useFranchisee(id: string | undefined) {
       ]);
 
       return {
-        ...base,
+        ...(base as Franchisee),
         territory_count: territoryCount ?? 0,
         recent_bookings_count: bookingsCount ?? 0,
+        area_numbers: areaNumbers,
+        area_names: areaNames,
       };
     },
   });
@@ -335,6 +369,7 @@ export interface FranchiseeUpdateFields {
   name?: string;
   email?: string;
   phone?: string | null;
+  business_name?: string | null;
   fee_tier?: 100 | 120;
   billing_date?: number;
   status?: FranchiseeStatus;

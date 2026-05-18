@@ -97,17 +97,18 @@ async function fetchTerritoryCounts(): Promise<{
   vacant: number;
   total: number;
 }> {
-  // 2,800+ territories — fetching every row to count statuses client-side
-  // burns ~200 KB on every dashboard load. Three head-counts in parallel
-  // give the same answer with no payload.
+  // Counts run against da_territory_areas (~300 numbered franchise areas),
+  // not da_territories (~2,800 postcode prefixes). Jenni's "1,949 vacant"
+  // confusion was exactly the postcode-prefix count leaking through; the
+  // KPI now reflects vacant areas, which is what HQ actually thinks in.
   const [totalRes, activeRes, vacantRes] = await Promise.all([
-    supabase.from('da_territories').select('*', { count: 'exact', head: true }),
+    supabase.from('da_territory_areas').select('*', { count: 'exact', head: true }),
     supabase
-      .from('da_territories')
+      .from('da_territory_areas')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'active'),
     supabase
-      .from('da_territories')
+      .from('da_territory_areas')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'vacant'),
   ]);

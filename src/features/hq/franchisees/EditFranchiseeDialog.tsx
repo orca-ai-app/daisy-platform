@@ -26,6 +26,7 @@ const editSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters'),
   email: z.string().trim().toLowerCase().email('Enter a valid email address'),
   phone: z.string().trim().optional(),
+  business_name: z.string().trim().optional(),
   fee_tier: z.union([z.literal(100), z.literal(120)]),
   billing_date: z
     .number({ invalid_type_error: 'Billing date is required' })
@@ -65,6 +66,7 @@ export default function EditFranchiseeDialog({
       name: franchisee.name,
       email: franchisee.email,
       phone: franchisee.phone ?? '',
+      business_name: franchisee.business_name ?? '',
       fee_tier: (franchisee.fee_tier as 100 | 120) ?? 120,
       billing_date: franchisee.billing_date,
       status: franchisee.status,
@@ -91,6 +93,13 @@ export default function EditFranchiseeDialog({
     }
     const phoneValue = values.phone && values.phone.trim().length > 0 ? values.phone.trim() : null;
     if ((franchisee.phone ?? null) !== phoneValue) fields.phone = phoneValue;
+    const businessNameValue =
+      values.business_name && values.business_name.trim().length > 0
+        ? values.business_name.trim()
+        : null;
+    if ((franchisee.business_name ?? null) !== businessNameValue) {
+      fields.business_name = businessNameValue;
+    }
     if (values.fee_tier !== franchisee.fee_tier) fields.fee_tier = values.fee_tier;
     if (values.billing_date !== franchisee.billing_date) fields.billing_date = values.billing_date;
     if (values.status !== franchisee.status) fields.status = values.status;
@@ -175,6 +184,16 @@ export default function EditFranchiseeDialog({
                 <p className="text-daisy-orange text-xs">{errors.billing_date.message}</p>
               ) : null}
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-business-name">Business name</Label>
+            <Input
+              id="edit-business-name"
+              type="text"
+              placeholder="Daisy First Aid Sutton"
+              {...register('business_name')}
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

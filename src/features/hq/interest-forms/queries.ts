@@ -43,6 +43,10 @@ export interface InterestForm {
   status: InterestFormStatus;
   assigned_freelancer: string | null;
   notes: string | null;
+  /** Migration 018 added the FK. Nullable for historical rows. */
+  course_template_id: string | null;
+  /** Flattened from the da_course_templates join in fetchInterestFormPage. */
+  course_template_name: string | null;
 }
 
 export interface InterestFormUpdate {
@@ -76,7 +80,7 @@ async function fetchInterestFormPage(
   const limit = filters.limit ?? DEFAULT_LIMIT;
   let query = supabase
     .from('da_interest_forms')
-    .select('*')
+    .select('*, da_course_templates(name)')
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -99,7 +103,17 @@ async function fetchInterestFormPage(
     throw new Error(`useInterestForms: ${error.message}`);
   }
 
-  const rows = (data ?? []) as InterestForm[];
+  type JoinedRow = Omit<InterestForm, 'course_template_name'> & {
+    da_course_templates: { name: string } | null;
+  };
+
+  const rows: InterestForm[] = ((data ?? []) as unknown as JoinedRow[]).map((row) => {
+    const { da_course_templates, ...rest } = row;
+    return {
+      ...rest,
+      course_template_name: da_course_templates?.name ?? null,
+    };
+  });
   const nextOffset = rows.length === limit ? offset + limit : null;
   return { rows, nextOffset };
 }
