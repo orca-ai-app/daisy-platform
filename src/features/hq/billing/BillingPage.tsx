@@ -14,7 +14,12 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatPence } from '@/lib/format';
-import { useBillingRuns, type BillingRunRow, type BillingPaymentStatus } from './queries';
+import {
+  useActiveFranchisees,
+  useBillingRuns,
+  type BillingRunRow,
+  type BillingPaymentStatus,
+} from './queries';
 import { PreviewBillingDialog } from './PreviewBillingDialog';
 import type { StatusVariant } from '@/components/daisy/StatusPill';
 
@@ -83,8 +88,12 @@ export default function BillingPage() {
   const runs = useBillingRuns({
     paymentStatus,
   });
+  const activeFranchisees = useActiveFranchisees();
 
   const totalCount = runs.data?.length ?? 0;
+  const previewBlocked = activeFranchisees.isSuccess && (activeFranchisees.data?.length ?? 0) === 0;
+  const previewBlockedReason =
+    'Preview requires at least one active franchisee with a billing date set.';
 
   const columns = useMemo<ColumnDef<BillingRunRow>[]>(
     () => [
@@ -181,10 +190,24 @@ export default function BillingPage() {
                 ? '0 runs to date'
                 : `${totalCount} run${totalCount === 1 ? '' : 's'}`}
             </Badge>
-            <Button onClick={() => setPreviewOpen(true)}>
-              <Receipt className="h-4 w-4" />
-              Preview next run
-            </Button>
+            {previewBlocked ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button disabled>
+                      <Receipt className="h-4 w-4" />
+                      Preview next run
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{previewBlockedReason}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button onClick={() => setPreviewOpen(true)}>
+                <Receipt className="h-4 w-4" />
+                Preview next run
+              </Button>
+            )}
           </>
         }
       />
@@ -223,11 +246,19 @@ export default function BillingPage() {
           <EmptyState
             icon={<Receipt />}
             title="No billing runs yet"
-            body="Phase 2 (Weeks 14–17) automates the monthly collection. In the meantime, use 'Preview next run' to dry-run the calculation against any franchisee or all of them."
-            cta={{
-              label: 'Preview next run',
-              onClick: () => setPreviewOpen(true),
-            }}
+            body={
+              previewBlocked
+                ? previewBlockedReason
+                : "Phase 2 (Weeks 14–17) automates the monthly collection. In the meantime, use 'Preview next run' to dry-run the calculation against any franchisee or all of them."
+            }
+            cta={
+              previewBlocked
+                ? undefined
+                : {
+                    label: 'Preview next run',
+                    onClick: () => setPreviewOpen(true),
+                  }
+            }
           />
         }
       />

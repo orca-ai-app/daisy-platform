@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router';
+import { Pencil, XCircle } from 'lucide-react';
 import { formatInTimeZone } from 'date-fns-tz';
 import { PageHeader, StatusPill, EmptyState } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
@@ -6,6 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatPence } from '@/lib/format';
+import { useRole } from '@/features/auth/RoleContext';
+import {
+  useCourseInstance,
+  EditInstanceDialog,
+  CancelInstanceDialog,
+} from '@/features/hq/courses/instances';
 import { useBooking, useBookingActivity } from './queries';
 import type { ActivityRow, BookingStatus, PaymentStatus } from '@/types/franchisee';
 import type { StatusVariant } from '@/components/daisy/StatusPill';
@@ -46,9 +54,18 @@ function bookingStatusVariant(s: BookingStatus): StatusVariant {
 
 export default function BookingDetail() {
   const { id } = useParams<{ id: string }>();
+  const { isHQ } = useRole();
+  const [editingCourse, setEditingCourse] = useState(false);
+  const [cancellingCourse, setCancellingCourse] = useState(false);
 
   const { data: booking, isLoading, error } = useBooking(id);
   const { data: activity = [], isLoading: activityLoading } = useBookingActivity(id);
+
+  // Full course-instance detail (for the HQ edit/cancel dialogs which require it).
+  // Only fetched once we know the parent course_instance id.
+  const courseInstanceId = booking?.course_instance?.id;
+  const { data: courseInstance } = useCourseInstance(courseInstanceId);
+  const isCourseCancelled = courseInstance?.status === 'cancelled';
 
   return (
     <div className="flex flex-col gap-6">
@@ -99,11 +116,65 @@ export default function BookingDetail() {
 
           <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
             <div className="flex flex-col gap-4">
+              {isHQ && booking.course_instance ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Course actions (HQ)</CardTitle>
+                    <CardDescription>
+                      Edit or cancel the parent course instance. These actions act on the course as
+                      a whole — they do not refund or cancel the individual booking row.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditingCourse(true)}
+                        disabled={!courseInstance || isCourseCancelled}
+                        title={
+                          isCourseCancelled
+                            ? 'Course is cancelled'
+                            : !courseInstance
+                              ? 'Loading course…'
+                              : undefined
+                        }
+                      >
+                        <Pencil aria-hidden className="h-4 w-4" />
+                        Edit course instance
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setCancellingCourse(true)}
+                        disabled={!courseInstance || isCourseCancelled}
+                        title={
+                          isCourseCancelled
+                            ? 'Already cancelled'
+                            : !courseInstance
+                              ? 'Loading course…'
+                              : undefined
+                        }
+                      >
+                        <XCircle aria-hidden className="h-4 w-4" />
+                        Cancel course instance
+                      </Button>
+                      {isCourseCancelled ? (
+                        <span className="text-daisy-muted text-xs italic">
+                          This course is already cancelled.
+                        </span>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
+
               <Card>
                 <CardHeader>
                   <CardTitle>Booking summary</CardTitle>
                   <CardDescription>
-                    Read-only. Cancel and refund actions land with the franchisee portal in M2.
+                    Booking row is read-only. Use Course actions above to edit or cancel the parent
+                    course instance.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -258,6 +329,21 @@ export default function BookingDetail() {
               </Card>
             </aside>
           </div>
+
+          {isHQ && courseInstance ? (
+            <>
+              <EditInstanceDialog
+                instance={courseInstance}
+                open={editingCourse}
+                onClose={() => setEditingCourse(false)}
+              />
+              <CancelInstanceDialog
+                instance={courseInstance}
+                open={cancellingCourse}
+                onClose={() => setCancellingCourse(false)}
+              />
+            </>
+          ) : null}
         </>
       )}
     </div>

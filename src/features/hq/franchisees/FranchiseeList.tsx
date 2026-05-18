@@ -96,6 +96,23 @@ export default function FranchiseeList() {
         ),
       },
       {
+        accessorKey: 'business_name',
+        header: 'Business name',
+        cell: ({ row }) => (
+          <span className="text-daisy-ink text-[13px]">{row.original.business_name ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'area_numbers',
+        header: 'Territory #s',
+        accessorFn: (row) => row.area_numbers.join(', '),
+        cell: ({ row }) => (
+          <span className="font-mono text-[13px] font-bold">
+            {row.original.area_numbers.length > 0 ? row.original.area_numbers.join(', ') : '—'}
+          </span>
+        ),
+      },
+      {
         accessorKey: 'email',
         header: 'Email',
         cell: ({ row }) => (
@@ -104,7 +121,7 @@ export default function FranchiseeList() {
       },
       {
         accessorKey: 'territory_count',
-        header: 'Territories',
+        header: 'Postcodes',
         cell: ({ row }) => <span className="font-semibold">{row.original.territory_count}</span>,
       },
       {

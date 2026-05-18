@@ -180,6 +180,15 @@ export default function InterestFormsPage() {
         ),
       },
       {
+        accessorKey: 'course_template_name',
+        header: 'Course type',
+        cell: ({ row }) => (
+          <span className="text-daisy-ink-soft text-[13px]">
+            {row.original.course_template_name ?? '—'}
+          </span>
+        ),
+      },
+      {
         accessorKey: 'status',
         header: 'Status',
         cell: ({ row }) => (

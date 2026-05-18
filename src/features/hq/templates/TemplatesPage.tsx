@@ -1,15 +1,22 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { useForm } from 'react-hook-form';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { BookOpen, Pencil } from 'lucide-react';
+import { BookOpen, Pencil, Plus, X } from 'lucide-react';
 import { PageHeader, EmptyState, StatusPill } from '@/components/daisy';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -19,10 +26,34 @@ import {
 } from '@/components/ui/dialog';
 import { formatPence } from '@/lib/format';
 import { useActivityLog, formatActivityDescription } from '@/lib/queries/activities';
-import { useCourseTemplates, useUpdateTemplate, type CourseTemplate } from './queries';
+import {
+  useCourseTemplates,
+  useUpdateTemplate,
+  useCreateTemplate,
+  type CourseTemplate,
+  type TemplateTicketType,
+} from './queries';
+
+const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+const ticketTypeSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  seats_consumed: z
+    .number({ invalid_type_error: 'Seats must be a number' })
+    .int('Seats must be a whole number')
+    .min(1, 'Seats must be at least 1'),
+  price_modifier_pence: z
+    .number({ invalid_type_error: 'Modifier must be a number' })
+    .int('Modifier must be a whole number')
+    .min(0, 'Modifier cannot be negative'),
+});
 
 const editSchema = z.object({
   name: z.string().min(1, 'Name is required'),
+  slug: z
+    .string()
+    .min(1, 'Slug is required')
+    .regex(SLUG_REGEX, 'Slug must be lowercase, hyphen-separated'),
   description: z.string().optional(),
   default_price_pounds: z
     .number({ invalid_type_error: 'Price must be a number' })
@@ -31,9 +62,20 @@ const editSchema = z.object({
     .number({ invalid_type_error: 'Capacity must be a number' })
     .int('Capacity must be a whole number')
     .positive('Capacity must be greater than zero'),
+  duration_hours: z
+    .number({ invalid_type_error: 'Duration must be a number' })
+    .positive('Duration must be greater than zero'),
+  certification: z.enum(['yes', 'no', 'if_requested']).default('no'),
+  default_ticket_types: z.array(ticketTypeSchema).min(1, 'At least one ticket type is required'),
 });
 
 type EditFormValues = z.infer<typeof editSchema>;
+
+type DialogMode = { type: 'edit'; template: CourseTemplate } | { type: 'create' };
+
+const DEFAULT_TICKET_TYPES: TemplateTicketType[] = [
+  { name: 'Single', seats_consumed: 1, price_modifier_pence: 0 },
+];
 
 export default function TemplatesPage() {
   const templates = useCourseTemplates();
@@ -42,7 +84,7 @@ export default function TemplatesPage() {
     entityType: 'course_template',
     limit: 10,
   });
-  const [editing, setEditing] = useState<CourseTemplate | null>(null);
+  const [mode, setMode] = useState<DialogMode | null>(null);
 
   const handleToggleActive = async (template: CourseTemplate) => {
     try {
@@ -61,11 +103,17 @@ export default function TemplatesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Course templates"
-        subtitle="The six predefined courses Daisy offers. Edits propagate to every new instance."
+        subtitle="The predefined courses Daisy offers. Edits propagate to every new instance."
         actions={
-          <Button asChild variant="outline" size="sm">
-            <Link to="/hq/courses/instances">View course instances →</Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={() => setMode({ type: 'create' })}>
+              <Plus className="h-4 w-4" />
+              New course template
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/hq/courses/instances">View course instances →</Link>
+            </Button>
+          </div>
         }
       />
 
@@ -79,7 +127,7 @@ export default function TemplatesPage() {
         <EmptyState
           icon={<BookOpen />}
           title="No course templates yet"
-          body="Daisy's six default templates haven't been loaded for this account. Contact support if this looks wrong."
+          body="Daisy's default templates haven't been loaded for this account. Use New course template to add one, or contact support if this looks wrong."
         />
       ) : (
         <div className="flex flex-col gap-4">
@@ -87,7 +135,7 @@ export default function TemplatesPage() {
             <TemplateCard
               key={template.id}
               template={template}
-              onEdit={() => setEditing(template)}
+              onEdit={() => setMode({ type: 'edit', template })}
               onToggleActive={() => void handleToggleActive(template)}
               disabled={updateTemplate.isPending}
             />
@@ -109,9 +157,7 @@ export default function TemplatesPage() {
         )}
       </section>
 
-      {editing ? (
-        <EditTemplateDialog template={editing} open onClose={() => setEditing(null)} />
-      ) : null}
+      {mode ? <TemplateDialog mode={mode} open onClose={() => setMode(null)} /> : null}
     </div>
   );
 }
@@ -124,6 +170,7 @@ interface TemplateCardProps {
 }
 
 function TemplateCard({ template, onEdit, onToggleActive, disabled }: TemplateCardProps) {
+  const ticketTypes = template.default_ticket_types ?? [];
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-start sm:justify-between">
@@ -143,9 +190,35 @@ function TemplateCard({ template, onEdit, onToggleActive, disabled }: TemplateCa
             <Field label="Duration">{template.duration_hours} hrs</Field>
             <Field label="Default price">{formatPence(template.default_price_pence)}</Field>
             <Field label="Default capacity">{template.default_capacity}</Field>
-            <Field label="Certification">{template.certification ?? '-'}</Field>
+            <Field label="Certification">{formatCertification(template.certification)}</Field>
             {template.age_range ? <Field label="Age range">{template.age_range}</Field> : null}
           </dl>
+
+          {ticketTypes.length > 0 ? (
+            <div className="mt-4">
+              <p className="text-daisy-muted text-xs font-semibold tracking-wide uppercase">
+                Ticket types
+              </p>
+              <ul className="text-daisy-ink mt-1 flex flex-wrap gap-2 text-xs">
+                {ticketTypes.map((tt, idx) => (
+                  <li
+                    key={`${tt.name}-${idx}`}
+                    className="border-daisy-line-soft rounded-full border px-2 py-0.5"
+                  >
+                    {tt.name} ({tt.seats_consumed} seat{tt.seats_consumed === 1 ? '' : 's'}
+                    {tt.price_modifier_pence > 0
+                      ? `, +${formatPence(tt.price_modifier_pence)}`
+                      : ''}
+                    )
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <p className="text-daisy-muted mt-4 text-xs">
+            Franchisees can amend templates for themselves in their portal (coming with M2).
+          </p>
         </div>
 
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
@@ -167,6 +240,19 @@ function TemplateCard({ template, onEdit, onToggleActive, disabled }: TemplateCa
   );
 }
 
+function formatCertification(value: CourseTemplate['certification']): string {
+  switch (value) {
+    case 'yes':
+      return 'Yes';
+    case 'no':
+      return 'No';
+    case 'if_requested':
+      return 'If requested';
+    default:
+      return '-';
+  }
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -176,54 +262,112 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-interface EditTemplateDialogProps {
-  template: CourseTemplate;
+interface TemplateDialogProps {
+  mode: DialogMode;
   open: boolean;
   onClose: () => void;
 }
 
-function EditTemplateDialog({ template, open, onClose }: EditTemplateDialogProps) {
+function TemplateDialog({ mode, open, onClose }: TemplateDialogProps) {
   const updateTemplate = useUpdateTemplate();
+  const createTemplate = useCreateTemplate();
+  const isCreate = mode.type === 'create';
+
+  const defaultValues: EditFormValues = isCreate
+    ? {
+        name: '',
+        slug: '',
+        description: '',
+        default_price_pounds: 0,
+        default_capacity: 1,
+        duration_hours: 1,
+        certification: 'no',
+        default_ticket_types: DEFAULT_TICKET_TYPES,
+      }
+    : {
+        name: mode.template.name,
+        slug: mode.template.slug,
+        description: mode.template.description ?? '',
+        default_price_pounds: mode.template.default_price_pence / 100,
+        default_capacity: mode.template.default_capacity,
+        duration_hours: Number(mode.template.duration_hours),
+        certification: (mode.template.certification ?? 'no') as EditFormValues['certification'],
+        default_ticket_types:
+          mode.template.default_ticket_types?.length > 0
+            ? mode.template.default_ticket_types
+            : DEFAULT_TICKET_TYPES,
+      };
+
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
-    defaultValues: {
-      name: template.name,
-      description: template.description ?? '',
-      default_price_pounds: template.default_price_pence / 100,
-      default_capacity: template.default_capacity,
-    },
+    defaultValues,
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'default_ticket_types',
   });
 
   const onSubmit = async (values: EditFormValues) => {
+    const description = values.description?.trim() ?? '';
+    const ticketTypes: TemplateTicketType[] = values.default_ticket_types.map((tt) => ({
+      name: tt.name.trim(),
+      seats_consumed: tt.seats_consumed,
+      price_modifier_pence: tt.price_modifier_pence,
+    }));
+
     try {
-      await updateTemplate.mutateAsync({
-        id: template.id,
-        fields: {
+      if (mode.type === 'create') {
+        await createTemplate.mutateAsync({
           name: values.name.trim(),
-          description: values.description?.trim() ?? null,
+          slug: values.slug.trim(),
+          duration_hours: values.duration_hours,
           default_price_pence: Math.round(values.default_price_pounds * 100),
           default_capacity: values.default_capacity,
-        },
-      });
-      toast.success(`${values.name} saved`);
+          certification: values.certification,
+          description: description.length > 0 ? description : null,
+          default_ticket_types: ticketTypes,
+          is_active: true,
+        });
+        toast.success(`${values.name.trim()} created`);
+      } else {
+        await updateTemplate.mutateAsync({
+          id: mode.template.id,
+          fields: {
+            name: values.name.trim(),
+            description: description.length > 0 ? description : null,
+            default_price_pence: Math.round(values.default_price_pounds * 100),
+            default_capacity: values.default_capacity,
+            certification: values.certification,
+            default_ticket_types: ticketTypes,
+          },
+        });
+        toast.success(`${values.name.trim()} saved`);
+      }
       onClose();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Save failed';
+      const message =
+        err instanceof Error ? err.message : isCreate ? 'Create failed' : 'Save failed';
       toast.error(message);
     }
   };
+
+  const ticketTypeErrors = errors.default_ticket_types;
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : null)}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit template</DialogTitle>
+          <DialogTitle>{isCreate ? 'New course template' : 'Edit template'}</DialogTitle>
           <DialogDescription>
-            Changes are audit-logged and apply to future course instances.
+            {isCreate
+              ? 'Templates are network-wide. Franchisees can amend them for themselves with M2.'
+              : 'Changes are audit-logged and apply to future course instances.'}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -241,6 +385,26 @@ function EditTemplateDialog({ template, open, onClose }: EditTemplateDialogProps
           </div>
 
           <div className="flex flex-col gap-1.5">
+            <Label htmlFor="template-slug">Slug</Label>
+            <Input
+              id="template-slug"
+              placeholder="e.g. paediatric-first-aid"
+              readOnly={!isCreate}
+              disabled={!isCreate}
+              {...register('slug')}
+            />
+            {errors.slug ? (
+              <p className="text-daisy-orange text-xs">{errors.slug.message}</p>
+            ) : (
+              <p className="text-daisy-muted text-xs">
+                {isCreate
+                  ? 'Lowercase, hyphen-separated. Used in URLs and exports.'
+                  : 'Slug is fixed once a template is created.'}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="template-description">Description</Label>
             <textarea
               id="template-description"
@@ -253,7 +417,21 @@ function EditTemplateDialog({ template, open, onClose }: EditTemplateDialogProps
             ) : null}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="template-duration">Duration (hours)</Label>
+              <Input
+                id="template-duration"
+                type="number"
+                step="0.25"
+                min="0.25"
+                {...register('duration_hours', { valueAsNumber: true })}
+              />
+              {errors.duration_hours ? (
+                <p className="text-daisy-orange text-xs">{errors.duration_hours.message}</p>
+              ) : null}
+            </div>
+
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="template-price">Default price (£)</Label>
               <Input
@@ -283,12 +461,142 @@ function EditTemplateDialog({ template, open, onClose }: EditTemplateDialogProps
             </div>
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="template-certification">Certification</Label>
+            <Controller
+              control={control}
+              name="certification"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger id="template-certification">
+                    <SelectValue placeholder="Select certification" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yes">Yes</SelectItem>
+                    <SelectItem value="no">No</SelectItem>
+                    <SelectItem value="if_requested">If requested</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.certification ? (
+              <p className="text-daisy-orange text-xs">{errors.certification.message}</p>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label>Ticket types</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => append({ name: '', seats_consumed: 1, price_modifier_pence: 0 })}
+              >
+                <Plus className="h-4 w-4" />
+                Add ticket type
+              </Button>
+            </div>
+            <p className="text-daisy-muted text-xs">
+              At least one row is required. Use the modifier to add a surcharge (in pence) on top of
+              the default price for variants like &ldquo;Double&rdquo;.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              {fields.map((field, index) => {
+                const rowErrors = Array.isArray(ticketTypeErrors)
+                  ? ticketTypeErrors[index]
+                  : undefined;
+                return (
+                  <div
+                    key={field.id}
+                    className="border-daisy-line-soft grid grid-cols-1 gap-2 rounded-[8px] border p-3 sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-end"
+                  >
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor={`tt-name-${index}`} className="text-xs">
+                        Name
+                      </Label>
+                      <Input
+                        id={`tt-name-${index}`}
+                        placeholder="Single"
+                        {...register(`default_ticket_types.${index}.name` as const)}
+                      />
+                      {rowErrors?.name ? (
+                        <p className="text-daisy-orange text-xs">{rowErrors.name.message}</p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor={`tt-seats-${index}`} className="text-xs">
+                        Seats consumed
+                      </Label>
+                      <Input
+                        id={`tt-seats-${index}`}
+                        type="number"
+                        min="1"
+                        step="1"
+                        {...register(`default_ticket_types.${index}.seats_consumed` as const, {
+                          valueAsNumber: true,
+                        })}
+                      />
+                      {rowErrors?.seats_consumed ? (
+                        <p className="text-daisy-orange text-xs">
+                          {rowErrors.seats_consumed.message}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor={`tt-modifier-${index}`} className="text-xs">
+                        Price modifier (pence)
+                      </Label>
+                      <Input
+                        id={`tt-modifier-${index}`}
+                        type="number"
+                        min="0"
+                        step="1"
+                        {...register(
+                          `default_ticket_types.${index}.price_modifier_pence` as const,
+                          { valueAsNumber: true },
+                        )}
+                      />
+                      {rowErrors?.price_modifier_pence ? (
+                        <p className="text-daisy-orange text-xs">
+                          {rowErrors.price_modifier_pence.message}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex sm:justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => remove(index)}
+                        disabled={fields.length <= 1}
+                        aria-label={`Remove ticket type ${index + 1}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {ticketTypeErrors && !Array.isArray(ticketTypeErrors) && ticketTypeErrors.message ? (
+              <p className="text-daisy-orange text-xs">{ticketTypeErrors.message}</p>
+            ) : null}
+          </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : 'Save changes'}
+              {isSubmitting
+                ? isCreate
+                  ? 'Creating...'
+                  : 'Saving...'
+                : isCreate
+                  ? 'Create template'
+                  : 'Save changes'}
             </Button>
           </div>
         </form>

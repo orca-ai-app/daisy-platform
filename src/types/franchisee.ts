@@ -9,6 +9,7 @@ export interface Franchisee {
   name: string;
   email: string;
   phone: string | null;
+  business_name: string | null;
   stripe_account_id: string | null;
   stripe_connected: boolean;
   gocardless_mandate_id: string | null;

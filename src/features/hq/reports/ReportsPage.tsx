@@ -279,10 +279,14 @@ export default function ReportsPage() {
 
       {/* Per-franchisee table */}
       <Card className="overflow-hidden">
-        <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint border-b px-5 py-4">
+        <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint flex flex-row items-center justify-between gap-2 border-b px-5 py-4">
           <CardTitle className="text-daisy-primary-deep text-[15px] font-extrabold tracking-[0.06em] uppercase">
             Revenue by franchisee
           </CardTitle>
+          <Badge variant="primary">
+            {perFranchisee.data?.rows.length ?? 0} franchisee
+            {(perFranchisee.data?.rows.length ?? 0) === 1 ? '' : 's'}
+          </Badge>
         </CardHeader>
         <CardContent className="p-5">
           <DataTable<FranchiseeRevenueRow>

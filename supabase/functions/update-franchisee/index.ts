@@ -11,7 +11,7 @@
 //    proceed. Non-HQ users get 403.
 //  - Uses service_role to UPDATE da_franchisees. Allowed columns:
 //    name, email, phone, fee_tier, billing_date, status, notes, vat_registered,
-//    is_hq. Any other key in `fields` is rejected as 400.
+//    is_hq, business_name. Any other key in `fields` is rejected as 400.
 //  - If `email` changes, the linked auth.users row is updated via the admin
 //    API so sign-in still works.
 //  - HQ guard: an HQ user cannot demote themselves out of HQ (`is_hq=false`)
@@ -40,6 +40,7 @@ const ALLOWED_FIELDS = new Set([
   'notes',
   'vat_registered',
   'is_hq',
+  'business_name',
 ]);
 
 const ALLOWED_STATUSES = new Set(['active', 'paused', 'terminated']);
@@ -285,6 +286,13 @@ Deno.serve(async (req: Request) => {
   if ('is_hq' in updateFields && typeof updateFields.is_hq !== 'boolean') {
     return jsonResponse({ error: 'is_hq must be a boolean' }, 400);
   }
+  if (
+    'business_name' in updateFields &&
+    updateFields.business_name !== null &&
+    typeof updateFields.business_name !== 'string'
+  ) {
+    return jsonResponse({ error: 'business_name must be a string or null' }, 400);
+  }
 
   // Normalise text fields.
   if (typeof updateFields.name === 'string') {
@@ -300,6 +308,10 @@ Deno.serve(async (req: Request) => {
   if (typeof updateFields.notes === 'string') {
     const trimmed = (updateFields.notes as string).trim();
     updateFields.notes = trimmed.length === 0 ? null : trimmed;
+  }
+  if (typeof updateFields.business_name === 'string') {
+    const trimmed = (updateFields.business_name as string).trim();
+    updateFields.business_name = trimmed.length === 0 ? null : trimmed;
   }
 
   // ---------------------------------------------------------------------
