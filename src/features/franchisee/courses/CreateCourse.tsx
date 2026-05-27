@@ -51,6 +51,7 @@ import {
 } from './createCourseQueries';
 import type { CourseTemplateOption, OutOfTerritoryWarning, Visibility } from './types';
 import { supabase } from '@/lib/supabase';
+import { PrivateClientSelect } from '@/features/franchisee/clients/PrivateClientSelect';
 
 // ---------------------------------------------------------------------------
 // Zod schema
@@ -94,6 +95,8 @@ const schema = z.object({
   bespoke_details: z.string(),
   ticket_types: z.array(ticketTypeSchema).min(1, 'At least one ticket type required'),
   out_of_territory_confirmed: z.boolean(),
+  /** Optional: private client selected in Step 4. Only relevant for private courses. */
+  private_client_id: z.string().uuid().nullable().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -591,6 +594,7 @@ function Step4Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
   } = form;
 
   const visibility = watch('visibility');
+  const privateClientId = watch('private_client_id');
 
   return (
     <div className="flex flex-col gap-5">
@@ -602,7 +606,13 @@ function Step4Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
           render={({ field }) => (
             <Select
               value={field.value}
-              onValueChange={(v) => setValue('visibility', v as Visibility, { shouldDirty: true })}
+              onValueChange={(v) => {
+                setValue('visibility', v as Visibility, { shouldDirty: true });
+                // Clear private client when switching back to public.
+                if (v === 'public') {
+                  setValue('private_client_id', null, { shouldDirty: true });
+                }
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -632,35 +642,19 @@ function Step4Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
             />
           </div>
 
-          {/*
-           * TODO Wave 9C — private_client_id dropdown.
-           *
-           * This stable element is intentionally left as a labelled
-           * placeholder. Wave 9C should:
-           *   1. Add `private_client_id?: string | null` to CreateCourseFormValues
-           *      and CreateCourseInstanceRequest (raise to scaffold owner first).
-           *   2. Replace this comment + disabled input with a useQuery hook that
-           *      fetches da_customers (or a dedicated clients table) filtered to
-           *      the signed-in franchisee's clients.
-           *   3. Wire the selected ID into the form and include it in the Edge
-           *      Function request body.
-           *
-           * The input below has data-wiring="private-client-id" so 9C can
-           * locate it without grepping the whole file.
-           */}
+          {/* Wave 9C — private client dropdown (wired) */}
           <div className="flex flex-col gap-1.5" data-wiring="private-client-id">
             <Label htmlFor="private-client-id">
               Private client <span className="text-daisy-muted font-normal">(optional)</span>
             </Label>
-            <Input
+            <PrivateClientSelect
               id="private-client-id"
-              type="text"
-              disabled
-              placeholder="Client lookup — coming in a future wave"
-              className="cursor-not-allowed opacity-50"
+              value={privateClientId ?? null}
+              onChange={(id) => setValue('private_client_id', id, { shouldDirty: true })}
             />
             <p className="text-daisy-muted text-xs">
-              Client linking will be available once the client management feature launches.
+              Link this course to a client in your directory. The Wave 8 booking webhook will stamp
+              the client on every booking automatically.
             </p>
           </div>
         </>
@@ -807,6 +801,7 @@ export default function CreateCourse() {
         { name: 'Single', price_pence: 0, seats_consumed: 1, max_available: null, sort_order: 0 },
       ],
       out_of_territory_confirmed: false,
+      private_client_id: null,
     },
   });
 
@@ -902,6 +897,9 @@ export default function CreateCourse() {
         bespoke_details: values.bespoke_details || null,
         ticket_types: values.ticket_types,
         out_of_territory_confirmed: values.out_of_territory_confirmed,
+        // Only include private_client_id when set; send null to clear any
+        // previously linked client (relevant if the form is reused/reset).
+        private_client_id: values.private_client_id ?? null,
       });
 
       toast.success('Course scheduled successfully');

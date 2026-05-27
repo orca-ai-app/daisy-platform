@@ -65,6 +65,14 @@ const FranchiseeCreateCourse = lazy(() => import('@/features/franchisee/courses/
 const FranchiseeCourseDetail = lazy(() => import('@/features/franchisee/courses/CourseDetail'));
 const FranchiseeEditCourse = lazy(() => import('@/features/franchisee/courses/EditCourse'));
 
+/*
+ * Wave 9 (M2): discount codes (9B) and private clients (9C). Both are simple
+ * DataTable + dialog pages; lazy-loaded to keep them off the dashboard's
+ * critical path, matching the Wave 7 course pages.
+ */
+const FranchiseeDiscountsList = lazy(() => import('@/features/franchisee/discounts/DiscountsList'));
+const FranchiseeClientsList = lazy(() => import('@/features/franchisee/clients/ClientsList'));
+
 // 5-minute staleTime by default — Daisy's data (franchisees, territories,
 // templates, billing runs) all change on a human timescale, not a real-time
 // one. The previous 30s was triggering refetches on almost every interaction
@@ -243,6 +251,24 @@ export default function App() {
                   element={
                     <LazyRoute>
                       <FranchiseeEditCourse />
+                    </LazyRoute>
+                  }
+                />
+
+                {/* Wave 9 (M2): discount codes (9B) + private clients (9C). */}
+                <Route
+                  path="discounts"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeDiscountsList />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="clients"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeClientsList />
                     </LazyRoute>
                   }
                 />

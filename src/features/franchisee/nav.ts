@@ -58,14 +58,14 @@ export const franchiseeNavLinks: FranchiseeNavLink[] = [
     label: 'Clients',
     path: '/franchisee/clients',
     icon: Users,
-    ready: false,
+    ready: true,
     matchPrefix: '/franchisee/clients',
   },
   {
     label: 'Discounts',
     path: '/franchisee/discounts',
     icon: Percent,
-    ready: false,
+    ready: true,
     matchPrefix: '/franchisee/discounts',
   },
   {
