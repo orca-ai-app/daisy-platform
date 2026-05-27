@@ -1855,11 +1855,11 @@ DELETE FROM da_bookings WHERE id IN (
 
 -- Ticket types for Ashley's M2 instances
 DELETE FROM da_ticket_types WHERE id IN (
-  'd1f4tt90-0000-4000-8000-000000000001',
-  'd1f4tt90-0000-4000-8000-000000000002',
-  'd1f4tt90-0000-4000-8000-000000000003',
-  'd1f4tt90-0000-4000-8000-000000000004',
-  'd1f4tt90-0000-4000-8000-000000000005'
+  'd1f4f190-0000-4000-8000-000000000001',
+  'd1f4f190-0000-4000-8000-000000000002',
+  'd1f4f190-0000-4000-8000-000000000003',
+  'd1f4f190-0000-4000-8000-000000000004',
+  'd1f4f190-0000-4000-8000-000000000005'
 );
 
 -- Course instances (after bookings + ticket types)
@@ -1873,15 +1873,15 @@ DELETE FROM da_course_instances WHERE id IN (
 
 -- Discount codes
 DELETE FROM da_discount_codes WHERE id IN (
-  'd1fdsc00-0000-4000-8000-000000000001',
-  'd1fdsc00-0000-4000-8000-000000000002'
+  'd1fd5c00-0000-4000-8000-000000000001',
+  'd1fd5c00-0000-4000-8000-000000000002'
 );
 
 -- Private clients (after course instances that reference them)
 DELETE FROM da_private_clients WHERE id IN (
-  'd1fapc00-0000-4000-8000-000000000001',
-  'd1fapc00-0000-4000-8000-000000000002',
-  'd1fapc00-0000-4000-8000-000000000003'
+  'd1fa0c00-0000-4000-8000-000000000001',
+  'd1fa0c00-0000-4000-8000-000000000002',
+  'd1fa0c00-0000-4000-8000-000000000003'
 );
 
 -- ── Private clients ────────────────────────────────────────────────────────
@@ -1889,13 +1889,13 @@ DELETE FROM da_private_clients WHERE id IN (
 -- in CreateCourse step 4 and the Clients list in the franchisee portal.
 
 INSERT INTO da_private_clients (id, franchisee_id, company_name, contact_name, contact_email, contact_phone, notes) VALUES
-  ('d1fapc00-0000-4000-8000-000000000001', 'd1f1aaaa-0000-4000-8000-000000000002',
+  ('d1fa0c00-0000-4000-8000-000000000001', 'd1f1aaaa-0000-4000-8000-000000000002',
    'Bright Futures Nursery', 'Karen Hodgson', 'karen@brightfuturesnursery.co.uk', '02079000100',
    'SW1A catchment. Runs courses twice a year for new parents.'),
-  ('d1fapc00-0000-4000-8000-000000000002', 'd1f1aaaa-0000-4000-8000-000000000002',
+  ('d1fa0c00-0000-4000-8000-000000000002', 'd1f1aaaa-0000-4000-8000-000000000002',
    'Clapham Primary School', 'David Winters', 'dwinters@claphamschool.sch.uk', '02079000200',
    'Staff first aid refreshers each September.'),
-  ('d1fapc00-0000-4000-8000-000000000003', 'd1f1aaaa-0000-4000-8000-000000000002',
+  ('d1fa0c00-0000-4000-8000-000000000003', 'd1f1aaaa-0000-4000-8000-000000000002',
    'Westminster Childminders Network', 'Sue Adeyemi', 'sue.adeyemi@wcmn.org.uk', '07700901000',
    'Group of 8 registered childminders. Book one private session annually.');
 
@@ -1903,10 +1903,10 @@ INSERT INTO da_private_clients (id, franchisee_id, company_name, contact_name, c
 -- 2 codes owned by Ashley: one percentage, one fixed.
 
 INSERT INTO da_discount_codes (id, franchisee_id, code, type, value, max_uses, uses_count, valid_from, valid_until, is_active) VALUES
-  ('d1fdsc00-0000-4000-8000-000000000001', 'd1f1aaaa-0000-4000-8000-000000000002',
+  ('d1fd5c00-0000-4000-8000-000000000001', 'd1f1aaaa-0000-4000-8000-000000000002',
    'ASHLEY10', 'percentage', 10, 50, 3,
    '2026-01-01 00:00:00+00'::timestamptz, '2026-12-31 23:59:59+00'::timestamptz, TRUE),
-  ('d1fdsc00-0000-4000-8000-000000000002', 'd1f1aaaa-0000-4000-8000-000000000002',
+  ('d1fd5c00-0000-4000-8000-000000000002', 'd1f1aaaa-0000-4000-8000-000000000002',
    'SWFIXED15', 'fixed', 1500, NULL, 1,
    '2026-04-01 00:00:00+00'::timestamptz, NULL, TRUE);
 
@@ -2019,7 +2019,7 @@ INSERT INTO da_course_instances (
   'Private session for Bright Futures Nursery staff group.',
   'scheduled',
   FALSE,
-  'd1fapc00-0000-4000-8000-000000000001',
+  'd1fa0c00-0000-4000-8000-000000000001',
   '2026-05-18 09:00:00+00'::timestamptz
 FROM da_course_templates ct WHERE ct.slug = 'emergency-paediatric';
 
@@ -2046,18 +2046,18 @@ INSERT INTO da_course_instances (
   'Annual staff first aid refresher for Clapham Primary.',
   'scheduled',
   FALSE,
-  'd1fapc00-0000-4000-8000-000000000002',
+  'd1fa0c00-0000-4000-8000-000000000002',
   '2026-05-25 09:00:00+00'::timestamptz
 FROM da_course_templates ct WHERE ct.slug = 'paediatric-aow';
 
 -- ── Ticket types (Single per instance — Wave 7 default shape) ─────────────
 
 INSERT INTO da_ticket_types (id, course_instance_id, name, price_pence, seats_consumed, max_available, sort_order) VALUES
-  ('d1f4tt90-0000-4000-8000-000000000001', 'd1f3cccc-9d00-4000-8000-000000000001', 'Single', 9500, 1, NULL, 0),
-  ('d1f4tt90-0000-4000-8000-000000000002', 'd1f3cccc-9d00-4000-8000-000000000002', 'Single', 5500, 1, NULL, 0),
-  ('d1f4tt90-0000-4000-8000-000000000003', 'd1f3cccc-9d00-4000-8000-000000000003', 'Single', 9500, 1, NULL, 0),
-  ('d1f4tt90-0000-4000-8000-000000000004', 'd1f3cccc-9d00-4000-8000-000000000004', 'Single', 9500, 1, NULL, 0),
-  ('d1f4tt90-0000-4000-8000-000000000005', 'd1f3cccc-9d00-4000-8000-000000000005', 'Single', 9500, 1, NULL, 0);
+  ('d1f4f190-0000-4000-8000-000000000001', 'd1f3cccc-9d00-4000-8000-000000000001', 'Single', 9500, 1, NULL, 0),
+  ('d1f4f190-0000-4000-8000-000000000002', 'd1f3cccc-9d00-4000-8000-000000000002', 'Single', 5500, 1, NULL, 0),
+  ('d1f4f190-0000-4000-8000-000000000003', 'd1f3cccc-9d00-4000-8000-000000000003', 'Single', 9500, 1, NULL, 0),
+  ('d1f4f190-0000-4000-8000-000000000004', 'd1f3cccc-9d00-4000-8000-000000000004', 'Single', 9500, 1, NULL, 0),
+  ('d1f4f190-0000-4000-8000-000000000005', 'd1f3cccc-9d00-4000-8000-000000000005', 'Single', 9500, 1, NULL, 0);
 
 -- ── Bookings (5, against Ashley's new instances) ──────────────────────────
 -- Mix of payment_status: paid, pending, manual.
@@ -2076,7 +2076,7 @@ INSERT INTO da_bookings (
    'd1f3cccc-9d00-4000-8000-000000000001',
    'd1f1aaaa-0000-4000-8000-000000000002',
    'd1f5eeee-0000-4000-8000-000000000007',
-   'd1f4tt90-0000-4000-8000-000000000001',
+   'd1f4f190-0000-4000-8000-000000000001',
    1, 9500, 'paid', 'pi_seed_m2_1', 'cs_seed_m2_1',
    'confirmed', NULL, 0, 'seed-dev m2', '2026-05-15 10:00:00+00'::timestamptz),
 
@@ -2085,7 +2085,7 @@ INSERT INTO da_bookings (
    'd1f3cccc-9d00-4000-8000-000000000001',
    'd1f1aaaa-0000-4000-8000-000000000002',
    'd1f5eeee-0000-4000-8000-000000000008',
-   'd1f4tt90-0000-4000-8000-000000000001',
+   'd1f4f190-0000-4000-8000-000000000001',
    1, 9500, 'paid', 'pi_seed_m2_2', 'cs_seed_m2_2',
    'attended', NULL, 0, 'seed-dev m2', '2026-05-16 11:00:00+00'::timestamptz),
 
@@ -2094,7 +2094,7 @@ INSERT INTO da_bookings (
    'd1f3cccc-9d00-4000-8000-000000000002',
    'd1f1aaaa-0000-4000-8000-000000000002',
    'd1f5eeee-0000-4000-8000-000000000009',
-   'd1f4tt90-0000-4000-8000-000000000002',
+   'd1f4f190-0000-4000-8000-000000000002',
    1, 5500, 'pending', NULL, NULL,
    'confirmed', NULL, 0, 'seed-dev m2', '2026-05-18 09:00:00+00'::timestamptz),
 
@@ -2103,7 +2103,7 @@ INSERT INTO da_bookings (
    'd1f3cccc-9d00-4000-8000-000000000004',
    'd1f1aaaa-0000-4000-8000-000000000002',
    'd1f5eeee-0000-4000-8000-000000000010',
-   'd1f4tt90-0000-4000-8000-000000000004',
+   'd1f4f190-0000-4000-8000-000000000004',
    1, 9500, 'manual', NULL, NULL,
    'confirmed', NULL, 0, 'seed-dev m2', '2026-05-19 14:00:00+00'::timestamptz),
 
@@ -2112,7 +2112,7 @@ INSERT INTO da_bookings (
    'd1f3cccc-9d00-4000-8000-000000000005',
    'd1f1aaaa-0000-4000-8000-000000000002',
    'd1f5eeee-0000-4000-8000-000000000011',
-   'd1f4tt90-0000-4000-8000-000000000005',
+   'd1f4f190-0000-4000-8000-000000000005',
    1, 9500, 'paid', 'pi_seed_m2_5', 'cs_seed_m2_5',
    'confirmed', NULL, 0, 'seed-dev m2', '2026-05-25 15:00:00+00'::timestamptz);
 
