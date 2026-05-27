@@ -86,10 +86,11 @@ function summariseChanges(
   changedFields: Record<string, unknown>,
   venuePostcode: string,
   eventDate: string,
+  actorLabel: string,
 ): string {
   const keys = Object.keys(changedFields);
   const list = keys.length === 0 ? 'no changes' : keys.join(', ');
-  return `Course at ${venuePostcode} on ${eventDate} updated by HQ — ${list}`;
+  return `Course at ${venuePostcode} on ${eventDate} updated by ${actorLabel} — ${list}`;
 }
 
 async function geocodeViaEdgeFunction(
@@ -149,24 +150,26 @@ Deno.serve(async (req: Request) => {
   });
 
   // ---------------------------------------------------------------------
-  // HQ check
+  // Auth check: HQ or owning franchisee (widened in Wave 7B).
+  //
+  // We resolve the actor first.  The instance ownership check runs
+  // later — after we load the instance row — using the predicate:
+  //   actor.is_hq === true  OR  actor.id === instance.franchisee_id
   // ---------------------------------------------------------------------
-  const actor = await admin
+  const actorResult = await admin
     .from('da_franchisees')
     .select('id, is_hq, name')
     .eq('auth_user_id', authUserId)
     .maybeSingle();
 
-  if (actor.error) {
-    console.error('franchisee lookup failed', actor.error);
+  if (actorResult.error) {
+    console.error('franchisee lookup failed', actorResult.error);
     return jsonResponse({ error: 'Failed to verify caller' }, 500);
   }
-  if (!actor.data) {
+  if (!actorResult.data) {
     return jsonResponse({ error: 'Caller is not provisioned' }, 403);
   }
-  if (!actor.data.is_hq) {
-    return jsonResponse({ error: 'HQ access required' }, 403);
-  }
+  const actor = actorResult.data as { id: string; is_hq: boolean; name: string };
 
   // ---------------------------------------------------------------------
   // Parse + validate body
@@ -259,6 +262,13 @@ Deno.serve(async (req: Request) => {
 
   const beforeRow = before.data as Record<string, unknown>;
 
+  // Ownership check: HQ may edit any instance; a franchisee may only edit
+  // their own.  Evaluated here (after load) so the 404 path fires first for
+  // non-existent ids regardless of who is calling.
+  if (!actor.is_hq && actor.id !== (beforeRow.franchisee_id as string)) {
+    return jsonResponse({ error: 'You do not own this course instance' }, 403);
+  }
+
   // Reject capacity that drops below seats already sold (capacity - spots_remaining).
   if ('capacity' in updateFields) {
     const seatsSold = Number(beforeRow.capacity ?? 0) - Number(beforeRow.spots_remaining ?? 0);
@@ -337,7 +347,9 @@ Deno.serve(async (req: Request) => {
     (updatedRow.venue_postcode as string) ?? (beforeRow.venue_postcode as string) ?? '';
   const eventDate = (updatedRow.event_date as string) ?? (beforeRow.event_date as string) ?? '';
 
-  const description = summariseChanges(changedFields, venuePostcode, eventDate);
+  const actorType = actor.is_hq ? 'hq' : 'franchisee';
+  const actorLabel = actor.is_hq ? 'HQ' : 'franchisee';
+  const description = summariseChanges(changedFields, venuePostcode, eventDate, actorLabel);
 
   const activityMetadata: Record<string, unknown> = {
     changed_fields: changedFields,
@@ -349,8 +361,8 @@ Deno.serve(async (req: Request) => {
   }
 
   const activityInsert = await admin.from('da_activities').insert({
-    actor_type: 'hq',
-    actor_id: actor.data.id,
+    actor_type: actorType,
+    actor_id: actor.id,
     entity_type: 'course_instance',
     entity_id: body.id,
     action: 'course_instance_updated',
