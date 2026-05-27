@@ -5,7 +5,7 @@
  * franchisee_id filter needed). Create and edit actions open <ClientDialog>.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 
@@ -171,16 +171,18 @@ export default function ClientsList() {
     [expandedId],
   );
 
-  // Error toast — only fire once on mount.
-  if (error) {
-    toast.error(`Could not load clients: ${error.message}`);
-  }
+  // Error toast — fire once when the error first appears, not every render.
+  useEffect(() => {
+    if (error) {
+      toast.error(`Could not load clients: ${error.message}`);
+    }
+  }, [error]);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Clients"
-        subtitle="Manage your private clients — schools, companies, and organisations."
+        subtitle="Manage your private clients: schools, companies, and organisations."
         actions={
           <>
             <Badge variant="primary">{clients.length} total</Badge>
@@ -206,7 +208,7 @@ export default function ClientsList() {
         emptyState={
           <EmptyState
             title="No clients yet"
-            body="Add your first private client — a school, company, or other organisation you run courses for."
+            body="Add your first private client: a school, company, or other organisation you run courses for."
             cta={{ label: 'Add client', onClick: openCreate }}
           />
         }

@@ -257,7 +257,7 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
           <DialogDescription>
             {isEdit
               ? 'Changes are audit-logged. Uses count cannot be edited.'
-              : 'Codes are globally unique across the whole network — choose something distinctive.'}
+              : 'Codes are globally unique across the whole network, so choose something distinctive.'}
           </DialogDescription>
         </DialogHeader>
 

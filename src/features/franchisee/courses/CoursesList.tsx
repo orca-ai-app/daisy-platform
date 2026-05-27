@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { PageHeader, DataTable, StatusPill, EmptyState, MonthCalendar } from '@/components/daisy';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -475,7 +476,12 @@ export default function CoursesList() {
           ) : null}
 
           {calLoading ? (
-            <div className="text-daisy-muted py-10 text-center text-sm">Loading calendar…</div>
+            <div className="flex flex-col gap-2 py-4">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-4/5" />
+            </div>
           ) : (
             <MonthCalendar
               year={calYear}

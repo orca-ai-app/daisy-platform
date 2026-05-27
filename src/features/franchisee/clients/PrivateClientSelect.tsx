@@ -172,7 +172,7 @@ export function PrivateClientSelect({
             {filtered.length === 0 ? (
               <li className="text-daisy-muted px-3 py-2 text-sm">
                 {clients.length === 0
-                  ? 'No clients yet — add one from the Clients page.'
+                  ? 'No clients yet. Add one from the Clients page.'
                   : 'No clients match your search.'}
               </li>
             ) : (

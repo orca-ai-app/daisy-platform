@@ -417,7 +417,7 @@ function Step2Venue({
         ) : null}
         {territoryPreview.status === 'error' ? (
           <p className="text-daisy-muted text-xs">
-            Territory check unavailable — postcode will be verified when you save.
+            Territory check unavailable. Postcode will be verified when you save.
           </p>
         ) : null}
       </div>
@@ -618,8 +618,8 @@ function Step4Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="public">Public — appears in the course finder</SelectItem>
-                <SelectItem value="private">Private — invite-only, not in public search</SelectItem>
+                <SelectItem value="public">Public - appears in the course finder</SelectItem>
+                <SelectItem value="private">Private - invite-only, not in public search</SelectItem>
               </SelectContent>
             </Select>
           )}
@@ -910,7 +910,7 @@ export default function CreateCourse() {
         // review step so the franchisee can tick confirm and resubmit.
         setServerWarning(err.conflict.warning);
         form.setValue('out_of_territory_confirmed', false);
-        toast.warning('Territory conflict — please review and confirm below.');
+        toast.warning('Territory conflict. Please review and confirm below.');
       } else {
         const message = err instanceof Error ? err.message : 'Failed to create course';
         toast.error(message);

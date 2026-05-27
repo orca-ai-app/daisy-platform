@@ -26,7 +26,7 @@ function TopBarNavItem({ item }: { item: FranchiseeNavLink }) {
       <li>
         <span
           aria-disabled="true"
-          title={`${item.label} — coming soon`}
+          title={`${item.label} - coming soon`}
           className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full px-[14px] py-2 text-sm font-semibold text-white/40 select-none"
         >
           {item.label}
@@ -97,7 +97,7 @@ function BottomNav() {
               <li key={item.path} className="flex flex-1">
                 <span
                   aria-disabled="true"
-                  title={`${item.label} — coming soon`}
+                  title={`${item.label} - coming soon`}
                   className="flex flex-1 cursor-not-allowed flex-col items-center justify-center gap-0.5 py-2 select-none"
                 >
                   <Icon aria-hidden strokeWidth={1.5} className="text-daisy-muted/30 h-5 w-5" />
