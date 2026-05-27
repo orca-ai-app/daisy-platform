@@ -44,7 +44,7 @@ export const franchiseeNavLinks: FranchiseeNavLink[] = [
     label: 'Courses',
     path: '/franchisee/courses',
     icon: GraduationCap,
-    ready: false,
+    ready: true,
     matchPrefix: '/franchisee/courses',
   },
   {

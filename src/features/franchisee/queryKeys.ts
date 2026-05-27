@@ -28,9 +28,18 @@ export const franchiseeKeys = {
 
   territories: () => [...franchiseeKeys.all, 'territories'] as const,
 
-  // --- Later M2 waves (stubs) -----------------------------------------
+  // --- Wave 7 (M2 course management) ----------------------------------
   courses: () => [...franchiseeKeys.all, 'courses'] as const,
   course: (id: string) => [...franchiseeKeys.courses(), id] as const,
+  /** Filtered/paginated list (7C). Pass the serialisable filter object. */
+  coursesList: (filters: Record<string, unknown>) =>
+    [...franchiseeKeys.courses(), 'list', filters] as const,
+  /** Month-calendar view (7C). `month` is 'YYYY-MM' wall-clock. */
+  coursesCalendar: (month: string) => [...franchiseeKeys.courses(), 'calendar', month] as const,
+  /** Ticket types for a single instance (7B). */
+  courseTicketTypes: (id: string) => [...franchiseeKeys.course(id), 'ticket-types'] as const,
+  /** Course templates available to the create wizard (7A). */
+  courseTemplates: () => [...franchiseeKeys.courses(), 'templates'] as const,
 
   bookings: () => [...franchiseeKeys.all, 'bookings'] as const,
   booking: (id: string) => [...franchiseeKeys.bookings(), id] as const,

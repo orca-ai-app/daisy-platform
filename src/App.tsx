@@ -55,6 +55,16 @@ const InstanceDetail = lazy(() =>
   import('@/features/hq/courses/instances').then((m) => ({ default: m.InstanceDetail })),
 );
 
+/*
+ * Wave 7 (M2): franchisee course-management pages. Lazy-loaded — the list
+ * carries a month calendar and the create wizard pulls in the territory map /
+ * geocode flow, so they stay off the dashboard's critical path.
+ */
+const FranchiseeCoursesList = lazy(() => import('@/features/franchisee/courses/CoursesList'));
+const FranchiseeCreateCourse = lazy(() => import('@/features/franchisee/courses/CreateCourse'));
+const FranchiseeCourseDetail = lazy(() => import('@/features/franchisee/courses/CourseDetail'));
+const FranchiseeEditCourse = lazy(() => import('@/features/franchisee/courses/EditCourse'));
+
 // 5-minute staleTime by default — Daisy's data (franchisees, territories,
 // templates, billing runs) all change on a human timescale, not a real-time
 // one. The previous 30s was triggering refetches on almost every interaction
@@ -201,6 +211,41 @@ export default function App() {
                 <Route path="dashboard" element={<FranchiseeDashboard />} />
                 <Route path="profile" element={<FranchiseeProfile />} />
                 <Route path="territories" element={<FranchiseeTerritories />} />
+
+                {/* Wave 7 (M2): course management. `new` must precede `:id`
+                    so it isn't swallowed by the param route. */}
+                <Route
+                  path="courses"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeCoursesList />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="courses/new"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeCreateCourse />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="courses/:id"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeCourseDetail />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="courses/:id/edit"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeEditCourse />
+                    </LazyRoute>
+                  }
+                />
               </Route>
 
               <Route path="*" element={<Navigate to="/login" replace />} />

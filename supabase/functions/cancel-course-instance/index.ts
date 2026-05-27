@@ -87,24 +87,26 @@ Deno.serve(async (req: Request) => {
   });
 
   // ---------------------------------------------------------------------
-  // HQ check
+  // Auth check: HQ or owning franchisee (widened in Wave 7B).
+  //
+  // Ownership is verified after instance load so 404 fires first for
+  // unknown ids.  Predicate:
+  //   actor.is_hq === true  OR  actor.id === instance.franchisee_id
   // ---------------------------------------------------------------------
-  const actor = await admin
+  const actorResult = await admin
     .from('da_franchisees')
     .select('id, is_hq, name')
     .eq('auth_user_id', authUserId)
     .maybeSingle();
 
-  if (actor.error) {
-    console.error('franchisee lookup failed', actor.error);
+  if (actorResult.error) {
+    console.error('franchisee lookup failed', actorResult.error);
     return jsonResponse({ error: 'Failed to verify caller' }, 500);
   }
-  if (!actor.data) {
+  if (!actorResult.data) {
     return jsonResponse({ error: 'Caller is not provisioned' }, 403);
   }
-  if (!actor.data.is_hq) {
-    return jsonResponse({ error: 'HQ access required' }, 403);
-  }
+  const actor = actorResult.data as { id: string; is_hq: boolean; name: string };
 
   // ---------------------------------------------------------------------
   // Parse + validate body
@@ -148,6 +150,12 @@ Deno.serve(async (req: Request) => {
   }
 
   const beforeRow = before.data as Record<string, unknown>;
+
+  // Ownership check: HQ may cancel any instance; a franchisee may only
+  // cancel their own.  Runs after load so 404 fires first.
+  if (!actor.is_hq && actor.id !== (beforeRow.franchisee_id as string)) {
+    return jsonResponse({ error: 'You do not own this course instance' }, 403);
+  }
 
   // Count bookings against this instance (any status — informational).
   const bookingsCountQuery = await admin
@@ -196,9 +204,11 @@ Deno.serve(async (req: Request) => {
 
   const description = `Course at ${venuePostcode} on ${eventDate} cancelled — reason: ${trimmedReason}`;
 
+  const actorType = actor.is_hq ? 'hq' : 'franchisee';
+
   const activityInsert = await admin.from('da_activities').insert({
-    actor_type: 'hq',
-    actor_id: actor.data.id,
+    actor_type: actorType,
+    actor_id: actor.id,
     entity_type: 'course_instance',
     entity_id: body.id,
     action: 'course_instance_cancelled',
