@@ -1,0 +1,84 @@
+import {
+  LayoutDashboard,
+  GraduationCap,
+  CalendarCheck,
+  Users,
+  Percent,
+  CreditCard,
+  UserCog,
+  type LucideIcon,
+} from 'lucide-react';
+
+/**
+ * Single source of truth for the franchisee portal's primary navigation.
+ *
+ * Wave 6 (M2) ships Dashboard, Profile and Territories as real routes;
+ * the remaining links (Courses, Bookings, Clients, Discounts, Payments)
+ * are declared here so the shell's nav is complete from day one. Until a
+ * later wave wires their routes in App.tsx, those paths fall through to the
+ * catch-all and redirect — set `ready: false` so the layout can render them
+ * disabled / "coming soon" if it chooses. The builders decide presentation;
+ * this array is just the data.
+ */
+export interface FranchiseeNavLink {
+  label: string;
+  path: string;
+  icon: LucideIcon;
+  /**
+   * `true` once the route exists in App.tsx. Wave 6 routes are ready;
+   * later-wave routes are flagged `false` until their wave lands.
+   */
+  ready: boolean;
+  /** Highlight this nav item for any nested route under this prefix. */
+  matchPrefix?: string;
+}
+
+export const franchiseeNavLinks: FranchiseeNavLink[] = [
+  {
+    label: 'Dashboard',
+    path: '/franchisee/dashboard',
+    icon: LayoutDashboard,
+    ready: true,
+  },
+  {
+    label: 'Courses',
+    path: '/franchisee/courses',
+    icon: GraduationCap,
+    ready: false,
+    matchPrefix: '/franchisee/courses',
+  },
+  {
+    label: 'Bookings',
+    path: '/franchisee/bookings',
+    icon: CalendarCheck,
+    ready: false,
+    matchPrefix: '/franchisee/bookings',
+  },
+  {
+    label: 'Clients',
+    path: '/franchisee/clients',
+    icon: Users,
+    ready: false,
+    matchPrefix: '/franchisee/clients',
+  },
+  {
+    label: 'Discounts',
+    path: '/franchisee/discounts',
+    icon: Percent,
+    ready: false,
+    matchPrefix: '/franchisee/discounts',
+  },
+  {
+    label: 'Payments',
+    path: '/franchisee/payments',
+    icon: CreditCard,
+    ready: false,
+    matchPrefix: '/franchisee/payments',
+  },
+  {
+    label: 'Profile',
+    path: '/franchisee/profile',
+    icon: UserCog,
+    ready: true,
+  },
+];

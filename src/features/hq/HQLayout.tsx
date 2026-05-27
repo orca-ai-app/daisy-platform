@@ -7,6 +7,7 @@ import { ErrorFallback } from '@/components/error-boundary/ErrorFallback';
 import { useRole } from '@/features/auth/RoleContext';
 import { getInitials } from '@/utils/initials';
 import { cn } from '@/lib/utils';
+import { DevRoleSwitch } from '@/features/franchisee/DevRoleSwitch';
 
 interface HQNavItem {
   to: string;
@@ -86,6 +87,7 @@ export function HQLayout() {
           <Outlet />
         </ErrorBoundary>
       </main>
+      <DevRoleSwitch />
     </div>
   );
 }
