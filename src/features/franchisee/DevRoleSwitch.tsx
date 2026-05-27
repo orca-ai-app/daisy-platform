@@ -41,7 +41,7 @@ export function DevRoleSwitch() {
       type="button"
       onClick={handleClick}
       className="shadow-lift fixed right-4 bottom-4 z-[60] inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-100 px-4 py-2 text-sm font-bold text-amber-900 transition-colors hover:bg-amber-200"
-      title="Dev only — flips your role in memory; refresh to restore"
+      title="Dev only - flips your role in memory; refresh to restore"
     >
       <Repeat aria-hidden className="h-4 w-4" />
       {label}

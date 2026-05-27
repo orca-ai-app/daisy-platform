@@ -100,6 +100,8 @@ interface CreateCourseInstanceRequest {
   bespoke_details?: string | null;
   ticket_types: CreateCourseTicketTypeInput[];
   out_of_territory_confirmed?: boolean;
+  /** Optional: the private client this course is for (Wave 9C / migration 021). */
+  private_client_id?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +300,15 @@ function validateBody(
     }
   }
 
+  // private_client_id — optional UUID or null.
+  if (
+    b.private_client_id !== undefined &&
+    b.private_client_id !== null &&
+    (typeof b.private_client_id !== 'string' || !UUID_RE.test(b.private_client_id as string))
+  ) {
+    return { ok: false, error: 'private_client_id must be a valid UUID or null' };
+  }
+
   return {
     ok: true,
     value: {
@@ -314,6 +325,10 @@ function validateBody(
       bespoke_details: typeof b.bespoke_details === 'string' ? b.bespoke_details || null : null,
       ticket_types: b.ticket_types as CreateCourseTicketTypeInput[],
       out_of_territory_confirmed: b.out_of_territory_confirmed === true,
+      private_client_id:
+        typeof b.private_client_id === 'string' && UUID_RE.test(b.private_client_id as string)
+          ? (b.private_client_id as string)
+          : null,
     },
   };
 }
@@ -440,6 +455,34 @@ Deno.serve(async (req: Request) => {
   }
 
   // ----------------------------------------------------------
+  // Validate private_client_id ownership (if provided)
+  //
+  // The client must belong to the calling franchisee. We do this via a
+  // service_role query (bypasses RLS) so we can be explicit about the
+  // ownership error vs a "not found" situation — RLS alone would silently
+  // return 0 rows for both cases, making it hard to give a useful error.
+  // ----------------------------------------------------------
+  if (input.private_client_id) {
+    const clientLookup = await admin
+      .from('da_private_clients')
+      .select('id, franchisee_id')
+      .eq('id', input.private_client_id)
+      .maybeSingle();
+
+    if (clientLookup.error) {
+      console.error('private_client ownership check failed', clientLookup.error);
+      return jsonResponse({ error: 'Failed to verify private client' }, 500);
+    }
+    if (!clientLookup.data) {
+      return jsonResponse({ error: 'Private client not found' }, 404);
+    }
+    const clientRow = clientLookup.data as { id: string; franchisee_id: string };
+    if (clientRow.franchisee_id !== franchisee.id) {
+      return jsonResponse({ error: 'Private client does not belong to your account' }, 403);
+    }
+  }
+
+  // ----------------------------------------------------------
   // INSERT da_course_instances
   // ----------------------------------------------------------
   const instancePayload: Record<string, unknown> = {
@@ -463,6 +506,8 @@ Deno.serve(async (req: Request) => {
     status: 'scheduled',
     out_of_territory: territory.out_of_territory,
     out_of_territory_warning: territory.out_of_territory_warning,
+    // private_client_id is persisted from migration 021; null for public courses.
+    private_client_id: input.private_client_id ?? null,
   };
 
   const instanceInsert = await admin
@@ -547,6 +592,7 @@ Deno.serve(async (req: Request) => {
         event_date: input.event_date,
         venue_postcode: input.venue_postcode,
         out_of_territory_warning: uiWarningForActivity,
+        private_client_id: input.private_client_id ?? null,
       },
       description: `Course '${templateRow.name}' scheduled for ${input.event_date} at ${input.venue_postcode}`,
     })

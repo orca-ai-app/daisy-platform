@@ -1829,14 +1829,312 @@ INSERT INTO da_billing_runs (id, franchisee_id, billing_period_start, billing_pe
 COMMIT;
 
 -- ============================================================
+-- M2 Wave 9D seed — Ashley Carter (franchisee 0001) demo data
+-- Idempotent: DELETE-then-INSERT on distinct id ranges.
+-- Uses the 9d00 sub-namespace for course instances, ticket types,
+-- and bookings; dedicated prefixes for clients, discount codes.
+--
+-- Ashley's ids (established in Wave 5B above):
+--   franchisee:  d1f1aaaa-0000-4000-8000-000000000002
+--   territory 1: d1f2bbbb-0000-4000-8000-000000000001  (SW1A Westminster)
+--   territory 2: d1f2bbbb-0000-4000-8000-000000000002  (SW4  Clapham)
+-- ============================================================
+
+BEGIN;
+
+-- ── Cleanup (idempotent) ───────────────────────────────────────────────────
+
+-- Bookings against Ashley's M2 instances (order matters: FK chain)
+DELETE FROM da_bookings WHERE id IN (
+  'd1f6ffff-9d00-4000-8000-000000000001',
+  'd1f6ffff-9d00-4000-8000-000000000002',
+  'd1f6ffff-9d00-4000-8000-000000000003',
+  'd1f6ffff-9d00-4000-8000-000000000004',
+  'd1f6ffff-9d00-4000-8000-000000000005'
+);
+
+-- Ticket types for Ashley's M2 instances
+DELETE FROM da_ticket_types WHERE id IN (
+  'd1f4f190-0000-4000-8000-000000000001',
+  'd1f4f190-0000-4000-8000-000000000002',
+  'd1f4f190-0000-4000-8000-000000000003',
+  'd1f4f190-0000-4000-8000-000000000004',
+  'd1f4f190-0000-4000-8000-000000000005'
+);
+
+-- Course instances (after bookings + ticket types)
+DELETE FROM da_course_instances WHERE id IN (
+  'd1f3cccc-9d00-4000-8000-000000000001',
+  'd1f3cccc-9d00-4000-8000-000000000002',
+  'd1f3cccc-9d00-4000-8000-000000000003',
+  'd1f3cccc-9d00-4000-8000-000000000004',
+  'd1f3cccc-9d00-4000-8000-000000000005'
+);
+
+-- Discount codes
+DELETE FROM da_discount_codes WHERE id IN (
+  'd1fd5c00-0000-4000-8000-000000000001',
+  'd1fd5c00-0000-4000-8000-000000000002'
+);
+
+-- Private clients (after course instances that reference them)
+DELETE FROM da_private_clients WHERE id IN (
+  'd1fa0c00-0000-4000-8000-000000000001',
+  'd1fa0c00-0000-4000-8000-000000000002',
+  'd1fa0c00-0000-4000-8000-000000000003'
+);
+
+-- ── Private clients ────────────────────────────────────────────────────────
+-- 3 clients owned by Ashley. Used to populate the private client dropdown
+-- in CreateCourse step 4 and the Clients list in the franchisee portal.
+
+INSERT INTO da_private_clients (id, franchisee_id, company_name, contact_name, contact_email, contact_phone, notes) VALUES
+  ('d1fa0c00-0000-4000-8000-000000000001', 'd1f1aaaa-0000-4000-8000-000000000002',
+   'Bright Futures Nursery', 'Karen Hodgson', 'karen@brightfuturesnursery.co.uk', '02079000100',
+   'SW1A catchment. Runs courses twice a year for new parents.'),
+  ('d1fa0c00-0000-4000-8000-000000000002', 'd1f1aaaa-0000-4000-8000-000000000002',
+   'Clapham Primary School', 'David Winters', 'dwinters@claphamschool.sch.uk', '02079000200',
+   'Staff first aid refreshers each September.'),
+  ('d1fa0c00-0000-4000-8000-000000000003', 'd1f1aaaa-0000-4000-8000-000000000002',
+   'Westminster Childminders Network', 'Sue Adeyemi', 'sue.adeyemi@wcmn.org.uk', '07700901000',
+   'Group of 8 registered childminders. Book one private session annually.');
+
+-- ── Discount codes ─────────────────────────────────────────────────────────
+-- 2 codes owned by Ashley: one percentage, one fixed.
+
+INSERT INTO da_discount_codes (id, franchisee_id, code, type, value, max_uses, uses_count, valid_from, valid_until, is_active) VALUES
+  ('d1fd5c00-0000-4000-8000-000000000001', 'd1f1aaaa-0000-4000-8000-000000000002',
+   'ASHLEY10', 'percentage', 10, 50, 3,
+   '2026-01-01 00:00:00+00'::timestamptz, '2026-12-31 23:59:59+00'::timestamptz, TRUE),
+  ('d1fd5c00-0000-4000-8000-000000000002', 'd1f1aaaa-0000-4000-8000-000000000002',
+   'SWFIXED15', 'fixed', 1500, NULL, 1,
+   '2026-04-01 00:00:00+00'::timestamptz, NULL, TRUE);
+
+-- ── Course instances (5 total: 3 public + 2 private) ──────────────────────
+-- All scheduled, varied near-future dates in June/July 2026.
+-- The 2 private instances reference Ashley's private clients (via migration 021).
+-- Instances slot 51-55 in the overall sequence for the file summary below.
+
+INSERT INTO da_course_instances (
+  id, franchisee_id, template_id, territory_id,
+  event_date, start_time, end_time,
+  venue_name, venue_address, venue_postcode, lat, lng,
+  visibility, capacity, spots_remaining, price_pence,
+  bespoke_details, status, out_of_territory, private_client_id, created_at
+) SELECT
+  'd1f3cccc-9d00-4000-8000-000000000001',
+  'd1f1aaaa-0000-4000-8000-000000000002',
+  ct.id,
+  'd1f2bbbb-0000-4000-8000-000000000001',
+  '2026-06-14'::date,
+  '10:00:00'::time,
+  '16:00'::time,
+  'St Mary''s Community Hall',
+  '11 Oak Avenue',
+  'SW1A 1AA',
+  51.5014, -0.1419,
+  'public',
+  12, 9, 9500,
+  NULL,
+  'scheduled',
+  FALSE,
+  NULL,
+  '2026-05-15 09:00:00+00'::timestamptz
+FROM da_course_templates ct WHERE ct.slug = 'baby-child-full-day';
+
+INSERT INTO da_course_instances (
+  id, franchisee_id, template_id, territory_id,
+  event_date, start_time, end_time,
+  venue_name, venue_address, venue_postcode, lat, lng,
+  visibility, capacity, spots_remaining, price_pence,
+  bespoke_details, status, out_of_territory, private_client_id, created_at
+) SELECT
+  'd1f3cccc-9d00-4000-8000-000000000002',
+  'd1f1aaaa-0000-4000-8000-000000000002',
+  ct.id,
+  'd1f2bbbb-0000-4000-8000-000000000001',
+  '2026-06-28'::date,
+  '09:30:00'::time,
+  '12:30'::time,
+  'Daisy Studio',
+  '11 Oak Avenue',
+  'SW4 7AA',
+  51.4628, -0.1411,
+  'public',
+  12, 10, 5500,
+  NULL,
+  'scheduled',
+  FALSE,
+  NULL,
+  '2026-05-20 09:00:00+00'::timestamptz
+FROM da_course_templates ct WHERE ct.slug = 'baby-child-2hr';
+
+INSERT INTO da_course_instances (
+  id, franchisee_id, template_id, territory_id,
+  event_date, start_time, end_time,
+  venue_name, venue_address, venue_postcode, lat, lng,
+  visibility, capacity, spots_remaining, price_pence,
+  bespoke_details, status, out_of_territory, private_client_id, created_at
+) SELECT
+  'd1f3cccc-9d00-4000-8000-000000000003',
+  'd1f1aaaa-0000-4000-8000-000000000002',
+  ct.id,
+  'd1f2bbbb-0000-4000-8000-000000000002',
+  '2026-07-12'::date,
+  '10:00:00'::time,
+  '16:00'::time,
+  'Clapham Library Meeting Room',
+  '5 Clapham High Street',
+  'SW4 7UR',
+  51.4628, -0.1411,
+  'public',
+  10, 7, 9500,
+  NULL,
+  'scheduled',
+  FALSE,
+  NULL,
+  '2026-05-22 09:00:00+00'::timestamptz
+FROM da_course_templates ct WHERE ct.slug = 'paediatric-aow';
+
+INSERT INTO da_course_instances (
+  id, franchisee_id, template_id, territory_id,
+  event_date, start_time, end_time,
+  venue_name, venue_address, venue_postcode, lat, lng,
+  visibility, capacity, spots_remaining, price_pence,
+  bespoke_details, status, out_of_territory, private_client_id, created_at
+) SELECT
+  'd1f3cccc-9d00-4000-8000-000000000004',
+  'd1f1aaaa-0000-4000-8000-000000000002',
+  ct.id,
+  'd1f2bbbb-0000-4000-8000-000000000001',
+  '2026-06-19'::date,
+  '09:00:00'::time,
+  '15:00'::time,
+  'Bright Futures Nursery',
+  '22 Vincent Square',
+  'SW1A 2PN',
+  51.5014, -0.1419,
+  'private',
+  8, 7, 9500,
+  'Private session for Bright Futures Nursery staff group.',
+  'scheduled',
+  FALSE,
+  'd1fa0c00-0000-4000-8000-000000000001',
+  '2026-05-18 09:00:00+00'::timestamptz
+FROM da_course_templates ct WHERE ct.slug = 'emergency-paediatric';
+
+INSERT INTO da_course_instances (
+  id, franchisee_id, template_id, territory_id,
+  event_date, start_time, end_time,
+  venue_name, venue_address, venue_postcode, lat, lng,
+  visibility, capacity, spots_remaining, price_pence,
+  bespoke_details, status, out_of_territory, private_client_id, created_at
+) SELECT
+  'd1f3cccc-9d00-4000-8000-000000000005',
+  'd1f1aaaa-0000-4000-8000-000000000002',
+  ct.id,
+  'd1f2bbbb-0000-4000-8000-000000000002',
+  '2026-07-05'::date,
+  '09:00:00'::time,
+  '13:00'::time,
+  'Clapham Primary School',
+  '1 Belmont Road',
+  'SW4 0BZ',
+  51.4628, -0.1411,
+  'private',
+  12, 10, 9500,
+  'Annual staff first aid refresher for Clapham Primary.',
+  'scheduled',
+  FALSE,
+  'd1fa0c00-0000-4000-8000-000000000002',
+  '2026-05-25 09:00:00+00'::timestamptz
+FROM da_course_templates ct WHERE ct.slug = 'paediatric-aow';
+
+-- ── Ticket types (Single per instance — Wave 7 default shape) ─────────────
+
+INSERT INTO da_ticket_types (id, course_instance_id, name, price_pence, seats_consumed, max_available, sort_order) VALUES
+  ('d1f4f190-0000-4000-8000-000000000001', 'd1f3cccc-9d00-4000-8000-000000000001', 'Single', 9500, 1, NULL, 0),
+  ('d1f4f190-0000-4000-8000-000000000002', 'd1f3cccc-9d00-4000-8000-000000000002', 'Single', 5500, 1, NULL, 0),
+  ('d1f4f190-0000-4000-8000-000000000003', 'd1f3cccc-9d00-4000-8000-000000000003', 'Single', 9500, 1, NULL, 0),
+  ('d1f4f190-0000-4000-8000-000000000004', 'd1f3cccc-9d00-4000-8000-000000000004', 'Single', 9500, 1, NULL, 0),
+  ('d1f4f190-0000-4000-8000-000000000005', 'd1f3cccc-9d00-4000-8000-000000000005', 'Single', 9500, 1, NULL, 0);
+
+-- ── Bookings (5, against Ashley's new instances) ──────────────────────────
+-- Mix of payment_status: paid, pending, manual.
+-- Mix of booking_status: confirmed, attended.
+-- created_at in May 2026 so dashboard KPIs show MTD revenue.
+-- References customers from the existing customer pool (ids 007-011).
+-- Booking refs use S-prefix per the file convention (avoid live sequence).
+
+INSERT INTO da_bookings (
+  id, booking_reference, course_instance_id, franchisee_id, customer_id, ticket_type_id,
+  quantity, total_price_pence, payment_status, stripe_payment_intent_id, stripe_checkout_session_id,
+  booking_status, cancellation_reason, refund_amount_pence, notes, created_at
+) VALUES
+  ('d1f6ffff-9d00-4000-8000-000000000001',
+   'DA-2026-00001-S101',
+   'd1f3cccc-9d00-4000-8000-000000000001',
+   'd1f1aaaa-0000-4000-8000-000000000002',
+   'd1f5eeee-0000-4000-8000-000000000007',
+   'd1f4f190-0000-4000-8000-000000000001',
+   1, 9500, 'paid', 'pi_seed_m2_1', 'cs_seed_m2_1',
+   'confirmed', NULL, 0, 'seed-dev m2', '2026-05-15 10:00:00+00'::timestamptz),
+
+  ('d1f6ffff-9d00-4000-8000-000000000002',
+   'DA-2026-00001-S102',
+   'd1f3cccc-9d00-4000-8000-000000000001',
+   'd1f1aaaa-0000-4000-8000-000000000002',
+   'd1f5eeee-0000-4000-8000-000000000008',
+   'd1f4f190-0000-4000-8000-000000000001',
+   1, 9500, 'paid', 'pi_seed_m2_2', 'cs_seed_m2_2',
+   'attended', NULL, 0, 'seed-dev m2', '2026-05-16 11:00:00+00'::timestamptz),
+
+  ('d1f6ffff-9d00-4000-8000-000000000003',
+   'DA-2026-00001-S103',
+   'd1f3cccc-9d00-4000-8000-000000000002',
+   'd1f1aaaa-0000-4000-8000-000000000002',
+   'd1f5eeee-0000-4000-8000-000000000009',
+   'd1f4f190-0000-4000-8000-000000000002',
+   1, 5500, 'pending', NULL, NULL,
+   'confirmed', NULL, 0, 'seed-dev m2', '2026-05-18 09:00:00+00'::timestamptz),
+
+  ('d1f6ffff-9d00-4000-8000-000000000004',
+   'DA-2026-00001-S104',
+   'd1f3cccc-9d00-4000-8000-000000000004',
+   'd1f1aaaa-0000-4000-8000-000000000002',
+   'd1f5eeee-0000-4000-8000-000000000010',
+   'd1f4f190-0000-4000-8000-000000000004',
+   1, 9500, 'manual', NULL, NULL,
+   'confirmed', NULL, 0, 'seed-dev m2', '2026-05-19 14:00:00+00'::timestamptz),
+
+  ('d1f6ffff-9d00-4000-8000-000000000005',
+   'DA-2026-00001-S105',
+   'd1f3cccc-9d00-4000-8000-000000000005',
+   'd1f1aaaa-0000-4000-8000-000000000002',
+   'd1f5eeee-0000-4000-8000-000000000011',
+   'd1f4f190-0000-4000-8000-000000000005',
+   1, 9500, 'paid', 'pi_seed_m2_5', 'cs_seed_m2_5',
+   'confirmed', NULL, 0, 'seed-dev m2', '2026-05-25 15:00:00+00'::timestamptz);
+
+COMMIT;
+
+-- ============================================================
 -- Summary of seeded counts (verify with: SELECT count(*) FROM <table>):
 --   da_franchisees:       +10 (10 active non-HQ-or-test = 9 named + 1 F001 = 10)
 --   da_territories:       +20 (17 active, 3 vacant = 85% coverage)
 --   da_customers:         +60
---   da_course_instances:  +50
---   da_ticket_types:      +126
---   da_bookings:          +100 (April MTD: 30 bookings, £5365.00)
+--   da_course_instances:  +55 (50 Wave 5B + 5 M2 Wave 9D Ashley)
+--   da_ticket_types:      +131 (126 Wave 5B + 5 M2 Wave 9D Ashley)
+--   da_bookings:          +105 (100 Wave 5B + 5 M2 Wave 9D Ashley)
+--   da_private_clients:   +3  (M2 Wave 9D Ashley)
+--   da_discount_codes:    +2  (M2 Wave 9D Ashley)
 --   da_interest_forms:    +4
 --   da_activities:        +30
 --   da_billing_runs:      +1 (March 2026, Lucy Brown)
+--
+-- Ashley dashboard KPIs (as at 2026-05-27, May MTD):
+--   Revenue MTD:          £380.00  (4x£95 + 1x£55 paid/manual bookings in May)
+--   Bookings MTD:         5
+--   Upcoming courses:     5 (all 5 new instances are status=scheduled)
+--   Outstanding capacity: 43 spots remaining across the 5 new instances
 -- ============================================================

@@ -104,6 +104,12 @@ export interface CourseInstance {
   out_of_territory: boolean;
   out_of_territory_warning: OutOfTerritoryWarningColumn;
   cancellation_reason: string | null;
+  /**
+   * Optional FK to da_private_clients (migration 021). Only relevant when
+   * visibility='private'. The Wave 8 booking webhook copies this onto
+   * da_bookings.private_client_id automatically.
+   */
+  private_client_id: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +195,12 @@ export interface CreateCourseFormValues {
    * The wizard blocks submission while a warning is present and this is false.
    */
   out_of_territory_confirmed: boolean;
+  /**
+   * Optional: the private client this course is being run for (migration 021).
+   * Only relevant when visibility='private'. Wave 9C wires this into Step 4
+   * of the create wizard via <PrivateClientSelect>.
+   */
+  private_client_id?: string | null;
 }
 
 /** A single ticket-type row in the create wizard / request body. */
@@ -239,6 +251,12 @@ export interface CreateCourseInstanceRequest {
    * true, the function rejects with 409.
    */
   out_of_territory_confirmed?: boolean;
+  /**
+   * Optional: the private client this course is being run for (migration 021).
+   * The Edge Function validates the UUID belongs to the caller before persisting.
+   * Only meaningful for visibility='private' courses.
+   */
+  private_client_id?: string | null;
 }
 
 /** 2xx success body for create-course-instance. */
