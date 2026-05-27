@@ -36,7 +36,7 @@ import type { CourseInstanceStatus } from './types';
 // Constants
 // ---------------------------------------------------------------------------
 
-type DatePreset = 'all' | 'next-30-days' | 'this-month' | 'last-month' | 'past' | 'custom';
+export type DatePreset = 'all' | 'next-30-days' | 'this-month' | 'last-month' | 'past' | 'custom';
 
 const STATUS_OPTIONS: ReadonlyArray<{ value: CourseInstanceStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All statuses' },
@@ -62,7 +62,7 @@ const DATE_OPTIONS: ReadonlyArray<{ value: DatePreset; label: string }> = [
  * Resolve a DatePreset to {from, to} 'YYYY-MM-DD' bounds (inclusive).
  * Uses integer arithmetic on y/m/d parts to avoid BST-related Date drift.
  */
-function resolvePreset(
+export function resolvePreset(
   preset: DatePreset,
   customFrom?: string,
   customTo?: string,
