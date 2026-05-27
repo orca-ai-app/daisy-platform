@@ -15,7 +15,10 @@ import { TemplatesPage } from '@/features/hq/templates';
 import { ActivityPage } from '@/features/hq/activity';
 import { InterestFormsPage } from '@/features/hq/interest-forms';
 import { RouteLoadingSkeleton } from '@/components/daisy';
-import FranchiseeDashboard from '@/features/franchisee/FranchiseeDashboard';
+import { FranchiseeLayout } from '@/features/franchisee/FranchiseeLayout';
+import FranchiseeDashboard from '@/features/franchisee/Dashboard';
+import FranchiseeProfile from '@/features/franchisee/Profile';
+import FranchiseeTerritories from '@/features/franchisee/Territories';
 
 /*
  * Wave 5A code-split: the three heaviest pages each pull in a sizeable
@@ -185,14 +188,21 @@ export default function App() {
                 />
               </Route>
 
+              {/* Wave 6 (M2): franchisee portal shell wraps every nested route. */}
               <Route
-                path="/franchisee/dashboard"
+                path="/franchisee"
                 element={
                   <RequireRole franchisee>
-                    <FranchiseeDashboard />
+                    <FranchiseeLayout />
                   </RequireRole>
                 }
-              />
+              >
+                <Route index element={<Navigate to="/franchisee/dashboard" replace />} />
+                <Route path="dashboard" element={<FranchiseeDashboard />} />
+                <Route path="profile" element={<FranchiseeProfile />} />
+                <Route path="territories" element={<FranchiseeTerritories />} />
+              </Route>
+
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
             <Toaster richColors position="top-right" />
