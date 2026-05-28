@@ -12,7 +12,17 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { formatInTimeZone } from 'date-fns-tz';
-import { Pencil, XCircle, Plus, Trash2, Edit2 } from 'lucide-react';
+import {
+  Pencil,
+  XCircle,
+  Plus,
+  Trash2,
+  Edit2,
+  Copy,
+  RefreshCw,
+  MessageCircle,
+  Link2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { PageHeader, StatusPill, EmptyState } from '@/components/daisy';
@@ -52,6 +62,16 @@ import {
   type TicketTypeInput,
 } from './courseDetailQueries';
 import type { TicketType } from './types';
+import { useCreatePaymentLink } from '@/features/franchisee/payments/paymentLinkQueries';
+import { useOwnProfile } from '@/features/franchisee/profileQueries';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // ---------------------------------------------------------------------------
 // Date / time helpers (BST-safe — never reconstruct via toISOString)
@@ -117,8 +137,16 @@ export default function CourseDetail() {
   const [editingTicket, setEditingTicket] = useState<TicketType | null>(null);
   const [deletingTicket, setDeletingTicket] = useState<TicketType | null>(null);
 
+  // Payment link state
+  const [selectedTicketTypeId, setSelectedTicketTypeId] = useState<string>('');
+  const [linkQuantity, setLinkQuantity] = useState<number>(1);
+
   const { data: instance, isLoading, error } = useCourseInstance(id);
   const { data: ticketTypes = [], isLoading: ticketTypesLoading } = useCourseTicketTypes(id);
+  const { data: ownProfile } = useOwnProfile();
+  const createPaymentLink = useCreatePaymentLink();
+
+  const stripeConnected = ownProfile?.stripe_connected ?? false;
   const activity = useActivityLog({ entityType: 'course_instance', entityId: id, limit: 25 });
 
   const isCancelled = instance?.status === 'cancelled';
@@ -360,6 +388,22 @@ export default function CourseDetail() {
                   </dl>
                 </CardContent>
               </Card>
+
+              {/* Payment link card — private courses only */}
+              {instance.visibility === 'private' ? (
+                <PaymentLinkCard
+                  courseInstanceId={instance.id}
+                  paymentLinkUrl={instance.stripe_payment_link ?? null}
+                  ticketTypes={ticketTypes}
+                  stripeConnected={stripeConnected}
+                  isCancelled={isCancelled}
+                  selectedTicketTypeId={selectedTicketTypeId}
+                  onTicketTypeChange={setSelectedTicketTypeId}
+                  linkQuantity={linkQuantity}
+                  onQuantityChange={setLinkQuantity}
+                  createPaymentLink={createPaymentLink}
+                />
+              ) : null}
             </aside>
           </div>
 
@@ -753,6 +797,255 @@ function DeleteTicketTypeDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PaymentLinkCard — private courses only (Wave 8B)
+// ---------------------------------------------------------------------------
+
+import type { UseMutationResult } from '@tanstack/react-query';
+import type {
+  CreatePaymentLinkRequest,
+  CreatePaymentLinkResponse,
+} from '@/features/franchisee/payments/types';
+
+interface PaymentLinkCardProps {
+  courseInstanceId: string;
+  paymentLinkUrl: string | null;
+  ticketTypes: TicketType[];
+  stripeConnected: boolean;
+  isCancelled: boolean;
+  selectedTicketTypeId: string;
+  onTicketTypeChange: (id: string) => void;
+  linkQuantity: number;
+  onQuantityChange: (q: number) => void;
+  createPaymentLink: UseMutationResult<CreatePaymentLinkResponse, Error, CreatePaymentLinkRequest>;
+}
+
+function PaymentLinkCard({
+  courseInstanceId,
+  paymentLinkUrl,
+  ticketTypes,
+  stripeConnected,
+  isCancelled,
+  selectedTicketTypeId,
+  onTicketTypeChange,
+  linkQuantity,
+  onQuantityChange,
+  createPaymentLink,
+}: PaymentLinkCardProps) {
+  // Auto-select the first ticket type if none is selected yet.
+  const effectiveTicketTypeId = selectedTicketTypeId || ticketTypes[0]?.id || '';
+
+  const handleGenerate = async () => {
+    if (!effectiveTicketTypeId) {
+      toast.error('Add at least one ticket type before generating a payment link.');
+      return;
+    }
+    try {
+      const result = await createPaymentLink.mutateAsync({
+        course_instance_id: courseInstanceId,
+        ticket_type_id: effectiveTicketTypeId,
+        quantity: linkQuantity,
+      });
+      toast.success('Payment link generated');
+      // Write the fresh URL into the clipboard as a convenience.
+      await navigator.clipboard.writeText(result.payment_link_url).catch(() => undefined);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to generate payment link');
+    }
+  };
+
+  const handleCopy = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard');
+    } catch {
+      toast.error('Could not copy to clipboard');
+    }
+  };
+
+  const whatsAppHref = (url: string) => {
+    const text = encodeURIComponent(`Book your place: ${url}`);
+    return `https://wa.me/?text=${text}`;
+  };
+
+  const canGenerate = stripeConnected && !isCancelled;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Link2 aria-hidden className="text-daisy-primary h-4 w-4" />
+          <CardTitle>Payment link</CardTitle>
+        </div>
+        <CardDescription>
+          Generate a Stripe-hosted payment link to share with your private client.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {paymentLinkUrl ? (
+          <>
+            {/* Existing link */}
+            <div className="border-daisy-line bg-daisy-paper rounded-[8px] border px-3 py-2">
+              <p className="text-daisy-muted mb-1 text-[11px] font-bold tracking-wider uppercase">
+                Active link
+              </p>
+              <a
+                href={paymentLinkUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-daisy-primary text-sm font-medium break-all underline underline-offset-2"
+              >
+                {paymentLinkUrl}
+              </a>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => void handleCopy(paymentLinkUrl)}>
+                <Copy aria-hidden className="h-4 w-4" />
+                Copy link
+              </Button>
+
+              <Button size="sm" variant="outline" asChild>
+                <a href={whatsAppHref(paymentLinkUrl)} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle aria-hidden className="h-4 w-4" />
+                  Send via WhatsApp
+                </a>
+              </Button>
+            </div>
+
+            {/* Regenerate section */}
+            <div className="border-daisy-line-soft border-t pt-3">
+              <p className="text-daisy-muted mb-3 text-xs">
+                Regenerating creates a new link. The old link remains valid in Stripe — share only
+                the new one.
+              </p>
+              {ticketTypes.length > 1 ? (
+                <div className="mb-2 flex flex-col gap-1.5">
+                  <label className="text-daisy-muted text-[11px] font-bold tracking-wider uppercase">
+                    Ticket type
+                  </label>
+                  <Select value={effectiveTicketTypeId} onValueChange={onTicketTypeChange}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Select ticket type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ticketTypes.map((tt) => (
+                        <SelectItem key={tt.id} value={tt.id}>
+                          {tt.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-block">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleGenerate()}
+                        disabled={!canGenerate || createPaymentLink.isPending}
+                      >
+                        <RefreshCw aria-hidden className="h-4 w-4" />
+                        {createPaymentLink.isPending ? 'Regenerating…' : 'Regenerate'}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {!stripeConnected ? (
+                    <TooltipContent side="bottom">
+                      Connect your Stripe account on the Payments page first.
+                    </TooltipContent>
+                  ) : null}
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* No link yet — show the generator controls */}
+            {ticketTypes.length > 0 ? (
+              <>
+                {ticketTypes.length > 1 ? (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-daisy-muted text-[11px] font-bold tracking-wider uppercase">
+                      Ticket type
+                    </label>
+                    <Select value={effectiveTicketTypeId} onValueChange={onTicketTypeChange}>
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder="Select ticket type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ticketTypes.map((tt) => (
+                          <SelectItem key={tt.id} value={tt.id}>
+                            {tt.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <p className="text-daisy-muted text-sm">
+                    Ticket:{' '}
+                    <span className="text-daisy-ink font-medium">{ticketTypes[0]?.name}</span>
+                  </p>
+                )}
+
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="pl-quantity"
+                    className="text-daisy-muted text-[11px] font-bold tracking-wider uppercase"
+                  >
+                    Quantity
+                  </label>
+                  <input
+                    id="pl-quantity"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={linkQuantity}
+                    onChange={(e) => onQuantityChange(Math.max(1, Number(e.target.value)))}
+                    className="border-daisy-line text-daisy-ink focus-visible:border-daisy-primary h-8 w-20 rounded-[6px] border-2 bg-white px-2 text-sm focus-visible:outline-none"
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-daisy-muted text-sm">
+                Add at least one ticket type before generating a payment link.
+              </p>
+            )}
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-block">
+                    <Button
+                      size="sm"
+                      onClick={() => void handleGenerate()}
+                      disabled={
+                        !canGenerate || createPaymentLink.isPending || ticketTypes.length === 0
+                      }
+                    >
+                      <Link2 aria-hidden className="h-4 w-4" />
+                      {createPaymentLink.isPending ? 'Generating…' : 'Generate payment link'}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {!stripeConnected ? (
+                  <TooltipContent side="bottom">
+                    Connect your Stripe account on the Payments page first.
+                  </TooltipContent>
+                ) : null}
+              </Tooltip>
+            </TooltipProvider>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
