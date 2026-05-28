@@ -276,10 +276,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     await admin
       .from('da_activities')
       .insert({
+        // entity_id is NOT NULL (UUID) per migration 006. There is no natural
+        // entity for a generic webhook failure, so mint a synthetic UUID — same
+        // pattern as geocode-postcode's system events. The real event id lives
+        // in metadata.event_id.
         actor_type: 'system',
         actor_id: null,
         entity_type: 'stripe_event',
-        entity_id: null,
+        entity_id: crypto.randomUUID(),
         action: 'webhook_processing_error',
         metadata: {
           event_id: event.id,
