@@ -84,6 +84,13 @@ const FranchiseePaymentsPage = lazy(() =>
   import('@/features/franchisee/payments').then((m) => ({ default: m.PaymentsPage })),
 );
 
+/*
+ * Wave 9A (M2): franchisee bookings list + detail. Lazy-loaded — sits behind
+ * the Bookings nav link and is only reached after several interactions.
+ */
+const FranchiseeBookingsList = lazy(() => import('@/features/franchisee/bookings/BookingsList'));
+const FranchiseeBookingDetail = lazy(() => import('@/features/franchisee/bookings/BookingDetail'));
+
 // 5-minute staleTime by default — Daisy's data (franchisees, territories,
 // templates, billing runs) all change on a human timescale, not a real-time
 // one. The previous 30s was triggering refetches on almost every interaction
@@ -292,6 +299,24 @@ export default function App() {
                   element={
                     <LazyRoute>
                       <FranchiseePaymentsPage />
+                    </LazyRoute>
+                  }
+                />
+
+                {/* Wave 9A (M2): franchisee bookings list + detail. */}
+                <Route
+                  path="bookings"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeBookingsList />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="bookings/:id"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeBookingDetail />
                     </LazyRoute>
                   }
                 />
