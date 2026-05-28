@@ -73,6 +73,17 @@ const FranchiseeEditCourse = lazy(() => import('@/features/franchisee/courses/Ed
 const FranchiseeDiscountsList = lazy(() => import('@/features/franchisee/discounts/DiscountsList'));
 const FranchiseeClientsList = lazy(() => import('@/features/franchisee/clients/ClientsList'));
 
+/*
+ * Wave 8 (M2): Stripe Connect / payments hub (8A). Lazy-loaded — the page is
+ * reached from the Payments nav link and also serves as the Account Link
+ * `return_url` / `refresh_url` landing (it reads `?success` / `?refresh` query
+ * params; query params do not change the matched route, so no extra route is
+ * needed). 8B's "Generate payment link" UI lives inside Wave 7's CourseDetail.
+ */
+const FranchiseePaymentsPage = lazy(() =>
+  import('@/features/franchisee/payments').then((m) => ({ default: m.PaymentsPage })),
+);
+
 // 5-minute staleTime by default — Daisy's data (franchisees, territories,
 // templates, billing runs) all change on a human timescale, not a real-time
 // one. The previous 30s was triggering refetches on almost every interaction
@@ -269,6 +280,18 @@ export default function App() {
                   element={
                     <LazyRoute>
                       <FranchiseeClientsList />
+                    </LazyRoute>
+                  }
+                />
+
+                {/* Wave 8 (M2): Stripe Connect / payments hub (8A). Also the
+                    Account Link return/refresh landing — the page reads
+                    `?success` / `?refresh` query params off this same route. */}
+                <Route
+                  path="payments"
+                  element={
+                    <LazyRoute>
+                      <FranchiseePaymentsPage />
                     </LazyRoute>
                   }
                 />

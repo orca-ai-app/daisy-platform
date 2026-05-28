@@ -72,7 +72,7 @@ export const franchiseeNavLinks: FranchiseeNavLink[] = [
     label: 'Payments',
     path: '/franchisee/payments',
     icon: CreditCard,
-    ready: false,
+    ready: true,
     matchPrefix: '/franchisee/payments',
   },
   {
