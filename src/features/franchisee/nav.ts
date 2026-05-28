@@ -51,7 +51,7 @@ export const franchiseeNavLinks: FranchiseeNavLink[] = [
     label: 'Bookings',
     path: '/franchisee/bookings',
     icon: CalendarCheck,
-    ready: false,
+    ready: true,
     matchPrefix: '/franchisee/bookings',
   },
   {
