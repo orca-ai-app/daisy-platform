@@ -1,11 +1,10 @@
 /**
- * Wave 8 VERIFIER peer test — <StripeConnectCard> render states.
+ * Peer test — <StripeConnectCard> render states (OAuth model).
  *
- * Covers the three documented states (StripeConnectCard.tsx header):
- *   State 1 — no stripe_account_id            → "Connect with Stripe" CTA.
- *   State 2 — account created, !charges       → "Finish setting up" CTA + badge.
- *   State 3 — charges_enabled                 → success card, masked id,
- *                                               dashboard link, disabled Disconnect.
+ * Covers the documented states (StripeConnectCard.tsx header):
+ *   State 1 — not connected   → "Connect with Stripe" CTA + 2% fee copy.
+ *   State 2 — connected       → success card, "Connected" badge, masked id,
+ *                               dashboard link, working Disconnect button.
  * Plus the loading skeleton and the error state.
  *
  * The connect-status / mutation hooks and TanStack's useQueryClient are mocked
@@ -20,13 +19,13 @@ import type { ConnectStatus } from './types';
 // --- Mocks -----------------------------------------------------------------
 
 const connectStatusMock = vi.fn();
-const createAccountMock = vi.fn();
-const createLinkMock = vi.fn();
+const startOAuthMock = vi.fn();
+const disconnectMock = vi.fn();
 
 vi.mock('./connectQueries', () => ({
   useConnectStatus: () => connectStatusMock(),
-  useCreateConnectAccount: () => createAccountMock(),
-  useCreateAccountLink: () => createLinkMock(),
+  useStartStripeOAuth: () => startOAuthMock(),
+  useDisconnectStripe: () => disconnectMock(),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -53,8 +52,8 @@ const idleMutation = { mutate: vi.fn(), isPending: false };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  createAccountMock.mockReturnValue({ ...idleMutation });
-  createLinkMock.mockReturnValue({ ...idleMutation });
+  startOAuthMock.mockReturnValue({ ...idleMutation });
+  disconnectMock.mockReturnValue({ ...idleMutation });
 });
 
 // --- Loading + error -------------------------------------------------------
@@ -63,7 +62,6 @@ describe('StripeConnectCard loading/error', () => {
   it('renders skeletons while status is loading', () => {
     connectStatusMock.mockReturnValue({ isLoading: true, isError: false, data: undefined });
     const { container } = render(<StripeConnectCard />);
-    // Skeleton placeholders present; no CTA yet.
     expect(container.querySelectorAll('[class*="animate-pulse"]').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /connect with stripe/i })).toBeNull();
   });
@@ -77,12 +75,12 @@ describe('StripeConnectCard loading/error', () => {
 
 // --- State 1: not connected ------------------------------------------------
 
-describe('StripeConnectCard — State 1 (no account)', () => {
+describe('StripeConnectCard — State 1 (not connected)', () => {
   beforeEach(() => {
     connectStatusMock.mockReturnValue({
       isLoading: false,
       isError: false,
-      data: status({ stripe_account_id: null }),
+      data: status({ stripe_account_id: null, stripe_connected: false }),
     });
   });
 
@@ -94,46 +92,13 @@ describe('StripeConnectCard — State 1 (no account)', () => {
 
   it('does not show the connected success badge', () => {
     render(<StripeConnectCard />);
-    expect(screen.queryByText(/charges enabled/i)).toBeNull();
+    expect(screen.queryByText(/^connected$/i)).toBeNull();
   });
 });
 
-// --- State 2: account created, not yet charges_enabled ---------------------
+// --- State 2: connected ----------------------------------------------------
 
-describe('StripeConnectCard — State 2 (mid-onboarding)', () => {
-  it('shows "Finish setting up" and a setup-incomplete badge', () => {
-    connectStatusMock.mockReturnValue({
-      isLoading: false,
-      isError: false,
-      data: status({
-        stripe_account_id: 'acct_TEST123456789',
-        charges_enabled: false,
-        details_submitted: false,
-      }),
-    });
-    render(<StripeConnectCard />);
-    expect(screen.getByRole('button', { name: /finish setting up/i })).toBeInTheDocument();
-    expect(screen.getByText(/setup incomplete/i)).toBeInTheDocument();
-  });
-
-  it('shows "Pending verification" once details are submitted', () => {
-    connectStatusMock.mockReturnValue({
-      isLoading: false,
-      isError: false,
-      data: status({
-        stripe_account_id: 'acct_TEST123456789',
-        charges_enabled: false,
-        details_submitted: true,
-      }),
-    });
-    render(<StripeConnectCard />);
-    expect(screen.getByText(/pending verification/i)).toBeInTheDocument();
-  });
-});
-
-// --- State 3: connected and charges enabled --------------------------------
-
-describe('StripeConnectCard — State 3 (connected)', () => {
+describe('StripeConnectCard — State 2 (connected)', () => {
   beforeEach(() => {
     connectStatusMock.mockReturnValue({
       isLoading: false,
@@ -147,9 +112,9 @@ describe('StripeConnectCard — State 3 (connected)', () => {
     });
   });
 
-  it('shows the charges-enabled badge and masks the account id', () => {
+  it('shows the Connected badge and masks the account id', () => {
     render(<StripeConnectCard />);
-    expect(screen.getByText(/charges enabled/i)).toBeInTheDocument();
+    expect(screen.getByText(/^connected$/i)).toBeInTheDocument();
     // mask keeps first 8 + last 4: "acct_123…ABCD"
     expect(screen.getByText(/acct_123.*ABCD/)).toBeInTheDocument();
   });
@@ -160,14 +125,13 @@ describe('StripeConnectCard — State 3 (connected)', () => {
     expect(link).toHaveAttribute('href', 'https://dashboard.stripe.com/acct_1234567890ABCD');
   });
 
-  it('renders the Disconnect control disabled (Phase 2)', () => {
+  it('renders the Disconnect control enabled', () => {
     render(<StripeConnectCard />);
-    expect(screen.getByRole('button', { name: /disconnect/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /disconnect/i })).toBeEnabled();
   });
 
-  it('does not show either onboarding CTA', () => {
+  it('does not show the connect CTA', () => {
     render(<StripeConnectCard />);
     expect(screen.queryByRole('button', { name: /connect with stripe/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /finish setting up/i })).toBeNull();
   });
 });

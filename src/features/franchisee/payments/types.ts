@@ -14,15 +14,20 @@
  *
  *   - Standard Connect. Each franchisee owns a full Stripe dashboard (refunds,
  *     payouts, disputes). Daisy HQ takes a 2% application fee.
- *   - Account Links, NOT OAuth. The `create-connect-account` Edge Function
- *     creates the connected account via the Accounts API
- *     (`stripe.accounts.create({ type: 'standard' })`), persists the resulting
- *     `acct_…` id on da_franchisees.stripe_account_id, then generates an
- *     `account_onboarding` Account Link and returns its URL for a redirect.
- *     There is NO STRIPE_CONNECT_CLIENT_ID and NO redirect-URI allowlist.
- *   - Connection status is the source-of-truth `account.updated` webhook (8C),
- *     which flips da_franchisees.stripe_connected when `charges_enabled`
- *     becomes true. The UI reads the persisted flag; it does not poll Stripe.
+ *   - OAuth, NOT Account Links (revised 2026-06 — supersedes the M2 kick-off
+ *     decision). Franchisees already own standalone, fully-verified Stripe
+ *     accounts, so we must CONNECT an existing account, not create a new one.
+ *     `stripe-oauth-start` returns a connect.stripe.com/oauth/authorize URL
+ *     (scope=read_write); the franchisee signs into their existing account and
+ *     authorises; Stripe redirects to `stripe-oauth-callback`, which exchanges
+ *     the code for `stripe_user_id` (their acct_… id) and persists it on
+ *     da_franchisees.stripe_account_id with stripe_connected=true. This needs
+ *     STRIPE_CONNECT_CLIENT_ID and a redirect-URI allowlist entry. (The old
+ *     Account-Links flow forced full KYC re-onboarding — wrong for our users.)
+ *   - Connection status: set true by the OAuth callback (a standalone account
+ *     is already charges-enabled). `account.updated` keeps it in sync and
+ *     `account.application.deauthorized` clears it. The UI reads the persisted
+ *     flag; it does not poll Stripe.
  *   - Direct charges. Payment Links are created ON the connected account
  *     (`{ stripeAccount: franchisee.stripe_account_id }`) with
  *     `application_fee_amount = Math.floor(price_pence * PLATFORM_FEE_PERCENT / 100)`
@@ -98,53 +103,45 @@ export function toConnectStatus(
 }
 
 // ---------------------------------------------------------------------------
-// create-connect-account — Edge Function I/O contract (8A builds the function)
+// stripe-oauth-start — Edge Function I/O contract (OAuth connect)
 // ---------------------------------------------------------------------------
 //
 // POST (auth: franchisee JWT; no body required).
-// The function:
-//   1. Resolves the caller's franchisee row from JWT sub → auth_user_id.
-//   2. If stripe_account_id is null, creates a Standard connected account
-//      (`stripe.accounts.create({ type: 'standard', email })`) and persists the
-//      `acct_…` id on da_franchisees.stripe_account_id (service_role write).
-//   3. Generates an `account_onboarding` Account Link for that account and
-//      returns its hosted-onboarding `url` so the client can redirect.
-//   4. Inserts a da_activities row (action='stripe_connect_started').
+// Returns a connect.stripe.com/oauth/authorize URL (scope=read_write) with an
+// HMAC-signed `state` carrying the franchisee id. The client redirects the
+// franchisee there to sign into their EXISTING Stripe account and authorise.
+// Stripe then redirects to stripe-oauth-callback, which exchanges the code and
+// persists the franchisee's acct_… id.
 //
-// The client treats this as "start onboarding": call it, then
+// The client treats this as "start connect": call it, then
 // `window.location.assign(res.url)`.
 // ---------------------------------------------------------------------------
 
-/** Request body for create-connect-account. No fields — caller identified by JWT. */
-export type CreateConnectAccountRequest = Record<string, never>;
+/** Request body for stripe-oauth-start. No fields — caller identified by JWT. */
+export type StripeOAuthStartRequest = Record<string, never>;
 
-/** 2xx success body for create-connect-account. */
-export interface CreateConnectAccountResponse {
-  /** The connected account id (`acct_…`) created or already on file. */
-  stripe_account_id: string;
-  /** Hosted Account Link onboarding URL — redirect the franchisee here. */
+/** 2xx success body for stripe-oauth-start. */
+export interface StripeOAuthStartResponse {
+  /** Stripe OAuth authorize URL — redirect the franchisee here. */
   url: string;
 }
 
 // ---------------------------------------------------------------------------
-// create-account-link — Edge Function I/O contract (8A builds the function)
+// stripe-disconnect — Edge Function I/O contract (OAuth deauthorize)
 // ---------------------------------------------------------------------------
 //
 // POST (auth: franchisee JWT; no body required).
-// Re-issues a fresh `account_onboarding` Account Link for the caller's EXISTING
-// connected account. Used when the franchisee returns via the `?refresh` return
-// route (Account Links are single-use and short-lived) or wants to resume an
-// incomplete onboarding. Fails 409 if the franchisee has no stripe_account_id
-// yet (call create-connect-account first).
+// Revokes Daisy's OAuth access (connect.stripe.com/oauth/deauthorize) and
+// clears da_franchisees.stripe_account_id / stripe_connected. The franchisee's
+// own Stripe account is untouched; only the platform link is removed.
 // ---------------------------------------------------------------------------
 
-/** Request body for create-account-link. No fields — caller identified by JWT. */
-export type CreateAccountLinkRequest = Record<string, never>;
+/** Request body for stripe-disconnect. No fields — caller identified by JWT. */
+export type DisconnectRequest = Record<string, never>;
 
-/** 2xx success body for create-account-link. */
-export interface CreateAccountLinkResponse {
-  /** Fresh hosted Account Link onboarding URL — redirect the franchisee here. */
-  url: string;
+/** 2xx success body for stripe-disconnect. */
+export interface DisconnectResponse {
+  disconnected: true;
 }
 
 // ---------------------------------------------------------------------------

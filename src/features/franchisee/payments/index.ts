@@ -13,10 +13,10 @@ export { paymentKeys } from './queryKeys';
 
 export type {
   ConnectStatus,
-  CreateConnectAccountRequest,
-  CreateConnectAccountResponse,
-  CreateAccountLinkRequest,
-  CreateAccountLinkResponse,
+  StripeOAuthStartRequest,
+  StripeOAuthStartResponse,
+  DisconnectRequest,
+  DisconnectResponse,
   CreatePaymentLinkRequest,
   CreatePaymentLinkResponse,
   PaymentEdgeErrorResponse,

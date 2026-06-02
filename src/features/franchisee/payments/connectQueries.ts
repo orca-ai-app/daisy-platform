@@ -1,22 +1,23 @@
 /**
- * TanStack Query hooks for Stripe Connect onboarding (Wave 8A).
+ * TanStack Query hooks for Stripe Connect (OAuth model).
  *
  * Read:  anon client + RLS — the signed-in franchisee's own da_franchisees row.
  *        No client-side franchisee_id filter needed; RLS scopes the single row.
- * Write: POST to create-connect-account / create-account-link Edge Functions
+ * Write: POST to stripe-oauth-start / stripe-disconnect Edge Functions
  *        (service_role server-side, franchisee resolved from JWT).
  *
- * Key factory: paymentKeys from ./queryKeys (frozen contract).
- * Types:       ConnectStatus, toConnectStatus from ./types (frozen contract).
+ * Connect model: franchisees connect their OWN existing standalone Stripe
+ * account via OAuth (no account creation, no re-onboarding). stripe-oauth-start
+ * returns the authorize URL; the franchisee is redirected to Stripe, authorises,
+ * and Stripe redirects to stripe-oauth-callback which persists their acct_… id.
+ *
+ * Key factory: paymentKeys from ./queryKeys.
+ * Types:       ConnectStatus, toConnectStatus from ./types.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import type {
-  ConnectStatus,
-  CreateConnectAccountResponse,
-  CreateAccountLinkResponse,
-} from './types';
+import type { ConnectStatus, StripeOAuthStartResponse, DisconnectResponse } from './types';
 import { toConnectStatus } from './types';
 import { paymentKeys } from './queryKeys';
 
@@ -82,32 +83,28 @@ export function useConnectStatus() {
 }
 
 // ---------------------------------------------------------------------------
-// useCreateConnectAccount — creates a Standard connected account (if needed)
-// and returns the account id + a hosted Account Link onboarding URL.
-// The caller should window.location.assign(res.url) on success.
+// useStartStripeOAuth — returns the Stripe Connect OAuth authorize URL for the
+// signed-in franchisee. The caller should window.location.assign(res.url) so
+// the franchisee can sign into their existing Stripe account and authorise.
 // ---------------------------------------------------------------------------
 
-export function useCreateConnectAccount() {
-  const queryClient = useQueryClient();
-  return useMutation<CreateConnectAccountResponse, Error>({
-    mutationFn: () =>
-      callPaymentEdgeFunction<CreateConnectAccountResponse>('create-connect-account'),
-    onSuccess: () => {
-      // Invalidate connect status so it refetches when the franchisee returns
-      // from Stripe's hosted onboarding via the Account Link return_url.
-      void queryClient.invalidateQueries({ queryKey: paymentKeys.connectStatus() });
-    },
+export function useStartStripeOAuth() {
+  return useMutation<StripeOAuthStartResponse, Error>({
+    mutationFn: () => callPaymentEdgeFunction<StripeOAuthStartResponse>('stripe-oauth-start'),
   });
 }
 
 // ---------------------------------------------------------------------------
-// useCreateAccountLink — re-issues a fresh account_onboarding Account Link
-// for an existing connected account. Used when the link has expired
-// (franchisee returned via ?refresh) or they want to resume onboarding.
+// useDisconnectStripe — revokes Daisy's OAuth access to the franchisee's Stripe
+// account and clears the local link. Refetches connect status on success.
 // ---------------------------------------------------------------------------
 
-export function useCreateAccountLink() {
-  return useMutation<CreateAccountLinkResponse, Error>({
-    mutationFn: () => callPaymentEdgeFunction<CreateAccountLinkResponse>('create-account-link'),
+export function useDisconnectStripe() {
+  const queryClient = useQueryClient();
+  return useMutation<DisconnectResponse, Error>({
+    mutationFn: () => callPaymentEdgeFunction<DisconnectResponse>('stripe-disconnect'),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: paymentKeys.connectStatus() });
+    },
   });
 }

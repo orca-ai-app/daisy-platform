@@ -16,8 +16,9 @@
 //   supabase/migrations/021_course_instance_private_client.sql — private_client_id on instance
 //
 // Events handled:
-//   checkout.session.completed — create booking, decrement spots, queue email sequences
-//   account.updated            — sync da_franchisees.stripe_connected from charges_enabled
+//   checkout.session.completed       — create booking, decrement spots, queue email sequences
+//   account.updated                  — sync da_franchisees.stripe_connected from charges_enabled
+//   account.application.deauthorized — franchisee revoked OAuth access; clear the link
 //
 // Error policy:
 //   - Missing STRIPE_WEBHOOK_SECRET → 500 (fail closed; live test gated on secret being set)
@@ -257,6 +258,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       case 'account.updated':
         await handleAccountUpdated(admin, event);
+        break;
+
+      case 'account.application.deauthorized':
+        await handleAccountDeauthorized(admin, event);
         break;
 
       default:
@@ -645,5 +650,42 @@ async function handleAccountUpdated(
   // create-franchisee flow stamps the stripe_account_id).
   console.log(
     `stripe-webhook: account.updated synced stripe_connected=${chargesEnabled} for account="${stripeAccountId}"`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// account.application.deauthorized — franchisee revoked our OAuth access from
+// their own Stripe dashboard. Clear the link so the portal reflects it.
+// ---------------------------------------------------------------------------
+
+async function handleAccountDeauthorized(
+  admin: ReturnType<typeof createClient>,
+  event: Stripe.Event,
+): Promise<void> {
+  // For connected-account events, event.account is the account that deauthorized.
+  const stripeAccountId = event.account ?? null;
+  if (!stripeAccountId) {
+    console.error('stripe-webhook: account.application.deauthorized has no event.account id');
+    return;
+  }
+
+  const updateResult = await admin
+    .from('da_franchisees')
+    .update({
+      stripe_account_id: null,
+      stripe_connected: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('stripe_account_id', stripeAccountId);
+
+  if (updateResult.error) {
+    throw new Error(
+      `da_franchisees deauthorize clear failed: account="${stripeAccountId}" ` +
+        `error="${updateResult.error.message}"`,
+    );
+  }
+
+  console.log(
+    `stripe-webhook: account.application.deauthorized cleared link for account="${stripeAccountId}"`,
   );
 }
