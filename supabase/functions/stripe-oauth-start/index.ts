@@ -70,75 +70,74 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
 
-  // Auth
-  const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
-  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
-    return jsonResponse({ error: 'Authorization header required' }, 401);
-  }
-  const authUserId = decodeJwtSub(authHeader.slice('bearer '.length).trim());
-  if (!authUserId) {
-    return jsonResponse({ error: 'Invalid JWT' }, 401);
-  }
+  try {
+    // Auth
+    const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
+    if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+      return jsonResponse({ error: 'Authorization header required' }, 401);
+    }
+    const authUserId = decodeJwtSub(authHeader.slice('bearer '.length).trim());
+    if (!authUserId) {
+      return jsonResponse({ error: 'Invalid JWT' }, 401);
+    }
 
-  // Env
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
-  const connectClientId = Deno.env.get('STRIPE_CONNECT_CLIENT_ID') ?? '';
+    // Env
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
+    const connectClientId = Deno.env.get('STRIPE_CONNECT_CLIENT_ID') ?? '';
 
-  if (!supabaseUrl || !serviceRoleKey) {
-    return jsonResponse({ error: 'Server misconfigured (Supabase)' }, 500);
-  }
-  if (!stripeSecretKey) {
-    return jsonResponse({ error: 'Server misconfigured (Stripe key)' }, 500);
-  }
-  if (!connectClientId) {
-    return jsonResponse(
-      { error: 'Stripe Connect is not configured yet (STRIPE_CONNECT_CLIENT_ID missing).' },
-      500,
-    );
-  }
+    if (!supabaseUrl || !serviceRoleKey) {
+      return jsonResponse({ error: 'Server misconfigured (Supabase)' }, 500);
+    }
+    if (!stripeSecretKey) {
+      return jsonResponse({ error: 'Server misconfigured (Stripe key)' }, 500);
+    }
+    if (!connectClientId) {
+      return jsonResponse(
+        { error: 'Stripe Connect is not configured yet (STRIPE_CONNECT_CLIENT_ID missing).' },
+        500,
+      );
+    }
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+    const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
-  // Resolve caller's franchisee row
-  const selfLookup = await admin
-    .from('da_franchisees')
-    .select('id, email')
-    .eq('auth_user_id', authUserId)
-    .maybeSingle();
+    // Resolve caller's franchisee row
+    const selfLookup = await admin
+      .from('da_franchisees')
+      .select('id, email')
+      .eq('auth_user_id', authUserId)
+      .maybeSingle();
 
-  if (selfLookup.error) {
-    console.error('stripe-oauth-start: franchisee lookup failed', selfLookup.error);
-    return jsonResponse({ error: 'Failed to verify caller' }, 500);
-  }
-  if (!selfLookup.data) {
-    return jsonResponse({ error: 'Caller is not provisioned as a franchisee' }, 403);
-  }
+    if (selfLookup.error) {
+      console.error('stripe-oauth-start: franchisee lookup failed', selfLookup.error);
+      return jsonResponse({ error: 'Failed to verify caller' }, 500);
+    }
+    if (!selfLookup.data) {
+      return jsonResponse({ error: 'Caller is not provisioned as a franchisee' }, 403);
+    }
 
-  const franchisee = selfLookup.data as { id: string; email: string };
+    const franchisee = selfLookup.data as { id: string; email: string };
 
-  // Build the OAuth authorize URL.
-  const redirectUri = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/stripe-oauth-callback`;
-  const state = await signState(franchisee.id, stripeSecretKey);
+    // Build the OAuth authorize URL.
+    const redirectUri = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/stripe-oauth-callback`;
+    const state = await signState(franchisee.id, stripeSecretKey);
 
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: connectClientId,
-    scope: 'read_write',
-    redirect_uri: redirectUri,
-    state,
-  });
-  // Prefill the franchisee's email on the (rare) account-creation path; for an
-  // existing account they just sign in and this is ignored.
-  if (franchisee.email) params.set('stripe_user[email]', franchisee.email);
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: connectClientId,
+      scope: 'read_write',
+      redirect_uri: redirectUri,
+      state,
+    });
+    // Prefill the franchisee's email on the (rare) account-creation path; for an
+    // existing account they just sign in and this is ignored.
+    if (franchisee.email) params.set('stripe_user[email]', franchisee.email);
 
-  const url = `https://connect.stripe.com/oauth/authorize?${params.toString()}`;
+    const url = `https://connect.stripe.com/oauth/authorize?${params.toString()}`;
 
-  // Activity log — connect started.
-  await admin
-    .from('da_activities')
-    .insert({
+    // Activity log — connect started. Non-fatal.
+    const activityInsert = await admin.from('da_activities').insert({
       actor_type: 'franchisee',
       actor_id: franchisee.id,
       entity_type: 'franchisee',
@@ -146,8 +145,16 @@ Deno.serve(async (req: Request) => {
       action: 'stripe_connect_started',
       metadata: { method: 'oauth' },
       description: 'Franchisee started Stripe Connect (OAuth)',
-    })
-    .catch((err: unknown) => console.error('stripe-oauth-start: activity insert failed', err));
+    });
+    if (activityInsert.error) {
+      console.error('stripe-oauth-start: activity insert failed', activityInsert.error);
+    }
 
-  return jsonResponse({ url }, 200);
+    return jsonResponse({ url }, 200);
+  } catch (err) {
+    // Always respond WITH CORS headers so the browser surfaces a real error
+    // rather than an opaque "Failed to fetch".
+    console.error('stripe-oauth-start: uncaught', err);
+    return jsonResponse({ error: 'Could not start Stripe connection. Please try again.' }, 500);
+  }
 });

@@ -120,18 +120,18 @@ Deno.serve(async (req: Request) => {
     return redirectToPortal(portalUrl, 'stripe_error=persist_failed');
   }
 
-  await admin
-    .from('da_activities')
-    .insert({
-      actor_type: 'franchisee',
-      actor_id: franchiseeId,
-      entity_type: 'franchisee',
-      entity_id: franchiseeId,
-      action: 'stripe_connected',
-      metadata: { method: 'oauth', stripe_account_id: stripeUserId },
-      description: 'Franchisee connected their existing Stripe account (OAuth)',
-    })
-    .catch((err: unknown) => console.error('stripe-oauth-callback: activity insert failed', err));
+  const activityInsert = await admin.from('da_activities').insert({
+    actor_type: 'franchisee',
+    actor_id: franchiseeId,
+    entity_type: 'franchisee',
+    entity_id: franchiseeId,
+    action: 'stripe_connected',
+    metadata: { method: 'oauth', stripe_account_id: stripeUserId },
+    description: 'Franchisee connected their existing Stripe account (OAuth)',
+  });
+  if (activityInsert.error) {
+    console.error('stripe-oauth-callback: activity insert failed', activityInsert.error);
+  }
 
   console.log(
     `stripe-oauth-callback: connected franchisee="${franchiseeId}" account="${stripeUserId}"`,

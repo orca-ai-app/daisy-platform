@@ -121,18 +121,18 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Failed to disconnect' }, 500);
   }
 
-  await admin
-    .from('da_activities')
-    .insert({
-      actor_type: 'franchisee',
-      actor_id: franchisee.id,
-      entity_type: 'franchisee',
-      entity_id: franchisee.id,
-      action: 'stripe_disconnected',
-      metadata: { method: 'oauth', stripe_account_id: franchisee.stripe_account_id },
-      description: 'Franchisee disconnected their Stripe account',
-    })
-    .catch((err: unknown) => console.error('stripe-disconnect: activity insert failed', err));
+  const activityInsert = await admin.from('da_activities').insert({
+    actor_type: 'franchisee',
+    actor_id: franchisee.id,
+    entity_type: 'franchisee',
+    entity_id: franchisee.id,
+    action: 'stripe_disconnected',
+    metadata: { method: 'oauth', stripe_account_id: franchisee.stripe_account_id },
+    description: 'Franchisee disconnected their Stripe account',
+  });
+  if (activityInsert.error) {
+    console.error('stripe-disconnect: activity insert failed', activityInsert.error);
+  }
 
   return jsonResponse({ disconnected: true }, 200);
 });
