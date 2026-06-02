@@ -1,0 +1,109 @@
+# Supabase project config.
+#
+# The PRIMARY purpose of this file is to pin each Edge Function's `verify_jwt`
+# flag in the repo, so `supabase functions deploy` is deterministic and a blind
+# redeploy can never silently re-enable JWT verification on a function that must
+# stay open. (That exact failure took down course geocoding: geocode-postcode is
+# called server-to-server with the injected SUPABASE_SERVICE_ROLE_KEY, which is a
+# non-JWT `sb_secret_…` under the new API-key format, so a verify_jwt gateway
+# rejects it with 401.)
+#
+# verify_jwt = false  →  the function authenticates itself in-code and/or is
+#                        called by Stripe / a browser redirect / another function
+#                        with a non-JWT credential. The gateway must NOT gate it.
+# verify_jwt = true   →  browser-called with a valid Supabase user JWT (default).
+
+project_id = "daisy-platform"
+
+# --- Public / self-authenticating (verify_jwt = false) ----------------------
+
+[functions.geocode-postcode]
+# Called server-to-server from create/update-course-instance with the service
+# key (non-JWT). Checks for a Bearer header in-code; Google key stays server-side.
+verify_jwt = false
+
+[functions.stripe-oauth-callback]
+# Browser redirect target from Stripe's OAuth flow — carries no Supabase JWT.
+# Authenticates via the HMAC-signed `state` param instead.
+verify_jwt = false
+
+[functions.stripe-webhook]
+# Called by Stripe's servers — authenticated by the Stripe signature, not a JWT.
+verify_jwt = false
+
+# --- Browser-called with a franchisee/HQ JWT (verify_jwt = true) ------------
+
+[functions.add-booking-note]
+verify_jwt = true
+
+[functions.assign-territory]
+verify_jwt = true
+
+[functions.cancel-booking]
+verify_jwt = true
+
+[functions.cancel-course-instance]
+verify_jwt = true
+
+[functions.create-course-instance]
+verify_jwt = true
+
+[functions.create-discount-code]
+verify_jwt = true
+
+[functions.create-franchisee]
+verify_jwt = true
+
+[functions.create-payment-link]
+verify_jwt = true
+
+[functions.create-private-client]
+verify_jwt = true
+
+[functions.create-template]
+verify_jwt = true
+
+[functions.create-ticket-type]
+verify_jwt = true
+
+[functions.delete-ticket-type]
+verify_jwt = true
+
+[functions.mark-booking-paid]
+verify_jwt = true
+
+[functions.preview-billing-run]
+verify_jwt = true
+
+[functions.set-template-override]
+verify_jwt = true
+
+[functions.stripe-disconnect]
+verify_jwt = true
+
+[functions.stripe-oauth-start]
+verify_jwt = true
+
+[functions.update-course-instance]
+verify_jwt = true
+
+[functions.update-discount-code]
+verify_jwt = true
+
+[functions.update-franchisee]
+verify_jwt = true
+
+[functions.update-franchisee-self]
+verify_jwt = true
+
+[functions.update-interest-form]
+verify_jwt = true
+
+[functions.update-private-client]
+verify_jwt = true
+
+[functions.update-template]
+verify_jwt = true
+
+[functions.update-ticket-type]
+verify_jwt = true
