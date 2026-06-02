@@ -247,8 +247,8 @@ Deno.serve(async (req: Request) => {
       metadata: activityMetadata,
       description: `Booking ${booking.booking_reference} cancelled — reason: ${cancellationReason}`,
     })
-    .catch((err: unknown) => {
-      console.error('activity log insert failed', err);
+    .then((r: { error: unknown }) => {
+      if (r.error) console.error('activity log insert failed', r.error);
     });
 
   return jsonResponse(updated.data, 200);

@@ -409,8 +409,8 @@ Deno.serve(async (req: Request) => {
       },
       description: `Payment link generated for ${ticketType.name} × ${input.quantity} (${templateName}, ${instance.event_date})`,
     })
-    .catch((err: unknown) => {
-      console.error('activity insert failed', err);
+    .then((r: { error: unknown }) => {
+      if (r.error) console.error('activity insert failed', r.error);
     });
 
   // -------------------------------------------------------------------------

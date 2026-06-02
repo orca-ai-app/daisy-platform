@@ -297,8 +297,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         },
         description: `Stripe webhook processing error for event ${event.type} (${event.id})`,
       })
-      .catch((actErr: unknown) => {
-        console.error('stripe-webhook: could not write error activity row', actErr);
+      .then((r: { error: unknown }) => {
+        if (r.error) console.error('stripe-webhook: could not write error activity row', r.error);
       });
   }
 
@@ -602,8 +602,8 @@ async function handleCheckoutSessionCompleted(
       metadata: activityMeta,
       description: `Booking ${bookingReference} created via Stripe webhook${isOverbook ? ' — OVERBOOK: requires manual review' : ''}`,
     })
-    .catch((err: unknown) => {
-      console.error('stripe-webhook: booking_created activity insert failed', err);
+    .then((r: { error: unknown }) => {
+      if (r.error) console.error('stripe-webhook: booking_created activity insert failed', r.error);
     });
 
   console.log(

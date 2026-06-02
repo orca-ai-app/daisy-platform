@@ -225,8 +225,8 @@ Deno.serve(async (req: Request) => {
       },
       description: `Note added to booking ${booking.booking_reference}`,
     })
-    .catch((err: unknown) => {
-      console.error('activity log insert failed', err);
+    .then((r: { error: unknown }) => {
+      if (r.error) console.error('activity log insert failed', r.error);
     });
 
   return jsonResponse(updated.data, 200);

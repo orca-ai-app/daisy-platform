@@ -596,9 +596,9 @@ Deno.serve(async (req: Request) => {
       },
       description: `Course '${templateRow.name}' scheduled for ${input.event_date} at ${input.venue_postcode}`,
     })
-    .catch((err: unknown) => {
+    .then((r: { error: unknown }) => {
       // Activity insert failure must not block the response.
-      console.error('activity log insert failed', err);
+      if (r.error) console.error('activity log insert failed', r.error);
     });
 
   // ----------------------------------------------------------

@@ -231,8 +231,8 @@ Deno.serve(async (req: Request) => {
       },
       description: `Private client '${input.company_name}' created`,
     })
-    .catch((err: unknown) => {
-      console.error('activity log insert failed', err);
+    .then((r: { error: unknown }) => {
+      if (r.error) console.error('activity log insert failed', r.error);
     });
 
   return jsonResponse(clientRow, 201);
