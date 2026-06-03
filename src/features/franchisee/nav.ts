@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  Map,
   GraduationCap,
   CalendarCheck,
   Users,
@@ -39,6 +40,13 @@ export const franchiseeNavLinks: FranchiseeNavLink[] = [
     path: '/franchisee/dashboard',
     icon: LayoutDashboard,
     ready: true,
+  },
+  {
+    label: 'Territories',
+    path: '/franchisee/territories',
+    icon: Map,
+    ready: true,
+    matchPrefix: '/franchisee/territories',
   },
   {
     label: 'Courses',
