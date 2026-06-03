@@ -109,6 +109,7 @@ const ENTITY_LABELS: Record<string, string> = {
   interest_form: 'enquiry',
   geocode: 'geocode lookup',
   billing_run: 'billing run',
+  territory_request: 'territory request',
 };
 
 /**
@@ -153,6 +154,9 @@ const ACTION_VERBS: Record<string, string> = {
   interest_form_created: 'received enquiry',
   interest_form_updated: 'updated enquiry',
   interest_form_status_changed: 'updated enquiry status',
+  // Territory requests (M2)
+  territory_requested: 'requested a territory',
+  territory_request_updated: 'updated a territory request',
   // Misc
   geocode: 'geocoded postcode',
 };
@@ -190,4 +194,23 @@ export function formatActivityDescription(row: ActivityRow): string {
   // Unknown verb: use a friendly generic. Avoid leaking the raw enum.
   const friendlyAction = row.action.replace(/_/g, ' ');
   return `performed ${friendlyAction} on ${entityLabel}`;
+}
+
+/** Friendly label for an entity_type (never leaks the raw enum). */
+export function entityTypeLabel(entityType: string): string {
+  return ENTITY_LABELS[entityType] ?? entityType.replace(/_/g, ' ');
+}
+
+/**
+ * Where an activity row can be actioned from the HQ activity feed, if anywhere.
+ * Returns the destination route + the affordance label, or null for rows that
+ * are informational only.
+ */
+export function activityActionHref(row: ActivityRow): { href: string; label: string } | null {
+  switch (row.entity_type) {
+    case 'territory_request':
+      return { href: '/hq/territory-requests', label: 'Review' };
+    default:
+      return null;
+  }
 }
