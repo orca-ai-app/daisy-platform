@@ -53,6 +53,7 @@ function decodeJwtSub(jwt: string): string | null {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface RequestBody {
+  client_type?: unknown;
   company_name?: unknown;
   contact_name?: unknown;
   contact_email?: unknown;
@@ -61,7 +62,8 @@ interface RequestBody {
 }
 
 interface ValidatedInput {
-  company_name: string;
+  client_type: 'organisation' | 'individual';
+  company_name: string | null;
   contact_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
@@ -82,9 +84,8 @@ function nullableString(
 function validateBody(
   body: RequestBody,
 ): { ok: true; value: ValidatedInput } | { ok: false; error: string } {
-  if (typeof body.company_name !== 'string' || body.company_name.trim().length === 0) {
-    return { ok: false, error: 'company_name is required' };
-  }
+  const clientType: 'organisation' | 'individual' =
+    body.client_type === 'individual' ? 'individual' : 'organisation';
 
   const contactName = nullableString(body.contact_name, 'contact_name');
   if (!contactName.ok) return { ok: false, error: contactName.error };
@@ -101,10 +102,22 @@ function validateBody(
   const notes = nullableString(body.notes, 'notes');
   if (!notes.ok) return { ok: false, error: notes.error };
 
+  // Organisations need a company name; individuals carry their name in contact_name.
+  let companyName: string | null = null;
+  if (clientType === 'organisation') {
+    if (typeof body.company_name !== 'string' || body.company_name.trim().length === 0) {
+      return { ok: false, error: 'company_name is required for an organisation' };
+    }
+    companyName = body.company_name.trim();
+  } else if (contactName.value === null) {
+    return { ok: false, error: 'A name is required for an individual' };
+  }
+
   return {
     ok: true,
     value: {
-      company_name: body.company_name.trim(),
+      client_type: clientType,
+      company_name: companyName,
       contact_name: contactName.value,
       contact_email: contactEmail.value,
       contact_phone: contactPhone.value,
@@ -188,6 +201,7 @@ Deno.serve(async (req: Request) => {
     .from('da_private_clients')
     .insert({
       franchisee_id: franchisee.id,
+      client_type: input.client_type,
       company_name: input.company_name,
       contact_name: input.contact_name,
       contact_email: input.contact_email,
@@ -199,19 +213,20 @@ Deno.serve(async (req: Request) => {
 
   if (insertResult.error || !insertResult.data) {
     console.error('private_client insert failed', insertResult.error);
-    // 23505 = unique_violation: UNIQUE(franchisee_id, company_name)
+    // 23505 = unique_violation: UNIQUE(franchisee_id, company_name) for orgs, or
+    // the per-franchisee individual-email index.
     if ((insertResult.error as any)?.code === '23505') {
-      return jsonResponse(
-        {
-          error: `You already have a client named '${input.company_name}'. Use a different name to distinguish them.`,
-        },
-        409,
-      );
+      const message =
+        input.client_type === 'individual'
+          ? `You already have an individual client with the email '${input.contact_email}'.`
+          : `You already have a client named '${input.company_name}'. Use a different name to distinguish them.`;
+      return jsonResponse({ error: message }, 409);
     }
     return jsonResponse({ error: 'Failed to create client' }, 500);
   }
 
   const clientRow = insertResult.data;
+  const displayName = input.company_name ?? input.contact_name ?? 'client';
 
   // -------------------------------------------------------------------------
   // INSERT da_activities
@@ -225,11 +240,12 @@ Deno.serve(async (req: Request) => {
       entity_id: (clientRow as any).id,
       action: 'private_client_created',
       metadata: {
+        client_type: input.client_type,
         company_name: input.company_name,
         contact_name: input.contact_name,
         contact_email: input.contact_email,
       },
-      description: `Private client '${input.company_name}' created`,
+      description: `${input.client_type === 'individual' ? 'Individual' : 'Private'} client '${displayName}' created`,
     })
     .then((r: { error: unknown }) => {
       if (r.error) console.error('activity log insert failed', r.error);

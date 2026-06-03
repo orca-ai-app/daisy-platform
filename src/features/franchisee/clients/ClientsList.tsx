@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 
 import { useOwnPrivateClients, useClientRecentBookings } from './clientQueries';
 import { ClientDialog } from './ClientDialog';
-import type { PrivateClient } from './types';
+import { clientDisplayName, type PrivateClient } from './types';
 
 // ---------------------------------------------------------------------------
 // Recent bookings panel (rendered below the DataTable when a client is expanded)
@@ -91,16 +91,25 @@ export default function ClientsList() {
     () => [
       {
         accessorKey: 'company_name',
-        header: 'Company',
+        header: 'Client',
         cell: ({ row }) => (
-          <span className="text-daisy-ink font-semibold">{row.original.company_name}</span>
+          <span className="text-daisy-ink flex items-center gap-2 font-semibold">
+            {clientDisplayName(row.original)}
+            {row.original.client_type === 'individual' ? (
+              <span className="bg-daisy-bg text-daisy-muted rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase">
+                Individual
+              </span>
+            ) : null}
+          </span>
         ),
       },
       {
         accessorKey: 'contact_name',
         header: 'Contact',
         cell: ({ row }) => (
-          <span className="text-daisy-ink text-[13px]">{row.original.contact_name ?? '—'}</span>
+          <span className="text-daisy-ink text-[13px]">
+            {row.original.client_type === 'individual' ? '—' : (row.original.contact_name ?? '—')}
+          </span>
         ),
       },
       {

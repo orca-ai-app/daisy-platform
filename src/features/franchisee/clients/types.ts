@@ -19,16 +19,26 @@
  * franchisee. `company_name` is unique per franchisee (UNIQUE(franchisee_id,
  * company_name)). Contact fields are optional.
  */
+export type ClientType = 'organisation' | 'individual';
+
 export interface PrivateClient {
   id: string;
   created_at: string;
   updated_at: string;
   franchisee_id: string;
-  company_name: string;
+  /** 'organisation' (school/company → company_name) or 'individual' (person → contact_name). */
+  client_type: ClientType;
+  /** Null for individuals. */
+  company_name: string | null;
   contact_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
   notes: string | null;
+}
+
+/** Display name regardless of type: company for orgs, contact name for individuals. */
+export function clientDisplayName(c: Pick<PrivateClient, 'company_name' | 'contact_name'>): string {
+  return c.company_name ?? c.contact_name ?? 'Unnamed client';
 }
 
 /**
@@ -37,7 +47,9 @@ export interface PrivateClient {
  * caller's session — never sent by the franchisee client.
  */
 export interface CreatePrivateClientPayload {
-  company_name: string;
+  client_type?: ClientType;
+  /** Required for organisations; omitted/null for individuals. */
+  company_name?: string | null;
   contact_name?: string | null;
   contact_email?: string | null;
   contact_phone?: string | null;

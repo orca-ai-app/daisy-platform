@@ -13,6 +13,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useOwnPrivateClients } from './clientQueries';
+import { clientDisplayName } from './types';
 
 interface PrivateClientSelectProps {
   /** Currently-selected client id, or null / undefined if none. */
@@ -52,7 +53,7 @@ export function PrivateClientSelect({
       ? clients
       : clients.filter(
           (c) =>
-            c.company_name.toLowerCase().includes(search.toLowerCase()) ||
+            (c.company_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
             (c.contact_name ?? '').toLowerCase().includes(search.toLowerCase()),
         );
 
@@ -107,7 +108,7 @@ export function PrivateClientSelect({
           {isLoading
             ? 'Loading clients...'
             : selected
-              ? selected.company_name
+              ? clientDisplayName(selected)
               : 'Select a client (optional)'}
         </span>
         <span className="flex items-center gap-1">
@@ -195,8 +196,8 @@ export function PrivateClientSelect({
                         : 'text-daisy-ink hover:bg-daisy-primary-tint',
                     )}
                   >
-                    <span className="font-medium">{client.company_name}</span>
-                    {client.contact_name ? (
+                    <span className="font-medium">{clientDisplayName(client)}</span>
+                    {client.client_type !== 'individual' && client.contact_name ? (
                       <span className="text-daisy-muted ml-2 text-xs">{client.contact_name}</span>
                     ) : null}
                   </li>
