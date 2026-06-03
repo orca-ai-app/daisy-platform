@@ -18,6 +18,12 @@ vi.mock('./territoryQueries', () => ({
   useOwnTerritories: () => territoriesMock(),
 }));
 
+// The request dialog owns its own useMutation (needs a QueryClient); this test
+// is about the Territories page states, not the dialog, so stub it out.
+vi.mock('./RequestTerritoryDialog', () => ({
+  RequestTerritoryDialog: () => null,
+}));
+
 import Territories from './Territories';
 
 describe('Franchisee Territories', () => {
@@ -40,7 +46,7 @@ describe('Franchisee Territories', () => {
     expect(screen.queryByText('Click a row or map marker to inspect a territory.')).toBeNull();
     // The header + request action are always present.
     expect(screen.getByText('My territories')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Request a territory/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Request a territory/i })).toBeInTheDocument();
   });
 
   it('surfaces the query error message', () => {
