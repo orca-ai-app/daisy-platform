@@ -31,6 +31,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { formatPence } from '@/lib/format';
 import { useOwnTerritories, type OwnTerritoryRow } from './territoryQueries';
+import { RequestTerritoryDialog } from './RequestTerritoryDialog';
 import type { TerritoryStatus } from '@/types/franchisee';
 
 // ---------------------------------------------------------------------------
@@ -43,14 +44,6 @@ const STATUS_LABELS: Record<TerritoryStatus, string> = {
   reserved: 'Reserved',
 };
 
-/**
- * TODO (Phase 3): Replace this placeholder with Jenni's real support address
- * once the in-app territory request workflow ships. The mailto: is an
- * intentional short-term stopgap — it avoids blocking franchisees from making
- * requests while the approval queue is built.
- */
-const TERRITORY_REQUEST_EMAIL = 'support@daisyfirst.aid';
-
 // ---------------------------------------------------------------------------
 // Main page component
 // ---------------------------------------------------------------------------
@@ -58,6 +51,7 @@ const TERRITORY_REQUEST_EMAIL = 'support@daisyfirst.aid';
 export default function Territories() {
   const query = useOwnTerritories();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [requestOpen, setRequestOpen] = useState(false);
 
   const rows = useMemo(() => query.data ?? [], [query.data]);
 
@@ -138,12 +132,6 @@ export default function Territories() {
     [rows, selectedId],
   );
 
-  const requestHref = `mailto:${TERRITORY_REQUEST_EMAIL}?subject=${encodeURIComponent(
-    'Territory enquiry',
-  )}&body=${encodeURIComponent(
-    'Hi Jenni,\n\nI would like to enquire about adding a territory to my franchise.\n\n',
-  )}`;
-
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -154,13 +142,9 @@ export default function Territories() {
         title="My territories"
         subtitle="The postcode areas assigned to your franchise. Click a row to inspect it on the map."
         actions={
-          <Button asChild variant="outline" size="sm">
-            {/* TODO (Phase 3): replace mailto: with in-app request form once
-                the HQ approval queue ships. */}
-            <a href={requestHref}>
-              <Mail className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-              Request a territory
-            </a>
+          <Button variant="outline" size="sm" onClick={() => setRequestOpen(true)}>
+            <Mail className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            Request a territory
           </Button>
         }
       />
@@ -203,6 +187,8 @@ export default function Territories() {
           </div>
         </div>
       )}
+
+      <RequestTerritoryDialog open={requestOpen} onClose={() => setRequestOpen(false)} />
     </div>
   );
 }

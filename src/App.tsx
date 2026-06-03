@@ -14,6 +14,7 @@ import { FranchiseeList, FranchiseeDetail, NewFranchiseePage } from '@/features/
 import { TemplatesPage } from '@/features/hq/templates';
 import { ActivityPage } from '@/features/hq/activity';
 import { InterestFormsPage } from '@/features/hq/interest-forms';
+import { TerritoryRequestsPage } from '@/features/hq/territory-requests';
 import { RouteLoadingSkeleton } from '@/components/daisy';
 import { FranchiseeLayout } from '@/features/franchisee/FranchiseeLayout';
 import FranchiseeDashboard from '@/features/franchisee/Dashboard';
@@ -204,6 +205,7 @@ export default function App() {
 
                 {/* Wave 3C: Interest form queue */}
                 <Route path="interest-forms" element={<InterestFormsPage />} />
+                <Route path="territory-requests" element={<TerritoryRequestsPage />} />
 
                 {/* Wave 4C: Billing preview + accountant export (jsPDF + html2canvas) */}
                 <Route

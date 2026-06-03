@@ -60,6 +60,12 @@ verify_jwt = true
 [functions.create-private-client]
 verify_jwt = true
 
+[functions.create-territory-request]
+verify_jwt = true
+
+[functions.update-territory-request]
+verify_jwt = true
+
 [functions.create-template]
 verify_jwt = true
 

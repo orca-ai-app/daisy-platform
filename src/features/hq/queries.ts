@@ -173,8 +173,8 @@ export function useAttentionItems() {
       const weekFromNow = new Date();
       weekFromNow.setUTCDate(weekFromNow.getUTCDate() + 7);
 
-      // Four head-counts in parallel — was four sequential awaits.
-      const [overdue, vacant, enquiries, upcoming] = await Promise.all([
+      // Head-counts in parallel — was sequential awaits.
+      const [overdue, vacant, enquiries, upcoming, territoryRequests] = await Promise.all([
         supabase
           .from('da_billing_runs')
           .select('*', { count: 'exact', head: true })
@@ -192,6 +192,10 @@ export function useAttentionItems() {
           .select('*', { count: 'exact', head: true })
           .eq('payment_status', 'pending')
           .lte('billing_period_end', weekFromNow.toISOString()),
+        supabase
+          .from('da_territory_requests')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'new'),
       ]);
 
       if (overdue.error && !isTableMissing(overdue.error.code)) throw overdue.error;
@@ -227,6 +231,19 @@ export function useAttentionItems() {
           severity: 'blue',
           count: enquiries.count ?? 0,
           href: '/hq/interest-forms',
+        });
+      }
+
+      if (territoryRequests.error && !isTableMissing(territoryRequests.error.code))
+        throw territoryRequests.error;
+      if ((territoryRequests.count ?? 0) > 0) {
+        items.push({
+          id: 'territory-requests',
+          title: 'Territory requests',
+          meta: 'Franchisees asking for new patches. Review and assign.',
+          severity: 'blue',
+          count: territoryRequests.count ?? 0,
+          href: '/hq/territory-requests',
         });
       }
 
