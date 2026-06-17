@@ -59,7 +59,11 @@ function decodeJwtSub(jwt: string): string | null {
 // Explicitly blocked fields — reject with a clear message if the caller tries
 // to change them.
 // ---------------------------------------------------------------------------
-const BLOCKED_FIELDS = new Set(['uses_count', 'franchisee_id', 'id', 'created_at']);
+// `id` is intentionally NOT blocked: it is required below to identify the row
+// (the WHERE key) and is never written into the update payload, so it stays
+// immutable in practice. Blocking it here rejected every edit with
+// "Field 'id' cannot be changed through this endpoint."
+const BLOCKED_FIELDS = new Set(['uses_count', 'franchisee_id', 'created_at']);
 
 const CODE_REGEX = /^[A-Z0-9_-]{1,50}$/;
 const ISO_REGEX = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;

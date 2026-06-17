@@ -1,7 +1,9 @@
 /**
  * Course-template queries + mutations for HQ.
  *
- * - useCourseTemplates(): SELECT all rows from da_course_templates
+ * - useCourseTemplates(): SELECT active rows from da_course_templates
+ *   (is_active = true). Archived templates (e.g. the 6 pre-June-2026 courses
+ *   kept for their historical course instances) are hidden from the catalogue.
  * - useUpdateTemplate(): POSTs to the `update-template` Edge Function with the
  *   caller's session JWT. Edge Function enforces HQ-only and writes the
  *   activity row.
@@ -67,6 +69,7 @@ async function fetchCourseTemplates(): Promise<CourseTemplate[]> {
   const { data, error } = await supabase
     .from('da_course_templates')
     .select('*')
+    .eq('is_active', true)
     .order('name', { ascending: true });
 
   if (error) {

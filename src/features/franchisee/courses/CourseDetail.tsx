@@ -716,6 +716,10 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="tt-sort">Sort order</Label>
+            <p className="text-daisy-muted text-xs">
+              Controls the order ticket types are shown to customers when booking — lower numbers
+              appear first. Leave at 0 for alphabetical order.
+            </p>
             <Input
               id="tt-sort"
               type="number"

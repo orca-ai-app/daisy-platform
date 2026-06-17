@@ -8,7 +8,7 @@
  * §4.5 (`da_course_instances`), §4.6 (`da_ticket_types`).
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { ActivityRow, BookingStatus, PaymentStatus } from '@/types/franchisee';
 
@@ -315,6 +315,63 @@ export function useBooking(id: string | undefined) {
         throw error;
       }
       return data as unknown as BookingDetail | null;
+    },
+  });
+}
+
+/**
+ * Call an Edge Function with the caller's session JWT. Mirrors the franchisee
+ * helper in features/franchisee/bookings/bookingsQueries.ts.
+ */
+async function callEdgeFunction<T>(path: string, payload: unknown): Promise<T> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error('You must be signed in to perform this action.');
+
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${path}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // body was not JSON
+    }
+    const err = new Error(message);
+    (err as Error & { status: number }).status = response.status;
+    throw err;
+  }
+
+  return (await response.json()) as T;
+}
+
+export interface MarkBookingPaidPayload {
+  booking_id: string;
+  payment_reference: string;
+  paid_at?: string;
+}
+
+/**
+ * useMarkBookingPaid (HQ) — records a pending booking as manually paid.
+ * The mark-booking-paid Edge Function lets HQ callers mark any franchisee's
+ * booking; the pending-only state guard still applies.
+ */
+export function useMarkBookingPaid() {
+  const queryClient = useQueryClient();
+  return useMutation<unknown, Error, MarkBookingPaidPayload>({
+    mutationFn: (payload) => callEdgeFunction('mark-booking-paid', payload),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['hq', 'bookings'] });
+      void queryClient.invalidateQueries({ queryKey: ['hq', 'booking', variables.booking_id] });
     },
   });
 }

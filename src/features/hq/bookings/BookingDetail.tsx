@@ -2,11 +2,20 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Pencil, XCircle } from 'lucide-react';
 import { formatInTimeZone } from 'date-fns-tz';
+import { toast } from 'sonner';
 import { PageHeader, StatusPill, EmptyState } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { formatPence } from '@/lib/format';
 import { useRole } from '@/features/auth/RoleContext';
 import {
@@ -14,7 +23,7 @@ import {
   EditInstanceDialog,
   CancelInstanceDialog,
 } from '@/features/hq/courses/instances';
-import { useBooking, useBookingActivity } from './queries';
+import { useBooking, useBookingActivity, useMarkBookingPaid } from './queries';
 import type { ActivityRow, BookingStatus, PaymentStatus } from '@/types/franchisee';
 import type { StatusVariant } from '@/components/daisy/StatusPill';
 
@@ -57,9 +66,13 @@ export default function BookingDetail() {
   const { isHQ } = useRole();
   const [editingCourse, setEditingCourse] = useState(false);
   const [cancellingCourse, setCancellingCourse] = useState(false);
+  const [markPaidOpen, setMarkPaidOpen] = useState(false);
 
   const { data: booking, isLoading, error } = useBooking(id);
   const { data: activity = [], isLoading: activityLoading } = useBookingActivity(id);
+
+  const isPending = booking?.payment_status === 'pending';
+  const isCancelledBooking = booking?.booking_status === 'cancelled';
 
   // Full course-instance detail (for the HQ edit/cancel dialogs which require it).
   // Only fetched once we know the parent course_instance id.
@@ -251,11 +264,11 @@ export default function BookingDetail() {
                 <CardHeader>
                   <CardTitle>Payment</CardTitle>
                   <CardDescription>
-                    Stripe identifiers shown for traceability. Refund and cancel tools ship in Wave
-                    4.
+                    Stripe identifiers shown for traceability. Use "Mark as paid" to record a
+                    pending booking as settled by cheque, invoice or other manual method.
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex flex-col gap-4">
                   <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                     <Field
                       label="Status"
@@ -285,6 +298,28 @@ export default function BookingDetail() {
                       full
                     />
                   </dl>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMarkPaidOpen(true)}
+                      disabled={!isPending || isCancelledBooking}
+                      title={
+                        isCancelledBooking
+                          ? 'Booking is cancelled'
+                          : !isPending
+                            ? `Payment status is '${booking.payment_status}' — only pending bookings can be marked as paid`
+                            : undefined
+                      }
+                    >
+                      Mark as paid
+                    </Button>
+                    {!isPending && !isCancelledBooking ? (
+                      <span className="text-daisy-muted text-xs italic">
+                        Only pending bookings can be marked as paid.
+                      </span>
+                    ) : null}
+                  </div>
                 </CardContent>
               </Card>
 
@@ -330,6 +365,12 @@ export default function BookingDetail() {
             </aside>
           </div>
 
+          <MarkAsPaidDialog
+            open={markPaidOpen}
+            bookingId={booking.id}
+            onClose={() => setMarkPaidOpen(false)}
+          />
+
           {isHQ && courseInstance ? (
             <>
               <EditInstanceDialog
@@ -347,6 +388,101 @@ export default function BookingDetail() {
         </>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mark as paid dialog (HQ) — mirrors the franchisee dialog; HQ may mark any
+// franchisee's pending booking as manually paid.
+// ---------------------------------------------------------------------------
+
+function MarkAsPaidDialog({
+  open,
+  bookingId,
+  onClose,
+}: {
+  open: boolean;
+  bookingId: string;
+  onClose: () => void;
+}) {
+  const [paymentReference, setPaymentReference] = useState('');
+  const mutation = useMarkBookingPaid();
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const ref = paymentReference.trim();
+    if (!ref) return;
+
+    mutation.mutate(
+      { booking_id: bookingId, payment_reference: ref },
+      {
+        onSuccess: () => {
+          toast.success('Booking marked as manually paid.');
+          setPaymentReference('');
+          onClose();
+        },
+        onError: (err) => {
+          toast.error(err.message ?? 'Failed to mark booking as paid.');
+        },
+      },
+    );
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (!next && !mutation.isPending) {
+      setPaymentReference('');
+      onClose();
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Mark as manually paid</DialogTitle>
+          <DialogDescription>
+            Record this booking as paid by cheque, invoice, or other manual method. Enter a
+            reference (cheque number, invoice ID, etc.) for the audit trail.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="hq_payment_reference"
+              className="text-daisy-muted text-[11px] font-bold tracking-wider uppercase"
+            >
+              Payment reference
+            </label>
+            <Input
+              id="hq_payment_reference"
+              value={paymentReference}
+              onChange={(e) => setPaymentReference(e.target.value)}
+              placeholder="e.g. Cheque 001234, INV-2026-004"
+              required
+              disabled={mutation.isPending}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              disabled={mutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={mutation.isPending || paymentReference.trim().length === 0}
+            >
+              {mutation.isPending ? 'Saving…' : 'Mark as paid'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

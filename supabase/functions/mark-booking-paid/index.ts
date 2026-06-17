@@ -8,6 +8,7 @@
 //  1. Auth: JWT sub → da_franchisees.auth_user_id → franchisee row.
 //  2. Load the target booking row.
 //  3. Ownership: booking.franchisee_id must equal the caller's id → 403 if not.
+//     HQ callers (is_hq = true) skip this check and may mark any booking paid.
 //  4. State guard: booking.payment_status must be 'pending' → 409 if already paid/manual/etc.
 //  5. UPDATE da_bookings: payment_status='manual', updated_at stamped.
 //  6. INSERT da_activities (action='booking_marked_paid', metadata={payment_reference, paid_at}).
@@ -95,7 +96,7 @@ Deno.serve(async (req: Request) => {
   // ---------------------------------------------------------------------------
   const franchiseeResult = await admin
     .from('da_franchisees')
-    .select('id, name')
+    .select('id, name, is_hq')
     .eq('auth_user_id', authUserId)
     .maybeSingle();
 
@@ -107,7 +108,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Caller is not provisioned as a franchisee' }, 403);
   }
 
-  const franchisee = franchiseeResult.data as { id: string; name: string };
+  const franchisee = franchiseeResult.data as { id: string; name: string; is_hq: boolean };
 
   // ---------------------------------------------------------------------------
   // Parse + validate body
@@ -165,9 +166,10 @@ Deno.serve(async (req: Request) => {
   };
 
   // ---------------------------------------------------------------------------
-  // Ownership check
+  // Ownership check — HQ callers may mark any booking paid; a franchisee may
+  // only mark their own.
   // ---------------------------------------------------------------------------
-  if (booking.franchisee_id !== franchisee.id) {
+  if (!franchisee.is_hq && booking.franchisee_id !== franchisee.id) {
     return jsonResponse({ error: 'You do not own this booking' }, 403);
   }
 
@@ -207,7 +209,7 @@ Deno.serve(async (req: Request) => {
   await admin
     .from('da_activities')
     .insert({
-      actor_type: 'franchisee',
+      actor_type: franchisee.is_hq ? 'hq' : 'franchisee',
       actor_id: franchisee.id,
       entity_type: 'booking',
       entity_id: bookingId,
