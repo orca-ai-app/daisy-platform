@@ -197,6 +197,15 @@ function Step1Template({
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -257,7 +266,29 @@ function Step1Template({
               )}
             </div>
             {t.description ? (
-              <p className="text-daisy-muted line-clamp-2 text-xs">{t.description}</p>
+              <div className="text-daisy-muted text-xs">
+                <p className={expandedIds.has(t.id) ? '' : 'line-clamp-2'}>{t.description}</p>
+                {t.description.length > 70 ? (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpanded(t.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleExpanded(t.id);
+                      }
+                    }}
+                    className="text-daisy-primary mt-0.5 inline-block cursor-pointer text-[11px] font-semibold hover:underline"
+                  >
+                    {expandedIds.has(t.id) ? 'Show less' : 'Show more'}
+                  </span>
+                ) : null}
+              </div>
             ) : null}
             <div className="mt-auto flex flex-wrap gap-x-4 gap-y-1">
               <span className="text-daisy-ink-soft text-xs">{t.duration_hours}h</span>

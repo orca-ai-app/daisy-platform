@@ -265,7 +265,6 @@ export interface TicketTypeInput {
   price_pence: number;
   seats_consumed: number;
   max_available: number | null;
-  sort_order: number;
 }
 
 interface CreateTicketTypeArgs {

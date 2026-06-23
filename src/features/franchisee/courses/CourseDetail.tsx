@@ -119,7 +119,6 @@ const ticketTypeSchema = z.object({
     .int()
     .positive('Must be positive')
     .nullable(),
-  sort_order: z.number({ invalid_type_error: 'Sort order must be a number' }).int().default(0),
 });
 
 type TicketTypeFormValues = z.infer<typeof ticketTypeSchema>;
@@ -600,7 +599,6 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
     price_pounds: mode === 'edit' ? props.ticketType.price_pence / 100 : 0,
     seats_consumed: mode === 'edit' ? props.ticketType.seats_consumed : 1,
     max_available: mode === 'edit' ? props.ticketType.max_available : null,
-    sort_order: mode === 'edit' ? (props.ticketType.sort_order ?? 0) : 0,
   };
 
   const {
@@ -618,7 +616,6 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
       price_pence: Math.round(values.price_pounds * 100),
       seats_consumed: values.seats_consumed,
       max_available: values.max_available,
-      sort_order: values.sort_order,
     };
 
     try {
@@ -712,23 +709,6 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
                 <p className="text-daisy-orange text-xs">{errors.max_available.message}</p>
               ) : null}
             </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="tt-sort">Sort order</Label>
-            <p className="text-daisy-muted text-xs">
-              Controls the order ticket types are shown to customers when booking — lower numbers
-              appear first. Leave at 0 for alphabetical order.
-            </p>
-            <Input
-              id="tt-sort"
-              type="number"
-              step="1"
-              {...register('sort_order', { valueAsNumber: true })}
-            />
-            {errors.sort_order ? (
-              <p className="text-daisy-orange text-xs">{errors.sort_order.message}</p>
-            ) : null}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
