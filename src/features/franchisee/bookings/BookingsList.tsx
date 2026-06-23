@@ -14,6 +14,8 @@ import { useNavigate } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { PageHeader, DataTable, StatusPill, EmptyState } from '@/components/daisy';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import AddBookingDialog from '@/features/bookings/AddBookingDialog';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -184,6 +186,7 @@ function buildColumns(): ColumnDef<OwnBookingListRow>[] {
 export default function BookingsList() {
   const navigate = useNavigate();
 
+  const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | 'all'>('all');
   const [bookingStatus, setBookingStatus] = useState<BookingStatus | 'all'>('all');
@@ -209,7 +212,20 @@ export default function BookingsList() {
       <PageHeader
         title="My bookings"
         subtitle="Bookings for your courses. Click a row to view detail, mark as paid, add notes, or cancel."
-        actions={<Badge variant="primary">{totalCount} total</Badge>}
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge variant="primary">{totalCount} total</Badge>
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              Add booking
+            </Button>
+          </div>
+        }
+      />
+
+      <AddBookingDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={(bookingId) => navigate(`/franchisee/bookings/${bookingId}`)}
       />
 
       {/* Filter bar */}

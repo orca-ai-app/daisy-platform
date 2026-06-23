@@ -4,6 +4,8 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { formatInTimeZone } from 'date-fns-tz';
 import { PageHeader, DataTable, StatusPill, EmptyState } from '@/components/daisy';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import AddBookingDialog from '@/features/bookings/AddBookingDialog';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -87,6 +89,7 @@ function formatLondonDate(iso: string | null): string {
 export default function BookingsList() {
   const navigate = useNavigate();
 
+  const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | 'all'>('all');
   const [bookingStatus, setBookingStatus] = useState<BookingStatus | 'all'>('all');
@@ -200,7 +203,20 @@ export default function BookingsList() {
       <PageHeader
         title="Bookings"
         subtitle="Every booking across the network. Cancel and refund tools land with the franchisee portal in M2."
-        actions={<Badge variant="primary">{totalCount} total</Badge>}
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge variant="primary">{totalCount} total</Badge>
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              Add booking
+            </Button>
+          </div>
+        }
+      />
+
+      <AddBookingDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={(bookingId) => navigate(`/hq/bookings/${bookingId}`)}
       />
 
       {/* Filter bar */}

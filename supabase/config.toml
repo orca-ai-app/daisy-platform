@@ -45,6 +45,9 @@ verify_jwt = true
 [functions.cancel-course-instance]
 verify_jwt = true
 
+[functions.create-booking]
+verify_jwt = true
+
 [functions.create-course-instance]
 verify_jwt = true
 
