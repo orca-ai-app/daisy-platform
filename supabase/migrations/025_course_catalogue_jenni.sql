@@ -84,7 +84,7 @@ VALUES
   ('first-aid-for-children',
    'First Aid Class For Children',
    1.00, 300, 12, NULL, 'if_requested',
-   'One or two hour classes depending on ages; £3 per child. Suitable for schools, home learning, Scouts and children''s clubs.', TRUE),
+   'One or two hour classes depending on ages. Suitable for schools, home learning, Scouts and children''s clubs.', TRUE),
 
   ('bespoke-first-aid',
    'Bespoke First Aid Class',
