@@ -4,6 +4,7 @@ import {
   GraduationCap,
   CalendarCheck,
   Users,
+  UserCheck,
   Percent,
   CreditCard,
   UserCog,
@@ -68,6 +69,13 @@ export const franchiseeNavLinks: FranchiseeNavLink[] = [
     icon: Users,
     ready: true,
     matchPrefix: '/franchisee/clients',
+  },
+  {
+    label: 'Customers',
+    path: '/franchisee/customers',
+    icon: UserCheck,
+    ready: true,
+    matchPrefix: '/franchisee/customers',
   },
   {
     label: 'Discounts',

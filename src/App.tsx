@@ -75,6 +75,11 @@ const FranchiseeDiscountsList = lazy(() => import('@/features/franchisee/discoun
 const FranchiseeClientsList = lazy(() => import('@/features/franchisee/clients/ClientsList'));
 
 /*
+ * Wave 11: franchisee customers view. Lazy-loaded — simple DataTable page.
+ */
+const FranchiseeCustomersList = lazy(() => import('@/features/franchisee/customers/CustomersList'));
+
+/*
  * Wave 8 (M2): Stripe Connect / payments hub (8A). Lazy-loaded — the page is
  * reached from the Payments nav link and also serves as the Account Link
  * `return_url` / `refresh_url` landing (it reads `?success` / `?refresh` query
@@ -289,6 +294,16 @@ export default function App() {
                   element={
                     <LazyRoute>
                       <FranchiseeClientsList />
+                    </LazyRoute>
+                  }
+                />
+
+                {/* Wave 11: customers view (RLS-scoped da_customers). */}
+                <Route
+                  path="customers"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeCustomersList />
                     </LazyRoute>
                   }
                 />

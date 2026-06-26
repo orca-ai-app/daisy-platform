@@ -101,6 +101,12 @@ export interface CourseInstance {
   bespoke_details: string | null;
   status: CourseInstanceStatus;
   stripe_payment_link: string | null;
+  /**
+   * Stable token for the public booking page (migration added in M3 Wave 11).
+   * Populated for every instance. Used to derive the booking URL:
+   *   `${BOOKING_BASE}/book/${booking_token}`
+   */
+  booking_token: string | null;
   out_of_territory: boolean;
   out_of_territory_warning: OutOfTerritoryWarningColumn;
   cancellation_reason: string | null;

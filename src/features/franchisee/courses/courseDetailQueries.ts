@@ -117,6 +117,7 @@ export function useCourseInstance(id: string | undefined) {
            bespoke_details,
            status,
            stripe_payment_link,
+           booking_token,
            out_of_territory,
            out_of_territory_warning,
            cancellation_reason,
