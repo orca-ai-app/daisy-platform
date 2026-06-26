@@ -309,6 +309,132 @@ Deno.serve(async (req: Request): Promise<Response> => {
 });
 
 // ---------------------------------------------------------------------------
+// M3 public/standalone flow — finalise a PENDING booking pre-created by
+// create-checkout-session. The session metadata carries booking_id. We flip
+// pending → paid (or → manual on overbook), decrement spots, bump the discount
+// use, queue the email journey, and log activity. Idempotent: a re-delivery
+// finds the booking already finalised and acks.
+// ---------------------------------------------------------------------------
+async function finalisePendingBooking(
+  admin: ReturnType<typeof createClient>,
+  session: Stripe.Checkout.Session,
+  bookingId: string,
+): Promise<void> {
+  const now = new Date();
+
+  const bRes = await admin
+    .from('da_bookings')
+    .select(
+      'id, payment_status, course_instance_id, ticket_type_id, quantity, customer_id, booking_reference, franchisee_id, discount_code',
+    )
+    .eq('id', bookingId)
+    .maybeSingle();
+  if (bRes.error) throw new Error(`pending booking lookup failed: ${bRes.error.message}`);
+  if (!bRes.data) {
+    console.error(`stripe-webhook: pending booking ${bookingId} not found (session ${session.id})`);
+    return;
+  }
+  const booking = bRes.data as any;
+  if (booking.payment_status !== 'pending') {
+    console.log(
+      `stripe-webhook: booking ${bookingId} already finalised (${booking.payment_status}) — idempotent ack.`,
+    );
+    return;
+  }
+
+  const ttRes = await admin
+    .from('da_ticket_types')
+    .select('seats_consumed')
+    .eq('id', booking.ticket_type_id)
+    .maybeSingle();
+  const seats = ((ttRes.data as any)?.seats_consumed ?? 1) * booking.quantity;
+
+  const instRes = await admin
+    .from('da_course_instances')
+    .select('event_date')
+    .eq('id', booking.course_instance_id)
+    .maybeSingle();
+  const eventDateStr = (instRes.data as any)?.event_date ?? null;
+
+  // Atomic decrement. false → overbook (rare race): flag manual for HQ review.
+  const dec = await admin.rpc('decrement_spots', {
+    instance_id: booking.course_instance_id,
+    seats,
+  });
+  if (dec.error) throw new Error(`decrement_spots failed: ${dec.error.message}`);
+  const ok = dec.data === true;
+  const paymentStatus: 'paid' | 'manual' = ok ? 'paid' : 'manual';
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : null;
+
+  const upd = await admin
+    .from('da_bookings')
+    .update({
+      payment_status: paymentStatus,
+      stripe_payment_intent_id: paymentIntentId,
+      updated_at: now.toISOString(),
+    })
+    .eq('id', booking.id);
+  if (upd.error) throw new Error(`booking finalise update failed: ${upd.error.message}`);
+
+  // Bump the discount use now that the booking is confirmed (read-modify-write;
+  // the small race on a shared counter is acceptable for discount accounting).
+  if (booking.discount_code) {
+    const dc = await admin
+      .from('da_discount_codes')
+      .select('uses_count')
+      .eq('code', booking.discount_code)
+      .maybeSingle();
+    if (dc.data) {
+      await admin
+        .from('da_discount_codes')
+        .update({ uses_count: ((dc.data as any).uses_count ?? 0) + 1 })
+        .eq('code', booking.discount_code);
+    }
+  }
+
+  if (eventDateStr) {
+    const rows = buildEmailSequenceRows(
+      booking.customer_id,
+      booking.id,
+      now,
+      new Date(`${eventDateStr}T00:00:00Z`),
+    );
+    if (rows.length > 0) {
+      const er = await admin.from('da_email_sequences').insert(rows);
+      if (er.error) console.error('stripe-webhook: email queue insert failed', er.error);
+    }
+  }
+
+  const activityMeta: Record<string, unknown> = {
+    booking_reference: booking.booking_reference,
+    course_instance_id: booking.course_instance_id,
+    franchisee_id: booking.franchisee_id,
+    payment_status: paymentStatus,
+    source: 'public_checkout',
+    stripe_checkout_session_id: session.id,
+  };
+  if (!ok) activityMeta.overbooking = true;
+
+  await admin
+    .from('da_activities')
+    .insert({
+      actor_type: 'system',
+      actor_id: null,
+      entity_type: 'booking',
+      entity_id: booking.id,
+      action: 'booking_created',
+      metadata: activityMeta,
+      description: `Booking ${booking.booking_reference} confirmed via online checkout${
+        ok ? '' : ' — OVERBOOK: requires manual review'
+      }`,
+    })
+    .then((r: { error: unknown }) => {
+      if (r.error) console.error('stripe-webhook: booking_created activity insert failed', r.error);
+    });
+}
+
+// ---------------------------------------------------------------------------
 // checkout.session.completed
 // ---------------------------------------------------------------------------
 
@@ -318,8 +444,16 @@ async function handleCheckoutSessionCompleted(
 ): Promise<void> {
   const session = event.data.object as Stripe.Checkout.Session;
 
+  // M3 public/standalone flow: a pending booking was pre-created and its id is
+  // in metadata. Finalise it and return (skips the M2 legacy create path below).
+  const m3BookingId = (session.metadata ?? {}).booking_id ?? null;
+  if (m3BookingId) {
+    await finalisePendingBooking(admin, session, m3BookingId);
+    return;
+  }
+
   // -------------------------------------------------------------------------
-  // Step 1 — Validate metadata from the Payment Link
+  // Step 1 — Validate metadata from the Payment Link (M2 legacy path)
   // Metadata was stamped by 8B when the Payment Link was created:
   // { course_instance_id, ticket_type_id, quantity, franchisee_id }
   // -------------------------------------------------------------------------
