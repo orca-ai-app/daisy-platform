@@ -31,6 +31,14 @@ verify_jwt = false
 # Called by Stripe's servers — authenticated by the Stripe signature, not a JWT.
 verify_jwt = false
 
+[functions.get-public-courses]
+# Public booking-widget read API (M3). No user — anon callers. Rate-limited in-code.
+verify_jwt = false
+
+[functions.process-interest-form]
+# Public booking-widget interest-form capture (M3). No user. Rate-limited in-code.
+verify_jwt = false
+
 # --- Browser-called with a franchisee/HQ JWT (verify_jwt = true) ------------
 
 [functions.add-booking-note]
