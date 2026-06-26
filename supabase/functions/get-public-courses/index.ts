@@ -66,6 +66,26 @@ interface RequestBody {
   radius_miles?: unknown;
   franchisee_id?: unknown;
   limit?: unknown;
+  booking_token?: unknown;
+}
+
+// Shape one da_course_instances row (+ joined names + ticket types) into a card.
+function toCard(r: any) {
+  return {
+    id: r.id,
+    template_name: r.template_name ?? r.template?.name ?? null,
+    template_slug: r.template_slug ?? r.template?.slug ?? null,
+    event_date: r.event_date,
+    start_time: r.start_time,
+    end_time: r.end_time,
+    venue_name: r.venue_name,
+    venue_postcode: r.venue_postcode,
+    distance_miles: r.distance_miles == null ? null : Math.round(r.distance_miles * 10) / 10,
+    franchisee_name: r.franchisee_name ?? r.franchisee?.name ?? null,
+    capacity: r.capacity,
+    spots_remaining: r.spots_remaining,
+    ticket_types: Array.isArray(r.ticket_types) ? r.ticket_types : [],
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -97,6 +117,35 @@ Deno.serve(async (req: Request) => {
     body = (await req.json()) as RequestBody;
   } catch {
     return jsonResponse({ error: 'Invalid JSON body' }, 400);
+  }
+
+  // --- booking_token path: resolve a single course (the /book/:token page) ---
+  const bookingToken = typeof body.booking_token === 'string' ? body.booking_token.trim() : '';
+  if (bookingToken) {
+    const single = await admin
+      .from('da_course_instances')
+      .select(
+        `id, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
+         template:da_course_templates ( name, slug ),
+         franchisee:da_franchisees ( name ),
+         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed )`,
+      )
+      .eq('booking_token', bookingToken)
+      .maybeSingle();
+    if (single.error) {
+      console.error('booking_token lookup failed', single.error);
+      return jsonResponse({ error: 'Could not load that course' }, 500);
+    }
+    if (!single.data || (single.data as any).status !== 'scheduled') {
+      return jsonResponse(
+        { courses: [], territory_status: 'none', suggest_interest_form: false },
+        200,
+      );
+    }
+    return jsonResponse(
+      { courses: [toCard(single.data)], territory_status: 'none', suggest_interest_form: false },
+      200,
+    );
   }
 
   const postcode = typeof body.postcode === 'string' ? body.postcode.trim() : '';
