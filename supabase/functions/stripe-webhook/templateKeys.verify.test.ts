@@ -28,8 +28,10 @@ import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webhookSrc = readFileSync(join(here, 'index.ts'), 'utf8');
-const migration020 = readFileSync(
-  join(here, '..', '..', 'migrations', '020_email_sequence_template_keys.sql'),
+// Migration 028 supersedes 020 — it widens the CHECK to Daisy's real Kartra
+// journey. The webhook must only queue keys in this (current) allowed set.
+const migration028 = readFileSync(
+  join(here, '..', '..', 'migrations', '028_email_journey_keys.sql'),
   'utf8',
 );
 
@@ -71,7 +73,7 @@ function extractQueuedKeys(src: string): string[] {
   return [...src.matchAll(/push\(\s*'([a-z0-9_]+)'/g)].map((m) => m[1]);
 }
 
-const migrationKeys = extractMigrationKeys(migration020);
+const migrationKeys = extractMigrationKeys(migration028);
 const allowedSet = extractWebhookAllowedSet(webhookSrc);
 const queuedKeys = extractQueuedKeys(webhookSrc);
 
@@ -100,21 +102,23 @@ describe('template_key extraction (sanity)', () => {
 // The critical subset checks.
 // ---------------------------------------------------------------------------
 
-describe('webhook template_key set ⊆ migration 020 CHECK set', () => {
+describe('webhook template_key set ⊆ migration 028 CHECK set', () => {
   it('every webhook ALLOWED_TEMPLATE_KEYS entry exists in the migration set', () => {
     const orphans = [...allowedSet].filter((k) => !migrationKeys.has(k));
     expect(orphans).toEqual([]);
   });
 
-  it('the two sets are identical (no drift in either direction)', () => {
-    // Defence-in-depth: if migration 020 ever drops a key the webhook still
-    // declares, or vice versa, this fails loudly.
-    expect([...allowedSet].sort()).toEqual([...migrationKeys].sort());
+  it('the webhook set is a subset of the migration CHECK set', () => {
+    // Migration 028 also allows legacy + billing keys the webhook never queues,
+    // so the sets are NOT identical — but the webhook's set must be a subset so
+    // every key it could insert is constraint-safe.
+    const subset = [...allowedSet].every((k) => migrationKeys.has(k));
+    expect(subset).toBe(true);
   });
 });
 
 describe('every QUEUED template_key is constraint-safe', () => {
-  it('every push() key is in the migration-020 CHECK set', () => {
+  it('every push() key is in the migration-028 CHECK set', () => {
     const violations = queuedKeys.filter((k) => !migrationKeys.has(k));
     expect(violations).toEqual([]);
   });
@@ -124,23 +128,28 @@ describe('every QUEUED template_key is constraint-safe', () => {
     expect(violations).toEqual([]);
   });
 
-  it('queues the immediate booking pair plus the refresher series', () => {
-    // Documents the actual runtime schedule so a future edit that drops one is
-    // caught. quiz_prompt / fee_* are intentionally NOT queued (see source
-    // comment) — assert they are absent so adding them is a deliberate change.
+  it('queues the immediate pair, the pre-event reminder and the Kartra journey', () => {
+    // Documents the actual runtime schedule (Daisy's Kartra journey) so a future
+    // edit that drops one is caught. Legacy interval keys are intentionally NOT
+    // queued any more — assert their absence so re-adding is a deliberate change.
     expect(new Set(queuedKeys)).toEqual(
       new Set([
         'new_booking_notification',
         'booking_confirmation',
-        'thank_you',
-        'refresher_6w',
-        'refresher_3m',
-        'refresher_6m',
-        'refresher_9m',
-        'refresher_12m',
+        'medical_reminder',
+        'post_course_welcome',
+        'recap_anaphylaxis',
+        'recap_choking',
+        'recap_head_injuries',
+        'recap_cpr',
+        'recap_febrile_convulsions',
+        'recap_burns',
+        'quiz_general',
+        'refresher',
+        'refresher_elearning_option',
       ]),
     );
-    expect(queuedKeys).not.toContain('quiz_prompt');
+    expect(queuedKeys).not.toContain('refresher_6w');
     expect(queuedKeys).not.toContain('fee_invoice');
   });
 });

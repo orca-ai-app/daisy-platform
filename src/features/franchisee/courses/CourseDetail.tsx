@@ -9,10 +9,22 @@
  *
  * Wave 7B.
  */
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { formatInTimeZone } from 'date-fns-tz';
-import { Pencil, XCircle, Plus, Trash2, Edit2, Copy, MessageCircle, Link2 } from 'lucide-react';
+import {
+  Pencil,
+  XCircle,
+  Plus,
+  Trash2,
+  Edit2,
+  Copy,
+  MessageCircle,
+  Link2,
+  QrCode,
+  Download,
+} from 'lucide-react';
+import QRCode from 'qrcode';
 import { toast } from 'sonner';
 
 import { PageHeader, StatusPill, EmptyState } from '@/components/daisy';
@@ -52,6 +64,7 @@ import {
   type TicketTypeInput,
 } from './courseDetailQueries';
 import type { TicketType } from './types';
+import { useOwnProfile } from '../profileQueries';
 
 // ---------------------------------------------------------------------------
 // Date / time helpers (BST-safe — never reconstruct via toISOString)
@@ -118,6 +131,7 @@ export default function CourseDetail() {
 
   const { data: instance, isLoading, error } = useCourseInstance(id);
   const { data: ticketTypes = [], isLoading: ticketTypesLoading } = useCourseTicketTypes(id);
+  const { data: ownProfile } = useOwnProfile();
   const activity = useActivityLog({ entityType: 'course_instance', entityId: id, limit: 25 });
 
   const isCancelled = instance?.status === 'cancelled';
@@ -365,6 +379,14 @@ export default function CourseDetail() {
                 <BookingLinkCard
                   bookingToken={instance.booking_token}
                   courseName={instance.template?.name ?? 'Course'}
+                />
+              ) : null}
+
+              {/* Medical declaration QR — all non-cancelled scheduled courses */}
+              {!isCancelled && ownProfile?.number ? (
+                <MedicalQrCard
+                  franchiseeNumber={ownProfile.number}
+                  venuePostcode={instance.venue_postcode}
                 />
               ) : null}
             </aside>
@@ -745,6 +767,127 @@ function DeleteTicketTypeDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MedicalQrCard — medical declaration QR code (Wave 12)
+//
+// Encodes https://medical.daisyfirstaid.com/?instructor={number}&postcode={prefix}
+// where prefix = everything before the last 3 chars of the venue postcode,
+// uppercased and with spaces stripped. e.g. "AB6 4BS" → "AB6".
+// ---------------------------------------------------------------------------
+
+/** Derive the outward code from a full postcode, e.g. "AB6 4BS" → "AB6". */
+function postcodePrefix(postcode: string | null): string {
+  if (!postcode) return '';
+  const stripped = postcode.replace(/\s+/g, '').toUpperCase();
+  if (stripped.length <= 3) return stripped;
+  return stripped.slice(0, stripped.length - 3);
+}
+
+const MEDICAL_BASE = 'https://medical.daisyfirstaid.com/';
+
+interface MedicalQrCardProps {
+  franchiseeNumber: string;
+  venuePostcode: string | null;
+}
+
+function MedicalQrCard({ franchiseeNumber, venuePostcode }: MedicalQrCardProps) {
+  const prefix = postcodePrefix(venuePostcode);
+  const url = `${MEDICAL_BASE}?instructor=${encodeURIComponent(franchiseeNumber)}&postcode=${encodeURIComponent(prefix)}`;
+
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [qrError, setQrError] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(url, { width: 256, margin: 2, color: { dark: '#1a1a2e', light: '#ffffff' } })
+      .then((du) => {
+        if (!cancelled) setDataUrl(du);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setQrError(err instanceof Error ? err.message : 'QR generation failed');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  // Suppress unused-ref lint — we keep the ref for potential future canvas use
+  void canvasRef;
+
+  const handleDownload = () => {
+    if (!dataUrl) return;
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `medical-declaration-qr-${franchiseeNumber}-${prefix}.png`;
+    a.click();
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <QrCode aria-hidden className="text-daisy-primary h-4 w-4" />
+          <CardTitle>Medical declaration QR</CardTitle>
+        </div>
+        <CardDescription>
+          Display this QR code at your course so attendees can submit their medical declaration
+          before the session starts.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {qrError ? (
+          <p className="text-daisy-orange text-sm">{qrError}</p>
+        ) : dataUrl ? (
+          <div className="flex flex-col items-center gap-3">
+            <img
+              src={dataUrl}
+              alt="Medical declaration QR code"
+              width={192}
+              height={192}
+              className="rounded-[8px] border border-[#E5E7EB]"
+            />
+          </div>
+        ) : (
+          <div className="flex h-48 items-center justify-center">
+            <span className="text-daisy-muted text-sm">Generating QR…</span>
+          </div>
+        )}
+
+        <div className="border-daisy-line bg-daisy-paper rounded-[8px] border px-3 py-2">
+          <p className="text-daisy-muted mb-1 text-[11px] font-bold tracking-wider uppercase">
+            Destination URL
+          </p>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-daisy-primary text-xs font-medium break-all underline underline-offset-2"
+          >
+            {url}
+          </a>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={handleDownload} disabled={!dataUrl}>
+            <Download aria-hidden className="h-4 w-4" />
+            Download PNG
+          </Button>
+
+          <Button size="sm" variant="outline" onClick={() => window.print()}>
+            Print
+          </Button>
+        </div>
+
+        <p className="text-daisy-muted text-[11px]">
+          Each submission is linked to instructor <strong>{franchiseeNumber}</strong> and postcode
+          prefix <strong>{prefix || '—'}</strong>.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

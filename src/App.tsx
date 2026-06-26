@@ -49,6 +49,11 @@ const BookingsList = lazy(() =>
 const BookingDetail = lazy(() =>
   import('@/features/hq/bookings').then((m) => ({ default: m.BookingDetail })),
 );
+const MedicalDeclarationsList = lazy(() =>
+  import('@/features/hq/medical-declarations').then((m) => ({
+    default: m.MedicalDeclarationsList,
+  })),
+);
 const InstancesList = lazy(() =>
   import('@/features/hq/courses/instances').then((m) => ({ default: m.InstancesList })),
 );
@@ -185,6 +190,14 @@ export default function App() {
                   element={
                     <LazyRoute>
                       <BookingsList />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="medical"
+                  element={
+                    <LazyRoute>
+                      <MedicalDeclarationsList />
                     </LazyRoute>
                   }
                 />
