@@ -48,6 +48,18 @@ verify_jwt = false
 # creates Stripe Checkout on the franchisee's connected account. No user auth.
 verify_jwt = false
 
+[functions.submit-medical-declaration]
+# Public medical-app submit (M3). Encrypts health data; consent-gated. No user auth.
+verify_jwt = false
+
+[functions.purge-medical-declarations]
+# HQ-only manual GDPR purge (M3). The scheduled purge is a pg_cron SQL job (029).
+verify_jwt = true
+
+[functions.decrypt-medical-declaration]
+# HQ-only decrypt of one declaration (M3). JWT verified; is_hq gate in-code.
+verify_jwt = true
+
 # --- Browser-called with a franchisee/HQ JWT (verify_jwt = true) ------------
 
 [functions.add-booking-note]
