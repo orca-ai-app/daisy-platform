@@ -60,6 +60,18 @@ verify_jwt = true
 # HQ-only decrypt of one declaration (M3). JWT verified; is_hq gate in-code.
 verify_jwt = true
 
+[functions.send-emails]
+# Hourly cron (M3). pg_cron → pg_net with CRON_SECRET; gated in-code. No user JWT.
+verify_jwt = false
+
+[functions.gdpr-erasure]
+# HQ-only GDPR right-to-erasure (M3). JWT verified; is_hq gate in-code.
+verify_jwt = true
+
+[functions.gdpr-subject-access]
+# HQ-only GDPR subject-access export (M3). JWT verified; is_hq gate in-code.
+verify_jwt = true
+
 # --- Browser-called with a franchisee/HQ JWT (verify_jwt = true) ------------
 
 [functions.add-booking-note]

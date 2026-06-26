@@ -39,21 +39,22 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 // No CORS headers — this endpoint is called by Stripe's servers, not a browser.
 // We do need to respond quickly to avoid Stripe's 30 s timeout.
 
-// Allowed template_keys per migration 020 CHECK constraint.
+// Allowed template_keys per migration 028 CHECK constraint (Kartra journey).
 // ONLY insert keys from this set. Any key not listed here violates the constraint.
 const ALLOWED_TEMPLATE_KEYS = new Set([
   'new_booking_notification',
   'booking_confirmation',
-  'thank_you',
-  'refresher_6w',
-  'refresher_3m',
-  'refresher_6m',
-  'refresher_9m',
-  'refresher_12m',
-  'quiz_prompt',
-  'fee_invoice',
-  'fee_chase_1',
-  'fee_chase_2',
+  'medical_reminder',
+  'post_course_welcome',
+  'recap_anaphylaxis',
+  'recap_choking',
+  'recap_head_injuries',
+  'recap_cpr',
+  'recap_febrile_convulsions',
+  'recap_burns',
+  'quiz_general',
+  'refresher',
+  'refresher_elearning_option',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -93,32 +94,19 @@ function daysFromDate(baseDate: Date, days: number): Date {
   return d;
 }
 
-// Build da_email_sequences rows for a confirmed booking.
-// All keys MUST be in ALLOWED_TEMPLATE_KEYS — the CHECK constraint on
-// da_email_sequences.template_key will reject any that aren't.
-//
-// Schedule (derived from migration 020 key names and M2 handover §email sequences):
-//   now (sequence_day 0):
-//     - new_booking_notification → franchisee (sent to franchisee via customer record
-//       but keyed to the booking; the send-emails cron uses template_key to route)
-//     - booking_confirmation → customer (immediate)
-//   event_date + 1 day (sequence_day 1):
-//     - thank_you → customer (post-course follow-up)
-//   event_date + 42 days (sequence_day 42 = 6 weeks):
-//     - refresher_6w → customer
-//   event_date + 90 days (sequence_day 90 = ~3 months):
-//     - refresher_3m → customer
-//   event_date + 180 days (sequence_day 180 = ~6 months):
-//     - refresher_6m → customer
-//   event_date + 270 days (sequence_day 270 = ~9 months):
-//     - refresher_9m → customer
-//   event_date + 365 days (sequence_day 365 = 12 months):
-//     - refresher_12m → customer
-//
-// NOTE: 'quiz_prompt' is in the allowed set but has no PRD §4.14 offset defined
-// in the available docs. It is OMITTED here and listed in the final report for a
-// follow-up decision. 'fee_invoice' / 'fee_chase_1' / 'fee_chase_2' are billing
-// sequences, not booking sequences — not queued here.
+// Build da_email_sequences rows for a confirmed booking — Daisy's real Kartra
+// journey (docs/M3-email-journey.md). All keys MUST be in ALLOWED_TEMPLATE_KEYS
+// (migration 028 CHECK). Schedule:
+//   now: new_booking_notification (→ franchisee), booking_confirmation (→ customer)
+//   event_date − 1h: medical_reminder (only if still future)
+//   event_date + 7h: post_course_welcome
+//   event_date + 28d: recap_anaphylaxis
+//   then +42d each: recap_choking (70), recap_head_injuries (112), recap_cpr (154),
+//     recap_febrile_convulsions (196), recap_burns (238), quiz_general (280),
+//     refresher (322)
+//   event_date + 329d: refresher_elearning_option
+// The send-emails cron renders the matching template per template_key. Copy for
+// each template is lifted from Kartra (Wave 13 templates).
 function buildEmailSequenceRows(
   customerId: string,
   bookingId: string,
@@ -157,22 +145,34 @@ function buildEmailSequenceRows(
     });
   }
 
-  // Immediate (day 0 relative to booking time)
+  function hoursFromDate(baseDate: Date, hours: number): Date {
+    return new Date(baseDate.getTime() + hours * 3600_000);
+  }
+
+  // Immediate (booking time)
   push('new_booking_notification', now, 0);
   push('booking_confirmation', now, 0);
 
-  // Post-event (day 1 after the course date)
-  push('thank_you', daysFromDate(eventDate, 1), 1);
+  // Pre-event medical reminder — 1h before the class. Only queue if that moment
+  // is still in the future (a reminder for a past event would fire immediately).
+  const medicalReminderAt = hoursFromDate(eventDate, -1);
+  if (medicalReminderAt.getTime() > now.getTime()) {
+    push('medical_reminder', medicalReminderAt, 0);
+  }
 
-  // Refresher series (offsets from event_date)
-  push('refresher_6w', daysFromDate(eventDate, 42), 42);
-  push('refresher_3m', daysFromDate(eventDate, 90), 90);
-  push('refresher_6m', daysFromDate(eventDate, 180), 180);
-  push('refresher_9m', daysFromDate(eventDate, 270), 270);
-  push('refresher_12m', daysFromDate(eventDate, 365), 365);
-
-  // 'quiz_prompt' — offset not defined in available PRD docs; omitted.
-  // Requires a follow-up migration / decision before queuing.
+  // Post-course journey (Daisy's real Kartra sequence — docs/M3-email-journey.md).
+  // Offsets are relative to the event date; cumulative day counts match Kartra's
+  // per-step delays (welcome +7h, then +28d, then +42d each, last +7d).
+  push('post_course_welcome', hoursFromDate(eventDate, 7), 0);
+  push('recap_anaphylaxis', daysFromDate(eventDate, 28), 28);
+  push('recap_choking', daysFromDate(eventDate, 70), 70);
+  push('recap_head_injuries', daysFromDate(eventDate, 112), 112);
+  push('recap_cpr', daysFromDate(eventDate, 154), 154);
+  push('recap_febrile_convulsions', daysFromDate(eventDate, 196), 196);
+  push('recap_burns', daysFromDate(eventDate, 238), 238);
+  push('quiz_general', daysFromDate(eventDate, 280), 280);
+  push('refresher', daysFromDate(eventDate, 322), 322);
+  push('refresher_elearning_option', daysFromDate(eventDate, 329), 329);
 
   return rows;
 }
