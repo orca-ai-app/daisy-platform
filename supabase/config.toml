@@ -39,6 +39,10 @@ verify_jwt = false
 # Public booking-widget interest-form capture (M3). No user. Rate-limited in-code.
 verify_jwt = false
 
+[functions.validate-discount]
+# Public booking-widget live discount check (M3). Read-only; no uses_count bump.
+verify_jwt = false
+
 # --- Browser-called with a franchisee/HQ JWT (verify_jwt = true) ------------
 
 [functions.add-booking-note]
