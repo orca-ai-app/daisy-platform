@@ -1,0 +1,55 @@
+{
+  "template_key": "recap_choking",
+  "name": "Choking Recap",
+  "subject": "Reminder: How to save someone from choking",
+  "preheader": "Reminder on how to save your baby or child from choking",
+  "sort_order": 3,
+  "delay_label": "+42 days",
+  "is_marketing": true,
+  "blocks": [
+    { "type": "heading", "text": "Choking" },
+    { "type": "paragraph", "text": "**Reminder: what to do if someone chokes**" },
+    {
+      "type": "paragraph",
+      "text": "Choking is always a scary thing to happen, but as we discussed in class, remember that choking is silent and we need to act quickly."
+    },
+    {
+      "type": "paragraph",
+      "text": "If a **baby** is choking call for help and repeat a cycle of:"
+    },
+    { "type": "list", "items": ["5 x Back Blows", "5 x Chest Thrusts"] },
+    {
+      "type": "paragraph",
+      "text": "If a **child** or **adult** is choking then repeat a cycle of:"
+    },
+    { "type": "list", "items": ["5 x Back Blows", "5 x Abdominal Thrusts"] },
+    { "type": "paragraph", "text": "Keep repeating the relevant cycle until either..." },
+    {
+      "type": "list",
+      "items": [
+        "The item comes out",
+        "Help arrives",
+        "They lose consciousness - in which case, start CPR"
+      ]
+    },
+    { "type": "divider" },
+    { "type": "paragraph", "text": "**Things to remember:**" },
+    {
+      "type": "paragraph",
+      "text": "Call the ambulance asap - you can cancel it if you don't need it."
+    },
+    {
+      "type": "paragraph",
+      "text": "If you are on your own, do a round of back blows first, then call for help."
+    },
+    { "type": "paragraph", "text": "**They must be checked at hospital if...**" },
+    {
+      "type": "list",
+      "items": [
+        "They have chest or abdominal thrusts",
+        "Have a persistent cough afterwards",
+        "Have any difficulty swallowing afterwards"
+      ]
+    }
+  ]
+}

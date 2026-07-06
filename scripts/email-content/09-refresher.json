@@ -1,0 +1,54 @@
+{
+  "template_key": "refresher",
+  "name": "Refresher",
+  "subject": "Time flies when you have a little one around",
+  "preheader": "It's time for you to update your first aid knowledge",
+  "sort_order": 9,
+  "delay_label": "+42 days",
+  "is_marketing": true,
+  "blocks": [
+    { "type": "heading", "text": "I just blinked...!" },
+    {
+      "type": "paragraph",
+      "text": "**How much has your little one changed since you did your Daisy First Aid Class?**"
+    },
+    {
+      "type": "paragraph",
+      "text": "All those milestones they have hit and the amazing things they have learned since we last saw you is just incredible to think about!"
+    },
+    {
+      "type": "paragraph",
+      "text": "But it's not just the children that have changed - did you know that the first aid guidelines are reviewed annually?"
+    },
+    {
+      "type": "paragraph",
+      "text": "This means there may have been some changes since you last did a class with us!"
+    },
+    {
+      "type": "paragraph",
+      "text": "The Resuscitation Council (UK), who govern our first aid guidelines, recommend an annual refresher for first aid for this very reason and to keep you fresh and confident in your skills."
+    },
+    {
+      "type": "paragraph",
+      "text": "If you'd like to book a refresher class with us, there are a few options for you to choose from:"
+    },
+    {
+      "type": "list",
+      "items": [
+        "Book a home class for 4 or more people",
+        "Join a live class online via zoom",
+        "Book a place at one of our venue classes",
+        "Purchase an e-learning course"
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "Click the button below to view our current class availability and your refresher class"
+    },
+    {
+      "type": "button",
+      "label": "Find Your Local Trainer & Book Now",
+      "url": "https://www.daisyfirstaid.com/find-a-first-aid-course/"
+    }
+  ]
+}

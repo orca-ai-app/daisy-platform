@@ -7,13 +7,19 @@
 // POST {} (Bearer CRON_SECRET) -> { processed, sent, failed }
 //
 // For each pending row due now: load booking + customer + course + franchisee,
-// render the template (templates.ts), POST to Postmark. Success → status='sent';
-// failure → status='failed' + activity row (HQ resends manually — no auto retry).
+// render the template — da_email_templates row (HQ-editable blocks, migrations
+// 030/031) when one exists, else the code fallback in templates.ts — and POST
+// to Postmark with open tracking + a signed List-Unsubscribe. Marketing rows
+// for opted-out customers are cancelled, not sent. Success → status='sent'
+// (+ provider_message_id for webhook correlation); failure → status='failed'
+// + activity row (HQ resends manually — no auto retry).
 
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { renderTemplate, type TemplateContext } from './templates.ts';
+import { renderBlocks, fillMerge, type EmailBlock } from '../_shared/emailBlocks.ts';
+import { buildUnsubscribeUrl } from '../_shared/unsubscribeToken.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -43,8 +49,6 @@ function formatDate(d: string | null): string {
   }
 }
 
-const BOOKING_BASE = Deno.env.get('BOOKING_BASE_URL') ?? 'https://booking.daisyfirstaid.com';
-
 async function sendViaPostmark(
   token: string,
   from: string,
@@ -53,7 +57,9 @@ async function sendViaPostmark(
   subject: string,
   html: string,
   text: string,
-): Promise<{ ok: boolean; error?: string }> {
+  metadata?: Record<string, string>,
+  unsubscribeUrl?: string,
+): Promise<{ ok: boolean; messageId?: string; error?: string }> {
   try {
     const res = await fetch('https://api.postmarkapp.com/email', {
       method: 'POST',
@@ -69,10 +75,20 @@ async function sendViaPostmark(
         Subject: subject,
         HtmlBody: html,
         TextBody: text,
+        TrackOpens: true,
+        Metadata: metadata,
+        Headers: unsubscribeUrl
+          ? [{ Name: 'List-Unsubscribe', Value: `<${unsubscribeUrl}>` }]
+          : undefined,
+        // Cutover note: Postmark policy wants marketing on a Broadcast stream;
+        // stays 'outbound' until the production account exists (M3 checklist).
         MessageStream: 'outbound',
       }),
     });
-    if (res.ok) return { ok: true };
+    if (res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { MessageID?: string };
+      return { ok: true, messageId: body.MessageID };
+    }
     const body = await res.text();
     return { ok: false, error: `Postmark ${res.status}: ${body.slice(0, 200)}` };
   } catch (err) {
@@ -114,8 +130,22 @@ Deno.serve(async (req: Request) => {
   }
   const rows = (due.data ?? []) as any[];
 
+  // HQ-editable templates (migrations 030/031) — one load per invocation.
+  // Keys without a row fall back to the code templates in templates.ts.
+  const templatesRes = await admin
+    .from('da_email_templates')
+    .select('template_key, subject, preheader, blocks, is_marketing');
+  if (templatesRes.error) {
+    console.error('send-emails: template load failed', templatesRes.error);
+    return jsonResponse({ error: 'Could not load templates' }, 500);
+  }
+  const dbTemplates = new Map<string, any>(
+    (templatesRes.data ?? []).map((t: any) => [t.template_key, t]),
+  );
+
   let sent = 0;
   let failed = 0;
+  let cancelled = 0;
 
   for (const row of rows) {
     try {
@@ -124,7 +154,7 @@ Deno.serve(async (req: Request) => {
         .from('da_bookings')
         .select(
           `booking_reference,
-           customer:da_customers ( first_name, last_name, email ),
+           customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
              event_date, start_time, venue_name, venue_postcode,
              template:da_course_templates ( name )
@@ -141,6 +171,17 @@ Deno.serve(async (req: Request) => {
       const recipient = toFranchisee ? b.franchisee?.email : b.customer?.email;
       if (!recipient) throw new Error('no recipient email');
 
+      const dbTemplate = dbTemplates.get(row.template_key);
+
+      // Suppression: opted-out customers get no marketing emails. Their queued
+      // marketing rows are cancelled (not failed); transactional still sends.
+      // Keys without a DB row are the transactional set — never suppressed.
+      if (!toFranchisee && dbTemplate?.is_marketing && b.customer?.marketing_opt_out) {
+        await admin.from('da_email_sequences').update({ status: 'cancelled' }).eq('id', row.id);
+        cancelled++;
+        continue;
+      }
+
       const ctx: TemplateContext = {
         first_name: b.customer?.first_name ?? 'there',
         customer_name: `${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim(),
@@ -151,10 +192,20 @@ Deno.serve(async (req: Request) => {
         franchisee_name: b.franchisee?.name ?? 'Daisy First Aid',
         franchisee_email: b.franchisee?.email ?? '',
         booking_reference: b.booking_reference,
-        unsubscribe_url: `${BOOKING_BASE}/unsubscribe?email=${encodeURIComponent(recipient)}`,
+        unsubscribe_url: await buildUnsubscribeUrl(row.customer_id),
       };
 
-      const tmpl = renderTemplate(row.template_key, ctx);
+      let tmpl: { subject: string; html: string; text: string } | null;
+      if (dbTemplate) {
+        const rendered = renderBlocks(
+          (dbTemplate.blocks ?? []) as EmailBlock[],
+          ctx,
+          dbTemplate.preheader ?? undefined,
+        );
+        tmpl = { subject: fillMerge(dbTemplate.subject, ctx), ...rendered };
+      } else {
+        tmpl = renderTemplate(row.template_key, ctx);
+      }
       if (!tmpl) throw new Error(`no template for key ${row.template_key}`);
 
       const replyTo = toFranchisee ? null : (b.franchisee?.email ?? null);
@@ -166,12 +217,18 @@ Deno.serve(async (req: Request) => {
         tmpl.subject,
         tmpl.html,
         tmpl.text,
+        { sequence_id: row.id, template_key: row.template_key },
+        ctx.unsubscribe_url,
       );
 
       if (result.ok) {
         await admin
           .from('da_email_sequences')
-          .update({ status: 'sent', sent_at: new Date().toISOString() })
+          .update({
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            provider_message_id: result.messageId ?? null,
+          })
           .eq('id', row.id);
         sent++;
       } else {
@@ -197,5 +254,5 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  return jsonResponse({ processed: rows.length, sent, failed }, 200);
+  return jsonResponse({ processed: rows.length, sent, failed, cancelled }, 200);
 });

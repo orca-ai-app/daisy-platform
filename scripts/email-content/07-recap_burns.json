@@ -1,0 +1,56 @@
+{
+  "template_key": "recap_burns",
+  "name": "Burns",
+  "subject": "A reminder on how to treat burns",
+  "preheader": "Reminder on how to deal with burns at home",
+  "sort_order": 7,
+  "delay_label": "+42 days",
+  "is_marketing": true,
+  "blocks": [
+    { "type": "heading", "text": "Treating a burn" },
+    { "type": "paragraph", "text": "**Burns come with a big risk of infection**" },
+    { "type": "paragraph", "text": "The quicker you cool down a burn, the better!" },
+    {
+      "type": "paragraph",
+      "text": "Cooling quickly means there is less risk of infection and the burn is less likely to scar."
+    },
+    {
+      "type": "paragraph",
+      "text": "Remember that burns should be cooled under luke-warm/tepid cool running water whenever possible and no creams or ointments should be used on them."
+    },
+    {
+      "type": "paragraph",
+      "text": "Here is a quick reminder about each different depth of burn..."
+    },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/Screenshot_2023-11-20_at_12.57.18.png",
+      "alt": "Superficial burn",
+      "width": 280
+    },
+    {
+      "type": "paragraph",
+      "text": "**Superficial Burn** - Cool for 20 mins, wrap with clingfilm & seek medical advice"
+    },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/Screenshot_2023-11-20_at_12.57.27.png",
+      "alt": "Partial thickness burn",
+      "width": 280
+    },
+    {
+      "type": "paragraph",
+      "text": "**Partial Thickness** - Cool for 20 minutes, dress with clingfilm & call 999 if needed"
+    },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/Screenshot_2023-11-20_at_12.57.41.png",
+      "alt": "Full thickness burn",
+      "width": 280
+    },
+    {
+      "type": "paragraph",
+      "text": "**Full Thickness** - Cool for minimum of 20 mins, dress with clingfilm & always call 999"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "template_key": "recap_cpr",
+  "name": "Recap: CPR",
+  "subject": "CPR is easy as ABC",
+  "preheader": "Reminder on how to perform CPR to save your loved one's life",
+  "sort_order": 5,
+  "delay_label": "+42 days",
+  "is_marketing": true,
+  "blocks": [
+    { "type": "heading", "text": "Cardiopulmonary Resuscitation" },
+    { "type": "paragraph", "text": "**CPR - Easy as ABC**" },
+    {
+      "type": "paragraph",
+      "text": "It's been a few months since you did your Daisy First Aid class..."
+    },
+    {
+      "type": "paragraph",
+      "text": "Hopefully, you won't need some of the skills you learned, but it's always good to have a reminder!"
+    },
+    { "type": "paragraph", "text": "Think back to the class where you would have..." },
+    {
+      "type": "list",
+      "items": [
+        "Opened the **AIRWAY** by lifting the chin",
+        "Done a 10 second **BREATHING** check",
+        "If not breathing normally... started **CPR**"
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "The CPR sequence for a **baby/child** (newborn up to the age of 18 years old):"
+    },
+    { "type": "list", "items": ["5 rescue breaths", "15 chest compressions", "2 breaths"] },
+    { "type": "paragraph", "text": "Continue to repeat the cycle of 15:2 until help arrives." },
+    {
+      "type": "paragraph",
+      "text": "If you are faced with an **adult** (over the age of 18 years old) then do as above but skip the 5 initial rescue breaths. Start straight away with 15 chest compressions."
+    },
+    { "type": "paragraph", "text": "Remember - always call for help asap!" },
+    { "type": "divider" },
+    { "type": "heading", "text": "Useful links & information for you..." },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/app_instagram_logo_media_popular_social.png",
+      "alt": "Instagram",
+      "href": "https://www.instagram.com/daisyfirstaid",
+      "width": 90
+    },
+    { "type": "paragraph", "text": "**Are you on Instagram?**" },
+    {
+      "type": "paragraph",
+      "text": "We share lots of useful first aid advice for free via our Instagram account!"
+    },
+    {
+      "type": "paragraph",
+      "text": "Follow us on Instagram: [www.instagram.com/daisyfirstaid](https://www.instagram.com/daisyfirstaid)"
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "template_key": "post_course_welcome",
+  "name": "Daisy First Aid Customers (post-class thank you)",
+  "subject": "Thank you from Daisy First Aid",
+  "preheader": "Additional information following your class today",
+  "sort_order": 1,
+  "delay_label": "7 hours after the class",
+  "is_marketing": true,
+  "blocks": [
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/Email_header_-_thank_you_email.jpg",
+      "alt": "Congratulations on completing your Daisy First Aid class!",
+      "href": "https://www.daisyfirstaid.com/"
+    },
+    { "type": "heading", "text": "Thank You" },
+    { "type": "paragraph", "text": "**We hope you enjoyed your class.**" },
+    {
+      "type": "paragraph",
+      "text": "Hopefully, you are now feeling more confident with your new skills and ready for action if need be."
+    },
+    {
+      "type": "paragraph",
+      "text": "Below are a number of links to useful information linked to our class, including a recap on how to place someone into the recovery position, further information on the differences between gagging and choking and 5 things we recommend that everyone should have at home (aside from our First Aid Kit of course!)."
+    },
+    {
+      "type": "paragraph",
+      "text": "Following this email, we'll send you a monthly topic refresher email and your local trainer may also be in touch (if relevant) to answer any specific questions from your class."
+    },
+    { "type": "divider" },
+    { "type": "heading", "text": "Useful links & information for you..." },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/Untitled_design_48-2.png",
+      "alt": "Recovery Position video",
+      "href": "https://www.daisyfirstaid.com/how-to-put-someone-into-the-recovery-postion/",
+      "width": 300
+    },
+    { "type": "paragraph", "text": "**Recovery Position — Video Recap**" },
+    {
+      "type": "paragraph",
+      "text": "Watch our recap video showing how to place a child into the recovery position"
+    },
+    {
+      "type": "button",
+      "label": "Watch Now",
+      "url": "https://www.daisyfirstaid.com/how-to-put-someone-into-the-recovery-postion/"
+    },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/Untitled_design_51.png",
+      "alt": "5 items to have at home",
+      "href": "https://www.daisyfirstaid.com/top-5-items-to-have-at-home/",
+      "width": 300
+    },
+    { "type": "paragraph", "text": "**5 Items to Have at Home**" },
+    {
+      "type": "paragraph",
+      "text": "See the 5 items to have at home alongside your Daisy First Aid kit"
+    },
+    {
+      "type": "button",
+      "label": "Read Now",
+      "url": "https://www.daisyfirstaid.com/top-5-items-to-have-at-home/"
+    },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/Untitled_design_50.png",
+      "alt": "Gagging vs choking",
+      "href": "https://www.daisyfirstaid.com/the-difference-between-gagging-choking/",
+      "width": 300
+    },
+    { "type": "paragraph", "text": "**Gagging Vs Choking Differences**" },
+    {
+      "type": "paragraph",
+      "text": "Understand the differences between gagging & choking to help with weaning"
+    },
+    {
+      "type": "button",
+      "label": "Watch Now",
+      "url": "https://www.daisyfirstaid.com/the-difference-between-gagging-choking/"
+    },
+    { "type": "divider" },
+    {
+      "type": "paragraph",
+      "text": "**Links to relevant charities & resources we may have mentioned in class:**"
+    },
+    {
+      "type": "list",
+      "items": [
+        "[The UK Sepsis Trust](https://sepsistrust.org/about/about-sepsis/)",
+        "[Meningitis Now](https://www.meningitisnow.org/meningitis-explained/signs-and-symptoms/)",
+        "[The Allergy Team](https://theallergyteam.com/families/)"
+      ]
+    }
+  ]
+}

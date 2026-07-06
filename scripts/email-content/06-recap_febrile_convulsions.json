@@ -1,0 +1,59 @@
+{
+  "template_key": "recap_febrile_convulsions",
+  "name": "Febrile Convulsions",
+  "subject": "Can you remember the stages of a febrile convulsion?",
+  "preheader": "Recap on how to deal with heat related seizures",
+  "sort_order": 6,
+  "delay_label": "+42 days",
+  "is_marketing": true,
+  "blocks": [
+    { "type": "heading", "text": "Febrile Convulsions" },
+    { "type": "paragraph", "text": "**Heat-related seizures**" },
+    {
+      "type": "paragraph",
+      "text": "If a baby or child's temperature rises above 38 degrees, they can experience these convulsions as a result of core body temperature being so high."
+    },
+    {
+      "type": "paragraph",
+      "text": "They aren't dangerous, but they can be frightening - remember the 3 stages..."
+    },
+    {
+      "type": "list",
+      "items": [
+        "1. Stiff and rigid body - back often arches",
+        "2. Jerky, uncontrolled movements - fitting and convulsing",
+        "3. Exhausted and limp"
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "You will need to time the seizure, protect them from any harm by placing something soft under their head and loosening anything restrictive. When the jerking movements stop, cool them down quickly but naturally and place in the recovery position."
+    },
+    {
+      "type": "paragraph",
+      "text": "Call 999 if it is their first ever seizure, if it lasts 5 mins or more or if they have multiple seizures in a short space of time."
+    },
+    {
+      "type": "paragraph",
+      "text": "Remember that your baby or child is safe and there are no lasting effects from the seizure happening, but you need to get them the right help as needed."
+    },
+    { "type": "divider" },
+    { "type": "heading", "text": "Useful links & information for you..." },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/facebook_social_media_social.png",
+      "alt": "Facebook",
+      "href": "https://www.facebook.com/daisyfirstaid",
+      "width": 90
+    },
+    { "type": "paragraph", "text": "**Are you on Facebook?**" },
+    {
+      "type": "paragraph",
+      "text": "We share lots of useful first aid advice and information via our Facebook page"
+    },
+    {
+      "type": "paragraph",
+      "text": "Follow us on Facebook: [www.facebook.com/daisyfirstaid](https://www.facebook.com/daisyfirstaid)"
+    }
+  ]
+}

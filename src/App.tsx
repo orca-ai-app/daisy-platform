@@ -54,6 +54,15 @@ const MedicalDeclarationsList = lazy(() =>
     default: m.MedicalDeclarationsList,
   })),
 );
+const EmailsPage = lazy(() =>
+  import('@/features/hq/emails').then((m) => ({ default: m.EmailsPage })),
+);
+const EmailEditorPage = lazy(() =>
+  import('@/features/hq/emails').then((m) => ({ default: m.EmailEditorPage })),
+);
+const MediaLibraryPage = lazy(() =>
+  import('@/features/hq/emails').then((m) => ({ default: m.MediaLibraryPage })),
+);
 const InstancesList = lazy(() =>
   import('@/features/hq/courses/instances').then((m) => ({ default: m.InstancesList })),
 );
@@ -217,6 +226,34 @@ export default function App() {
                   element={
                     <LazyRoute>
                       <ReportsPage />
+                    </LazyRoute>
+                  }
+                />
+
+                {/* Emails: booking-journey templates, editor + media library.
+                    `media` must precede `:templateKey` so it isn't swallowed
+                    by the param route. */}
+                <Route
+                  path="emails"
+                  element={
+                    <LazyRoute>
+                      <EmailsPage />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="emails/media"
+                  element={
+                    <LazyRoute>
+                      <MediaLibraryPage />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="emails/:templateKey"
+                  element={
+                    <LazyRoute>
+                      <EmailEditorPage />
                     </LazyRoute>
                   }
                 />

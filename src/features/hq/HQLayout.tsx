@@ -22,6 +22,7 @@ const HQ_NAV: HQNavItem[] = [
   { to: '/hq/territories', label: 'Territories' },
   { to: '/hq/courses', label: 'Courses', matchPrefix: '/hq/courses' },
   { to: '/hq/bookings', label: 'Bookings' },
+  { to: '/hq/emails', label: 'Emails', matchPrefix: '/hq/emails' },
   { to: '/hq/medical', label: 'Medical' },
   { to: '/hq/billing', label: 'Billing' },
   { to: '/hq/activity', label: 'Activity' },

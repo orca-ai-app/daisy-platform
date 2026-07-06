@@ -1,0 +1,52 @@
+{
+  "template_key": "recap_anaphylaxis",
+  "name": "Anaphylaxis Recap",
+  "subject": "How much do you remember about Anaphylaxis?",
+  "preheader": "Take our quiz to find out how much you remember about severe allergies",
+  "sort_order": 2,
+  "delay_label": "+28 days",
+  "is_marketing": true,
+  "blocks": [
+    { "type": "heading", "text": "Anaphylaxis — how much do you remember?" },
+    {
+      "type": "paragraph",
+      "text": "It's been about 4 weeks since your Daisy First Aid class and we wanted to check in and give you a quick recap on anaphylaxis."
+    },
+    { "type": "paragraph", "text": "**Things to remember:**" },
+    {
+      "type": "list",
+      "items": [
+        "It's a severe allergic reaction with swelling of the airways",
+        "It's usually an immediate reaction and it is life threatening",
+        "You must call 999 immediately if you suspect someone is having an anaphylactic reaction",
+        "Lay the person down and raise their legs and administer their auto-adrenaline injector if they have one",
+        "Keep the person talking and monitor their breathing",
+        "If they stop breathing, begin CPR immediately"
+      ]
+    },
+    {
+      "type": "button",
+      "label": "Take Our Anaphylaxis Quiz",
+      "url": "https://www.surveymonkey.co.uk/r/YS3SCKJ"
+    },
+    { "type": "divider" },
+    { "type": "heading", "text": "Useful links & information for you..." },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/Untitled_design_57.png",
+      "alt": "The Allergy Team",
+      "href": "https://theallergyteam.com/",
+      "width": 170
+    },
+    { "type": "paragraph", "text": "**We've teamed up with The Allergy Team**" },
+    {
+      "type": "paragraph",
+      "text": "The Allergy Team have some excellent resources for parents, schools & businesses on their website to help improve understanding and inclusion around allergies."
+    },
+    {
+      "type": "button",
+      "label": "Visit The Allergy Team Website",
+      "url": "https://theallergyteam.com/"
+    }
+  ]
+}

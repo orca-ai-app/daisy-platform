@@ -1,0 +1,37 @@
+{
+  "template_key": "refresher_elearning_option",
+  "name": "Elearning Refresher Option",
+  "subject": "Refresh Your Knowledge Online",
+  "preheader": "Refresh your first aid skills online at your own pace",
+  "sort_order": 10,
+  "delay_label": "+7 days",
+  "is_marketing": true,
+  "blocks": [
+    { "type": "heading", "text": "Update Your Skills & Confidence" },
+    {
+      "type": "paragraph",
+      "text": "**Refresh your knowledge with our e-learning course at your own pace**"
+    },
+    {
+      "type": "paragraph",
+      "text": "We wrote last week to remind you that it's time for your annual first aid refresher."
+    },
+    {
+      "type": "paragraph",
+      "text": "It's so worth doing as a parent or carer so that your skills are up to date in case you need them!"
+    },
+    {
+      "type": "paragraph",
+      "text": "If you'd rather not re-take the class in person, we have a fantastic e-learning course that you can do at your own pace using your smartphone/tablet or computer."
+    },
+    {
+      "type": "paragraph",
+      "text": "Our e-learning course takes around 2 hours to complete and you can stop and start as you need to. You even get a certificate at the end!"
+    },
+    {
+      "type": "button",
+      "label": "Find Your Local Trainer",
+      "url": "https://www.daisyfirstaid.com/find-a-first-aid-course/"
+    }
+  ]
+}

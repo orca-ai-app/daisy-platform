@@ -1,0 +1,45 @@
+{
+  "template_key": "recap_head_injuries",
+  "name": "Recap: Head Injuries",
+  "subject": "Can you remember how to monitor a head injury?",
+  "preheader": "You should monitor a head injury for 24 hours - can you remember how?",
+  "sort_order": 4,
+  "delay_label": "+42 days",
+  "is_marketing": true,
+  "blocks": [
+    { "type": "heading", "text": "Head Injuries" },
+    { "type": "paragraph", "text": "**Can you remember how to monitor a head injury?**" },
+    { "type": "paragraph", "text": "Here is a quick reminder on how to monitor head injuries..." },
+    {
+      "type": "paragraph",
+      "text": "You must monitor the child regularly for 24 hours following a head injury - even if they seem absolutely fine."
+    },
+    { "type": "paragraph", "text": "**The 3 things you need to check are:**" },
+    {
+      "type": "list",
+      "items": [
+        "Their skin colour is as you expect to find it - no paleness/blotching",
+        "They are responsive - if they are asleep, you don't need to wake them, just check if you can get them to move of their own accord",
+        "That they are breathing normally"
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "Remember that all head injuries should be checked with a medical professional and that some serious symptoms can be delayed. If in doubt, get them checked out!"
+    },
+    { "type": "divider" },
+    { "type": "heading", "text": "Useful links & information for you..." },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/DFA_Manual.jpeg",
+      "alt": "Paediatric First Aid Made Easy manual",
+      "width": 380
+    },
+    { "type": "paragraph", "text": "**Did you know..?**" },
+    { "type": "paragraph", "text": "The number 1 cause of head injuries is from a fall." },
+    {
+      "type": "paragraph",
+      "text": "In the UK around 200,000 people per year are admitted to hospital following a head injury."
+    }
+  ]
+}

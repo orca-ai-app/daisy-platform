@@ -64,6 +64,16 @@ verify_jwt = true
 # Hourly cron (M3). pg_cron → pg_net with CRON_SECRET; gated in-code. No user JWT.
 verify_jwt = false
 
+[functions.unsubscribe]
+# Public unsubscribe/resubscribe landing (Kartra migration). Clicked from email
+# footers / List-Unsubscribe with no Supabase session; HMAC token auth in-code.
+verify_jwt = false
+
+[functions.postmark-webhook]
+# Called by Postmark's servers (delivery/open/bounce/spam events). Shared
+# secret in the URL query; no JWT.
+verify_jwt = false
+
 [functions.gdpr-erasure]
 # HQ-only GDPR right-to-erasure (M3). JWT verified; is_hq gate in-code.
 verify_jwt = true
@@ -123,6 +133,10 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.preview-billing-run]
+verify_jwt = true
+
+[functions.send-test-email]
+# HQ-only test send from the email editor. JWT verified; is_hq gate in-code.
 verify_jwt = true
 
 [functions.set-template-override]

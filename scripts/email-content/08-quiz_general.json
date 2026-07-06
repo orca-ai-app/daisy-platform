@@ -1,0 +1,43 @@
+{
+  "template_key": "quiz_general",
+  "name": "General Quiz",
+  "subject": "Test your first aid knowledge",
+  "preheader": "Take our quiz to find out how much you remember from your class",
+  "sort_order": 8,
+  "delay_label": "+42 days",
+  "is_marketing": true,
+  "blocks": [
+    { "type": "heading", "text": "Test Your Memory" },
+    { "type": "paragraph", "text": "**HOW MUCH DO YOU REMEMBER?**" },
+    {
+      "type": "paragraph",
+      "text": "It's been a while since your Daisy First Aid class and we wondered how much you remember..."
+    },
+    { "type": "paragraph", "text": "What do you need to do to save a child from choking?" },
+    { "type": "paragraph", "text": "Do you remember the signs of anaphylaxis?" },
+    { "type": "paragraph", "text": "How many rescue breaths did you need to do...?" },
+    {
+      "type": "paragraph",
+      "text": "First aid knowledge is something that we hope that we don't need to put into practice, but if you aren't using the knowledge from your class regularly, then you'll be surprised how much you forget."
+    },
+    { "type": "divider" },
+    { "type": "heading", "text": "Useful links & information for you..." },
+    {
+      "type": "image",
+      "src": "https://dmvajkreuwknjqxyxmlv.supabase.co/storage/v1/object/public/email-assets/Screenshot_2023-11-20_at_13.00.08.png",
+      "alt": "Find a class on daisyfirstaid.com",
+      "href": "https://www.daisyfirstaid.com/find-a-first-aid-course/",
+      "width": 460
+    },
+    { "type": "paragraph", "text": "**Book a Refresher**" },
+    {
+      "type": "paragraph",
+      "text": "If you'd like to book a refresher class, you can find your local trainer on our website, see their availability and book online."
+    },
+    {
+      "type": "button",
+      "label": "Find Your Local Trainer",
+      "url": "https://www.daisyfirstaid.com/find-a-first-aid-course/"
+    }
+  ]
+}
