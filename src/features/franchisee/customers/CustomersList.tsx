@@ -277,7 +277,7 @@ function AllContactsTab() {
           <span className="flex items-center gap-2">
             <span className="text-daisy-ink font-semibold">{row.original.name}</span>
             {row.original.from_medical_form ? (
-              <Badge variant="secondary" className="text-[11px]">
+              <Badge variant="default" className="text-[11px]">
                 from medical form
               </Badge>
             ) : null}
