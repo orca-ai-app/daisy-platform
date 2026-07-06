@@ -219,7 +219,20 @@ Deno.serve(async (req: Request) => {
   }
   const prefix = postcodePrefix(postcode);
 
-  const franchiseeId = typeof body.franchisee_id === 'string' ? body.franchisee_id : null;
+  // franchisee_id accepts EITHER the internal UUID or the human franchisee
+  // number ("0042") — the WordPress embeds use the number, so resolve it.
+  let franchiseeId = typeof body.franchisee_id === 'string' ? body.franchisee_id.trim() : null;
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (franchiseeId && !UUID_RE.test(franchiseeId)) {
+    const byNumber = await admin
+      .from('da_franchisees')
+      .select('id')
+      .eq('number', franchiseeId)
+      .maybeSingle();
+    // Unknown number → keep the unmatchable string so the filter returns
+    // nothing (never silently fall back to ALL franchisees' courses).
+    franchiseeId = (byNumber.data as any)?.id ?? franchiseeId;
+  }
   const limit =
     typeof body.limit === 'number' && Number.isInteger(body.limit) && body.limit > 0
       ? Math.min(body.limit, 100)
