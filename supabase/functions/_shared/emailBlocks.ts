@@ -120,7 +120,18 @@ function renderBlockText(block: EmailBlock): string {
   }
 }
 
-function shell(bodyHtml: string, ctx: RenderContext, preheader?: string): string {
+export interface RenderOptions {
+  // 'marketing' (default): unsubscribe link + booking rationale in the footer.
+  // 'operational': franchisee/internal mail — no unsubscribe, franchisee rationale.
+  footer?: 'marketing' | 'operational';
+}
+
+function shell(
+  bodyHtml: string,
+  ctx: RenderContext,
+  preheader?: string,
+  opts?: RenderOptions,
+): string {
   const preheaderHtml = preheader
     ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">${escapeHtml(preheader)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>`
     : '';
@@ -144,11 +155,18 @@ function shell(bodyHtml: string, ctx: RenderContext, preheader?: string): string
             &nbsp;&middot;&nbsp;
             <a href="${INSTAGRAM_URL}" target="_blank" style="color:${DAISY_BLUE};font-weight:600;text-decoration:none;font-size:13px">Instagram</a>
           </p>
-          <p style="font-size:11px;color:#9bb0bd;line-height:1.6;margin:0">
+          ${
+            opts?.footer === 'operational'
+              ? `<p style="font-size:11px;color:#9bb0bd;line-height:1.6;margin:0">
+            You're receiving this as part of the Daisy First Aid network.<br />
+            Daisy First Aid, daisyfirstaid.com
+          </p>`
+              : `<p style="font-size:11px;color:#9bb0bd;line-height:1.6;margin:0">
             You're receiving this because you booked a Daisy First Aid class.<br />
             <a href="${escapeHtml(ctx.unsubscribe_url)}" style="color:#9bb0bd">Unsubscribe</a>
             &nbsp;&middot;&nbsp; Daisy First Aid, daisyfirstaid.com
-          </p>
+          </p>`
+          }
         </td></tr>
       </table>
     </td></tr>
@@ -161,16 +179,18 @@ export function renderBlocks(
   blocks: EmailBlock[],
   ctx: RenderContext,
   preheader?: string,
+  opts?: RenderOptions,
 ): { html: string; text: string } {
   const bodyHtml = blocks.map(renderBlockHtml).join('\n');
-  const html = fillMerge(shell(bodyHtml, ctx, preheader), ctx);
+  const html = fillMerge(shell(bodyHtml, ctx, preheader, opts), ctx);
   const bodyText = blocks
     .map(renderBlockText)
     .filter((s) => s.length > 0)
     .join('\n\n');
-  const text = fillMerge(
-    `${bodyText}\n\n--\nDaisy First Aid | daisyfirstaid.com\nUnsubscribe: ${ctx.unsubscribe_url}`,
-    ctx,
-  );
+  const textFooter =
+    opts?.footer === 'operational'
+      ? '\n\n--\nDaisy First Aid | daisyfirstaid.com'
+      : `\n\n--\nDaisy First Aid | daisyfirstaid.com\nUnsubscribe: ${ctx.unsubscribe_url}`;
+  const text = fillMerge(`${bodyText}${textFooter}`, ctx);
   return { html, text };
 }

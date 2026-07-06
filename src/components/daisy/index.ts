@@ -7,6 +7,7 @@
 export { StatCard } from './StatCard';
 export type { StatDeltaTone } from './StatCard';
 export { StatusPill } from './StatusPill';
+export type { StatusVariant } from './StatusPill';
 export { AttentionList } from './AttentionList';
 export type { AttentionItem, AttentionSeverity } from './AttentionList';
 export { PageHeader } from './PageHeader';

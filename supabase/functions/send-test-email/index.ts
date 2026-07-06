@@ -5,11 +5,13 @@
 // before customers see them. Called by the "Send me a test" button in the
 // portal's email editor.
 //
-// POST { template_key: string } -> 200 { ok: true, sent_to }
+// POST { template_key: string }                      -> 200 { ok: true, sent_to }
+// POST { subject, preheader?, blocks: EmailBlock[] } -> 200 { ok: true, sent_to }
 //
-// Renders the CURRENT da_email_templates row via the same renderer as
-// send-emails. No da_email_sequences row is written and no Metadata is
-// attached, so tests never pollute the analytics.
+// The first form renders the CURRENT da_email_templates row; the second
+// renders an inline draft (used by the broadcast composer before saving).
+// No queue row is written and no Metadata is attached, so tests never
+// pollute the analytics.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -78,7 +80,13 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Invalid JSON body' }, 400);
   }
   const templateKey = typeof body?.template_key === 'string' ? body.template_key : '';
-  if (!templateKey) return jsonResponse({ error: 'template_key is required' }, 400);
+  const inlineBlocks = Array.isArray(body?.blocks) ? (body.blocks as EmailBlock[]) : null;
+  if (!templateKey && !inlineBlocks) {
+    return jsonResponse({ error: 'template_key or blocks is required' }, 400);
+  }
+  if (inlineBlocks && typeof body?.subject !== 'string') {
+    return jsonResponse({ error: 'subject is required with blocks' }, 400);
+  }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -104,15 +112,24 @@ Deno.serve(async (req: Request) => {
   const recipient = (caller.data as any).email as string;
   if (!recipient) return jsonResponse({ error: 'Your account has no email address' }, 400);
 
-  const template = await admin
-    .from('da_email_templates')
-    .select('subject, preheader, blocks')
-    .eq('template_key', templateKey)
-    .maybeSingle();
-  if (template.error || !template.data) {
-    return jsonResponse({ error: `No template found for ${templateKey}` }, 404);
+  let t: { subject: string; preheader: string | null; blocks: EmailBlock[] };
+  if (inlineBlocks) {
+    t = {
+      subject: body.subject as string,
+      preheader: typeof body?.preheader === 'string' ? body.preheader : null,
+      blocks: inlineBlocks,
+    };
+  } else {
+    const template = await admin
+      .from('da_email_templates')
+      .select('subject, preheader, blocks')
+      .eq('template_key', templateKey)
+      .maybeSingle();
+    if (template.error || !template.data) {
+      return jsonResponse({ error: `No template found for ${templateKey}` }, 404);
+    }
+    t = template.data as any;
   }
-  const t = template.data as any;
 
   const rendered = renderBlocks(
     (t.blocks ?? []) as EmailBlock[],

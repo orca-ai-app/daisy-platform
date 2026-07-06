@@ -139,6 +139,11 @@ verify_jwt = true
 # HQ-only test send from the email editor. JWT verified; is_hq gate in-code.
 verify_jwt = true
 
+[functions.send-broadcast]
+# HQ-only one-off broadcast driver (preview counts, send now, schedule).
+# JWT verified; is_hq gate in-code.
+verify_jwt = true
+
 [functions.set-template-override]
 verify_jwt = true
 

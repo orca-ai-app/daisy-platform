@@ -20,6 +20,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { renderTemplate, type TemplateContext } from './templates.ts';
 import { renderBlocks, fillMerge, type EmailBlock } from '../_shared/emailBlocks.ts';
 import { buildUnsubscribeUrl } from '../_shared/unsubscribeToken.ts';
+import { processBroadcast } from '../_shared/broadcastSender.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -59,6 +60,7 @@ async function sendViaPostmark(
   text: string,
   metadata?: Record<string, string>,
   unsubscribeUrl?: string,
+  messageStream = 'outbound',
 ): Promise<{ ok: boolean; messageId?: string; error?: string }> {
   try {
     const res = await fetch('https://api.postmarkapp.com/email', {
@@ -80,9 +82,9 @@ async function sendViaPostmark(
         Headers: unsubscribeUrl
           ? [{ Name: 'List-Unsubscribe', Value: `<${unsubscribeUrl}>` }]
           : undefined,
-        // Cutover note: Postmark policy wants marketing on a Broadcast stream;
-        // stays 'outbound' until the production account exists (M3 checklist).
-        MessageStream: 'outbound',
+        // Marketing (journey) mail goes on the 'broadcasts' stream per Postmark
+        // policy; transactional stays on 'outbound'.
+        MessageStream: messageStream,
       }),
     });
     if (res.ok) {
@@ -143,6 +145,18 @@ Deno.serve(async (req: Request) => {
     (templatesRes.data ?? []).map((t: any) => [t.template_key, t]),
   );
 
+  // Global opt-out set (da_email_suppressions) — checked for marketing sends
+  // alongside the per-customer flag (covers unsubs that came in via list links
+  // or spam complaints before the customer row existed).
+  const suppressionsRes = await admin.from('da_email_suppressions').select('email');
+  if (suppressionsRes.error) {
+    console.error('send-emails: suppression load failed', suppressionsRes.error);
+    return jsonResponse({ error: 'Could not load suppressions' }, 500);
+  }
+  const suppressed = new Set<string>(
+    (suppressionsRes.data ?? []).map((r: any) => (r.email as string).toLowerCase()),
+  );
+
   let sent = 0;
   let failed = 0;
   let cancelled = 0;
@@ -176,7 +190,11 @@ Deno.serve(async (req: Request) => {
       // Suppression: opted-out customers get no marketing emails. Their queued
       // marketing rows are cancelled (not failed); transactional still sends.
       // Keys without a DB row are the transactional set — never suppressed.
-      if (!toFranchisee && dbTemplate?.is_marketing && b.customer?.marketing_opt_out) {
+      if (
+        !toFranchisee &&
+        dbTemplate?.is_marketing &&
+        (b.customer?.marketing_opt_out || suppressed.has(recipient.toLowerCase()))
+      ) {
         await admin.from('da_email_sequences').update({ status: 'cancelled' }).eq('id', row.id);
         cancelled++;
         continue;
@@ -219,6 +237,7 @@ Deno.serve(async (req: Request) => {
         tmpl.text,
         { sequence_id: row.id, template_key: row.template_key },
         ctx.unsubscribe_url,
+        dbTemplate?.is_marketing ? 'broadcasts' : 'outbound',
       );
 
       if (result.ok) {
@@ -254,5 +273,47 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  return jsonResponse({ processed: rows.length, sent, failed, cancelled }, 200);
+  // --- One-off broadcasts: drain due scheduled ones + resume any stuck run ---
+  // (status 'sending' with no progress for 10+ minutes = a crashed/timed-out
+  // invocation; processBroadcast only touches 'pending' recipients, so
+  // resuming is safe).
+  let broadcastsProcessed = 0;
+  const dueBroadcasts = await admin
+    .from('da_email_broadcasts')
+    .select('id, status, scheduled_for, updated_at')
+    .or(
+      `and(status.eq.scheduled,scheduled_for.lte.${new Date().toISOString()}),` +
+        `and(status.eq.sending,updated_at.lt.${new Date(Date.now() - 10 * 60 * 1000).toISOString()})`,
+    );
+  if (dueBroadcasts.error) {
+    console.error('send-emails: broadcast select failed', dueBroadcasts.error);
+  } else {
+    for (const b of (dueBroadcasts.data ?? []) as any[]) {
+      try {
+        await processBroadcast(admin, postmarkToken, fromEmail, b.id);
+        broadcastsProcessed++;
+      } catch (err) {
+        console.error(`send-emails: broadcast ${b.id} failed`, err);
+        await admin
+          .from('da_activities')
+          .insert({
+            actor_type: 'system',
+            actor_id: null,
+            entity_type: 'email_broadcast',
+            entity_id: b.id,
+            action: 'broadcast_failed',
+            metadata: { error: String(err).slice(0, 300) },
+            description: 'Scheduled broadcast failed to send',
+          })
+          .then((r: { error: unknown }) => {
+            if (r.error) console.error('broadcast_failed activity insert failed', r.error);
+          });
+      }
+    }
+  }
+
+  return jsonResponse(
+    { processed: rows.length, sent, failed, cancelled, broadcasts: broadcastsProcessed },
+    200,
+  );
 });

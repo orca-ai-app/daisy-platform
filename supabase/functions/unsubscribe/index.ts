@@ -2,21 +2,23 @@
 //
 // Public one-click unsubscribe for marketing emails (Kartra migration).
 // Linked from every email footer and the List-Unsubscribe header as
-//   GET /unsubscribe?c=<customer_id>&t=<HMAC token>          → opt out
-//   GET /unsubscribe?c=...&t=...&action=resubscribe          → opt back in
+//   GET /unsubscribe?c=<id>&t=<HMAC token>                    → opt out (customer)
+//   GET /unsubscribe?c=<id>&k=m&t=<HMAC token>                → opt out (CSV list member)
+//   GET /unsubscribe?c=...&t=...[&k=m]&action=resubscribe     → opt back in
 // The HMAC (see _shared/unsubscribeToken.ts) means a bare email address can
 // never unsubscribe someone else. verify_jwt=false (config.toml): recipients
 // click this from their inbox with no Supabase session.
 //
-// Opting out sets da_customers.marketing_opt_out and cancels the customer's
-// pending MARKETING da_email_sequences rows (template keys where
-// da_email_templates.is_marketing) — transactional emails are unaffected.
+// Opting out inserts the email into da_email_suppressions (the GLOBAL opt-out
+// every marketing send path checks — journey and broadcasts alike). Customers
+// additionally get marketing_opt_out set and their pending MARKETING
+// da_email_sequences rows cancelled; transactional emails are unaffected.
 // Responds with a small branded HTML confirmation page.
 
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
-import { verifyUnsubscribeToken } from '../_shared/unsubscribeToken.ts';
+import { verifyUnsubscribeToken, type UnsubscribeKind } from '../_shared/unsubscribeToken.ts';
 
 const DAISY_BLUE = '#006FAC';
 
@@ -46,6 +48,8 @@ function page(title: string, body: string, status = 200): Response {
   );
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 Deno.serve(async (req: Request) => {
   // RFC 8058 one-click unsubscribe POSTs; browsers GET. Accept both.
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -53,12 +57,12 @@ Deno.serve(async (req: Request) => {
   }
 
   const url = new URL(req.url);
-  const customerId = url.searchParams.get('c') ?? '';
+  const id = url.searchParams.get('c') ?? '';
   const token = url.searchParams.get('t') ?? '';
+  const kind: UnsubscribeKind = url.searchParams.get('k') === 'm' ? 'm' : 'c';
   const action = url.searchParams.get('action') ?? 'unsubscribe';
 
-  const uuidOk = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(customerId);
-  if (!uuidOk || !token || !(await verifyUnsubscribeToken(customerId, token))) {
+  if (!UUID_RE.test(id) || !token || !(await verifyUnsubscribeToken(id, token, kind))) {
     return page(
       'This link is not valid',
       '<p style="font-size:15px;line-height:1.6">The unsubscribe link looks incomplete or has been altered. Please use the link from the bottom of one of our emails.</p>',
@@ -68,36 +72,49 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  if (!supabaseUrl || !serviceRoleKey)
+  if (!supabaseUrl || !serviceRoleKey) {
     return page('Something went wrong', '<p>Please try again later.</p>', 500);
+  }
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
-  const customer = await admin
-    .from('da_customers')
-    .select('id, email, marketing_opt_out')
-    .eq('id', customerId)
-    .maybeSingle();
-  if (customer.error || !customer.data) {
+  // Resolve the email behind the token.
+  let email: string | null = null;
+  if (kind === 'c') {
+    const customer = await admin.from('da_customers').select('email').eq('id', id).maybeSingle();
+    email = (customer.data as any)?.email ?? null;
+  } else {
+    const member = await admin
+      .from('da_email_list_members')
+      .select('email')
+      .eq('id', id)
+      .maybeSingle();
+    email = (member.data as any)?.email ?? null;
+  }
+  if (!email) {
     return page(
       'This link is not valid',
       '<p style="font-size:15px">We could not find your details.</p>',
       404,
     );
   }
+  const emailKey = email.toLowerCase();
 
   if (action === 'resubscribe') {
-    await admin
-      .from('da_customers')
-      .update({ marketing_opt_out: false, marketing_opt_out_at: null })
-      .eq('id', customerId);
+    await admin.from('da_email_suppressions').delete().eq('email', emailKey);
+    if (kind === 'c') {
+      await admin
+        .from('da_customers')
+        .update({ marketing_opt_out: false, marketing_opt_out_at: null })
+        .eq('id', id);
+    }
     await admin.from('da_activities').insert({
       actor_type: 'system',
       actor_id: null,
-      entity_type: 'customer',
-      entity_id: customerId,
+      entity_type: kind === 'c' ? 'customer' : 'email_list_member',
+      entity_id: id,
       action: 'marketing_resubscribed',
       metadata: {},
-      description: 'Customer resubscribed to marketing emails',
+      description: 'Recipient resubscribed to marketing emails',
     });
     return page(
       'Welcome back!',
@@ -105,41 +122,50 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  // Opt out: global suppression first (the authoritative check), then the
+  // customer-specific bookkeeping.
   await admin
-    .from('da_customers')
-    .update({ marketing_opt_out: true, marketing_opt_out_at: new Date().toISOString() })
-    .eq('id', customerId);
+    .from('da_email_suppressions')
+    .upsert({ email: emailKey, source: 'unsubscribe' }, { onConflict: 'email' });
 
-  // Cancel this customer's pending marketing sends. Marketing keys come from
-  // da_email_templates; transactional keys (no row / is_marketing=false) stay.
-  const marketingKeys = await admin
-    .from('da_email_templates')
-    .select('template_key')
-    .eq('is_marketing', true);
-  const keys = (marketingKeys.data ?? []).map((r: any) => r.template_key);
-  if (keys.length > 0) {
+  if (kind === 'c') {
     await admin
-      .from('da_email_sequences')
-      .update({ status: 'cancelled' })
-      .eq('customer_id', customerId)
-      .eq('status', 'pending')
-      .in('template_key', keys);
+      .from('da_customers')
+      .update({ marketing_opt_out: true, marketing_opt_out_at: new Date().toISOString() })
+      .eq('id', id);
+
+    // Cancel this customer's pending marketing sends. Marketing keys come from
+    // da_email_templates; transactional keys (no row / is_marketing=false) stay.
+    const marketingKeys = await admin
+      .from('da_email_templates')
+      .select('template_key')
+      .eq('is_marketing', true);
+    const keys = (marketingKeys.data ?? []).map((r: any) => r.template_key);
+    if (keys.length > 0) {
+      await admin
+        .from('da_email_sequences')
+        .update({ status: 'cancelled' })
+        .eq('customer_id', id)
+        .eq('status', 'pending')
+        .in('template_key', keys);
+    }
   }
 
   await admin.from('da_activities').insert({
     actor_type: 'system',
     actor_id: null,
-    entity_type: 'customer',
-    entity_id: customerId,
+    entity_type: kind === 'c' ? 'customer' : 'email_list_member',
+    entity_id: id,
     action: 'marketing_unsubscribed',
     metadata: {},
-    description: 'Customer unsubscribed from marketing emails',
+    description: 'Recipient unsubscribed from marketing emails',
   });
 
-  const resubUrl = `${supabaseUrl}/functions/v1/unsubscribe?c=${encodeURIComponent(customerId)}&t=${token}&action=resubscribe`;
+  const kindParam = kind === 'm' ? '&k=m' : '';
+  const resubUrl = `${supabaseUrl}/functions/v1/unsubscribe?c=${encodeURIComponent(id)}${kindParam}&t=${token}&action=resubscribe`;
   return page(
     "You've been unsubscribed",
-    `<p style="font-size:15px;line-height:1.6">You will no longer receive first aid tips and refresher emails from Daisy First Aid. Booking confirmations for any classes you book will still reach you.</p>
+    `<p style="font-size:15px;line-height:1.6">You will no longer receive first aid tips and offers from Daisy First Aid. Booking confirmations for any classes you book will still reach you.</p>
      <p style="font-size:13px;color:#5a7a8f;line-height:1.6">Changed your mind? <a href="${resubUrl}" style="color:${DAISY_BLUE};font-weight:600">Resubscribe</a>.</p>`,
   );
 });

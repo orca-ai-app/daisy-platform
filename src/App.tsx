@@ -63,6 +63,21 @@ const EmailEditorPage = lazy(() =>
 const MediaLibraryPage = lazy(() =>
   import('@/features/hq/emails').then((m) => ({ default: m.MediaLibraryPage })),
 );
+const BroadcastsPage = lazy(() =>
+  import('@/features/hq/emails').then((m) => ({ default: m.BroadcastsPage })),
+);
+const BroadcastComposerPage = lazy(() =>
+  import('@/features/hq/emails').then((m) => ({ default: m.BroadcastComposerPage })),
+);
+const BroadcastDetailPage = lazy(() =>
+  import('@/features/hq/emails').then((m) => ({ default: m.BroadcastDetailPage })),
+);
+const ListsPage = lazy(() =>
+  import('@/features/hq/emails').then((m) => ({ default: m.ListsPage })),
+);
+const ListDetailPage = lazy(() =>
+  import('@/features/hq/emails').then((m) => ({ default: m.ListDetailPage })),
+);
 const InstancesList = lazy(() =>
   import('@/features/hq/courses/instances').then((m) => ({ default: m.InstancesList })),
 );
@@ -241,14 +256,64 @@ export default function App() {
                   }
                 />
 
-                {/* Emails: booking-journey templates + editor + media library.
-                    `emails/media` must precede `emails/:templateKey` so it
-                    isn't swallowed by the param route. */}
+                {/* Emails: booking-journey templates + editor, broadcasts,
+                    lists and the media library. The static segments
+                    (`broadcasts`, `lists`, `media`) must precede
+                    `:templateKey` so they aren't swallowed by the param
+                    route. */}
                 <Route
                   path="emails"
                   element={
                     <LazyRoute>
                       <EmailsPage />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="emails/broadcasts"
+                  element={
+                    <LazyRoute>
+                      <BroadcastsPage />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="emails/broadcasts/new"
+                  element={
+                    <LazyRoute>
+                      <BroadcastComposerPage />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="emails/broadcasts/:id"
+                  element={
+                    <LazyRoute>
+                      <BroadcastDetailPage />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="emails/broadcasts/:id/edit"
+                  element={
+                    <LazyRoute>
+                      <BroadcastComposerPage />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="emails/lists"
+                  element={
+                    <LazyRoute>
+                      <ListsPage />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="emails/lists/:id"
+                  element={
+                    <LazyRoute>
+                      <ListDetailPage />
                     </LazyRoute>
                   }
                 />

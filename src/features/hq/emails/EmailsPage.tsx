@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Clock, Images, Mail, MailOpen, Percent } from 'lucide-react';
+import { Clock, Mail, MailOpen, Percent } from 'lucide-react';
 import { DataTable, EmptyState, PageHeader, StatCard } from '@/components/daisy';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmailSectionTabs } from './EmailSectionTabs';
 import {
   Select,
   SelectContent,
@@ -178,15 +178,8 @@ export default function EmailsPage() {
       <PageHeader
         title="Booking journey emails"
         subtitle="These emails send automatically after a paid booking, timed from the class date. Delays are fixed; content is editable."
-        actions={
-          <Button asChild variant="outline" size="sm">
-            <Link to="/hq/emails/media">
-              <Images className="h-4 w-4" />
-              Media library
-            </Link>
-          </Button>
-        }
       />
+      <EmailSectionTabs />
 
       {/* Period selector */}
       <div className="flex flex-wrap items-center gap-3">

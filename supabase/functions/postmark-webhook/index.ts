@@ -30,6 +30,35 @@ const EVENT_TYPES: Record<string, string> = {
   SpamComplaint: 'spam_complaint',
 };
 
+// The 'broadcasts' stream uses Postmark-managed unsubscribe handling (Custom
+// handling is support-gated), so Postmark injects its own unsubscribe link and
+// keeps its own suppression list. SubscriptionChange events mirror that list
+// into da_email_suppressions so every send path sees one truth.
+async function handleSubscriptionChange(admin: any, payload: any): Promise<Response> {
+  const email: string | null = payload?.Recipient ?? null;
+  if (!email) return json({ ok: true, ignored: 'no recipient' }, 200);
+  const emailKey = email.toLowerCase();
+  if (payload?.SuppressSending) {
+    const source =
+      payload?.SuppressionReason === 'SpamComplaint' ? 'spam_complaint' : 'unsubscribe';
+    await admin
+      .from('da_email_suppressions')
+      .upsert({ email: emailKey, source }, { onConflict: 'email' });
+    await admin
+      .from('da_customers')
+      .update({ marketing_opt_out: true, marketing_opt_out_at: new Date().toISOString() })
+      .eq('email', email);
+  } else {
+    // Reactivated inside Postmark — lift our suppression too.
+    await admin.from('da_email_suppressions').delete().eq('email', emailKey);
+    await admin
+      .from('da_customers')
+      .update({ marketing_opt_out: false, marketing_opt_out_at: null })
+      .eq('email', email);
+  }
+  return json({ ok: true }, 200);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
@@ -44,11 +73,25 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Invalid JSON' }, 400);
   }
 
+  const supabaseUrlEarly = Deno.env.get('SUPABASE_URL') ?? '';
+  const serviceRoleKeyEarly = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  if (!supabaseUrlEarly || !serviceRoleKeyEarly)
+    return json({ error: 'Server misconfigured' }, 500);
+
+  if (payload?.RecordType === 'SubscriptionChange') {
+    const adminEarly = createClient(supabaseUrlEarly, serviceRoleKeyEarly, {
+      auth: { persistSession: false },
+    });
+    return await handleSubscriptionChange(adminEarly, payload);
+  }
+
   const eventType = EVENT_TYPES[payload?.RecordType ?? ''];
   if (!eventType) return json({ ok: true, ignored: payload?.RecordType ?? 'unknown' }, 200);
 
   const sequenceId: string | null = payload?.Metadata?.sequence_id ?? null;
-  const templateKey: string = payload?.Metadata?.template_key ?? payload?.Tag ?? 'unknown';
+  // Short key: Postmark metadata field names are capped at 20 characters.
+  const broadcastRecipientId: string | null = payload?.Metadata?.bcast_recipient_id ?? null;
+  const templateKey: string = payload?.Metadata?.template_key ?? payload?.Tag ?? 'broadcast';
   const occurredAt: string =
     payload?.ReceivedAt ?? payload?.DeliveredAt ?? payload?.BouncedAt ?? new Date().toISOString();
 
@@ -59,6 +102,7 @@ Deno.serve(async (req: Request) => {
 
   const insert = await admin.from('da_email_events').insert({
     sequence_id: sequenceId,
+    broadcast_recipient_id: broadcastRecipientId,
     template_key: templateKey,
     event_type: eventType,
     occurred_at: occurredAt,
@@ -76,36 +120,58 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Insert failed' }, 500);
   }
 
-  if (eventType === 'opened' && sequenceId) {
+  if (eventType === 'opened') {
     // First open only — don't move the timestamp on re-opens.
-    await admin
-      .from('da_email_sequences')
-      .update({ opened_at: occurredAt })
-      .eq('id', sequenceId)
-      .is('opened_at', null);
+    if (sequenceId) {
+      await admin
+        .from('da_email_sequences')
+        .update({ opened_at: occurredAt })
+        .eq('id', sequenceId)
+        .is('opened_at', null);
+    }
+    if (broadcastRecipientId) {
+      await admin
+        .from('da_email_broadcast_recipients')
+        .update({ opened_at: occurredAt })
+        .eq('id', broadcastRecipientId)
+        .is('opened_at', null);
+    }
   }
 
-  if (eventType === 'spam_complaint' && sequenceId) {
-    const seq = await admin
-      .from('da_email_sequences')
-      .select('customer_id')
-      .eq('id', sequenceId)
-      .maybeSingle();
-    const customerId = (seq.data as any)?.customer_id;
-    if (customerId) {
+  if (eventType === 'spam_complaint') {
+    // Global suppression by the complaining address, plus the customer flag
+    // when the send is traceable to a customer.
+    const complainant: string | null = payload?.Recipient ?? payload?.Email ?? null;
+    if (complainant) {
       await admin
-        .from('da_customers')
-        .update({ marketing_opt_out: true, marketing_opt_out_at: new Date().toISOString() })
-        .eq('id', customerId);
-      await admin.from('da_activities').insert({
-        actor_type: 'system',
-        actor_id: null,
-        entity_type: 'customer',
-        entity_id: customerId,
-        action: 'marketing_unsubscribed',
-        metadata: { via: 'spam_complaint', sequence_id: sequenceId },
-        description: 'Customer opted out of marketing (spam complaint)',
-      });
+        .from('da_email_suppressions')
+        .upsert(
+          { email: complainant.toLowerCase(), source: 'spam_complaint' },
+          { onConflict: 'email' },
+        );
+    }
+    if (sequenceId) {
+      const seq = await admin
+        .from('da_email_sequences')
+        .select('customer_id')
+        .eq('id', sequenceId)
+        .maybeSingle();
+      const customerId = (seq.data as any)?.customer_id;
+      if (customerId) {
+        await admin
+          .from('da_customers')
+          .update({ marketing_opt_out: true, marketing_opt_out_at: new Date().toISOString() })
+          .eq('id', customerId);
+        await admin.from('da_activities').insert({
+          actor_type: 'system',
+          actor_id: null,
+          entity_type: 'customer',
+          entity_id: customerId,
+          action: 'marketing_unsubscribed',
+          metadata: { via: 'spam_complaint', sequence_id: sequenceId },
+          description: 'Customer opted out of marketing (spam complaint)',
+        });
+      }
     }
   }
 
