@@ -8,6 +8,7 @@ import {
   Percent,
   CreditCard,
   UserCog,
+  CircleHelp,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -96,5 +97,12 @@ export const franchiseeNavLinks: FranchiseeNavLink[] = [
     path: '/franchisee/profile',
     icon: UserCog,
     ready: true,
+  },
+  {
+    label: 'Help',
+    path: '/franchisee/help',
+    icon: CircleHelp,
+    ready: true,
+    matchPrefix: '/franchisee/help',
   },
 ];

@@ -8,11 +8,10 @@
  * Reads via anon client + RLS. No client-side franchisee_id filter.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
-import { QrCode, Download } from 'lucide-react';
-import QRCode from 'qrcode';
+import { QrCode } from 'lucide-react';
 import { PageHeader, DataTable, StatusPill, EmptyState, MonthCalendar } from '@/components/daisy';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -34,6 +33,7 @@ import {
 } from '@/components/ui/dialog';
 import { formatPence } from '@/lib/format';
 import { Link } from 'react-router';
+import { MedicalQr } from '../components/MedicalQr';
 import {
   useOwnCourses,
   useOwnCoursesForMonth,
@@ -179,137 +179,10 @@ function monthLabel(year: number, month: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// QR helpers (shared with CourseDetail — same URL shape, now with course token)
-// ---------------------------------------------------------------------------
-
-const MEDICAL_BASE = 'https://medical.daisyfirstaid.com/';
-
-/** Derive the outward code from a full postcode, e.g. "AB6 4BS" → "AB6". */
-function postcodePrefix(postcode: string | null): string {
-  if (!postcode) return '';
-  const stripped = postcode.replace(/\s+/g, '').toUpperCase();
-  if (stripped.length <= 3) return stripped;
-  return stripped.slice(0, stripped.length - 3);
-}
-
-function buildMedicalUrl(
-  franchiseeNumber: string,
-  venuePostcode: string | null,
-  bookingToken: string | null,
-): string {
-  const prefix = postcodePrefix(venuePostcode);
-  let url = `${MEDICAL_BASE}?instructor=${encodeURIComponent(franchiseeNumber)}&postcode=${encodeURIComponent(prefix)}`;
-  if (bookingToken) {
-    url += `&course=${encodeURIComponent(bookingToken)}`;
-  }
-  return url;
-}
-
-// ---------------------------------------------------------------------------
-// CourseQrDialog
-// ---------------------------------------------------------------------------
-
-interface CourseQrDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  course: OwnCourseListRow;
-  franchiseeNumber: string;
-}
-
-function CourseQrDialog({ open, onOpenChange, course, franchiseeNumber }: CourseQrDialogProps) {
-  const url = buildMedicalUrl(franchiseeNumber, course.venue_postcode, course.booking_token);
-  const prefix = postcodePrefix(course.venue_postcode);
-
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-  const [qrError, setQrError] = useState<string | null>(null);
-
-  // Regenerate whenever the URL changes
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setDataUrl(null);
-    setQrError(null);
-    QRCode.toDataURL(url, { width: 256, margin: 2, color: { dark: '#1a1a2e', light: '#ffffff' } })
-      .then((du) => {
-        if (!cancelled) setDataUrl(du);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setQrError(err instanceof Error ? err.message : 'QR generation failed');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, url]);
-
-  const handleDownload = () => {
-    if (!dataUrl) return;
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = `medical-qr-${franchiseeNumber}-${prefix}${course.booking_token ? `-${course.booking_token}` : ''}.png`;
-    a.click();
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Medical declaration QR — {course.template_name}</DialogTitle>
-          <DialogDescription>
-            Display this QR code at your course so attendees can submit their medical declaration
-            before the session starts.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-4 py-2">
-          {qrError ? (
-            <p className="text-daisy-orange text-sm">{qrError}</p>
-          ) : dataUrl ? (
-            <div className="flex flex-col items-center gap-3">
-              <img
-                src={dataUrl}
-                alt="Medical declaration QR code"
-                width={192}
-                height={192}
-                className="rounded-[8px] border border-[#E5E7EB]"
-              />
-            </div>
-          ) : (
-            <div className="flex h-48 items-center justify-center">
-              <span className="text-daisy-muted text-sm">Generating QR…</span>
-            </div>
-          )}
-
-          <div className="border-daisy-line bg-daisy-paper rounded-[8px] border px-3 py-2">
-            <p className="text-daisy-muted mb-1 text-[11px] font-bold tracking-wider uppercase">
-              Destination URL
-            </p>
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-daisy-primary text-xs font-medium break-all underline underline-offset-2"
-            >
-              {url}
-            </a>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={handleDownload} disabled={!dataUrl}>
-              <Download aria-hidden className="h-4 w-4" />
-              Download PNG
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // List columns
 // ---------------------------------------------------------------------------
 
-function buildColumns(onQrClick: (row: OwnCourseListRow) => void): ColumnDef<OwnCourseListRow>[] {
+function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
   return [
     {
       id: 'date',
@@ -393,15 +266,15 @@ function buildColumns(onQrClick: (row: OwnCourseListRow) => void): ColumnDef<Own
               type="button"
               variant="ghost"
               size="icon"
-              title="Medical declaration QR"
+              title="Medical form QR (same for every class)"
               onClick={(e) => {
                 e.stopPropagation();
-                onQrClick(row.original);
+                onQrClick();
               }}
             >
               <QrCode className="h-4 w-4" aria-hidden />
               <span className="sr-only">
-                Medical declaration QR for {row.original.template_name}
+                Show my medical form QR
               </span>
             </Button>
           ) : null}
@@ -430,8 +303,9 @@ export default function CoursesList() {
   // Own profile — needed for QR franchisee number
   const { data: ownProfile } = useOwnProfile();
 
-  // QR dialog state
-  const [qrCourse, setQrCourse] = useState<OwnCourseListRow | null>(null);
+  // QR dialog state — shows THE permanent QR (one-QR model); which row was
+  // clicked no longer matters, the code is identical for every class.
+  const [qrOpen, setQrOpen] = useState(false);
 
   // View toggle
   const [view, setView] = useState<ViewMode>('list');
@@ -463,7 +337,7 @@ export default function CoursesList() {
     error: calError,
   } = useOwnCoursesForMonth(calYear, calMonth);
 
-  const columns = useMemo(() => buildColumns((row) => setQrCourse(row)), []);
+  const columns = useMemo(() => buildColumns(() => setQrOpen(true)), []);
 
   // Month navigation
   function prevMonth() {
@@ -663,16 +537,20 @@ export default function CoursesList() {
         </div>
       ) : null}
 
-      {/* Per-row QR dialog */}
-      {qrCourse && ownProfile?.number ? (
-        <CourseQrDialog
-          open={!!qrCourse}
-          onOpenChange={(next) => {
-            if (!next) setQrCourse(null);
-          }}
-          course={qrCourse}
-          franchiseeNumber={ownProfile.number}
-        />
+      {/* THE permanent QR dialog — same code for every class (one-QR model) */}
+      {ownProfile?.number ? (
+        <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Medical form QR</DialogTitle>
+              <DialogDescription>
+                One QR for every class you run. Print or laminate it once, the form finds the right
+                class automatically on the day.
+              </DialogDescription>
+            </DialogHeader>
+            <MedicalQr franchiseeNumber={ownProfile.number} compact />
+          </DialogContent>
+        </Dialog>
       ) : null}
     </div>
   );

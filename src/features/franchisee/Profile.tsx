@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useOwnProfile, useUpdateOwnProfile } from './profileQueries';
+import { MedicalQr } from './components/MedicalQr';
 
 // ---------------------------------------------------------------------------
 // Schema — only name and phone are mutable on this surface.
@@ -213,6 +214,11 @@ export default function Profile() {
           </Card>
         </div>
       )}
+
+      {/* THE permanent medical form QR — one code, every class, forever */}
+      {!profile.isLoading && profile.data?.number ? (
+        <MedicalQr franchiseeNumber={profile.data.number} />
+      ) : null}
     </div>
   );
 }

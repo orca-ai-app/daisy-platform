@@ -111,6 +111,17 @@ const FranchiseePaymentsPage = lazy(() =>
 const FranchiseeBookingsList = lazy(() => import('@/features/franchisee/bookings/BookingsList'));
 const FranchiseeBookingDetail = lazy(() => import('@/features/franchisee/bookings/BookingDetail'));
 
+/*
+ * Help section: index + article detail. Lazy-loaded — purely static content,
+ * no reason to include in the dashboard critical path.
+ */
+const FranchiseeHelpIndex = lazy(() =>
+  import('@/features/franchisee/help').then((m) => ({ default: m.HelpIndex })),
+);
+const FranchiseeHelpArticle = lazy(() =>
+  import('@/features/franchisee/help').then((m) => ({ default: m.HelpArticle })),
+);
+
 // 5-minute staleTime by default — Daisy's data (franchisees, territories,
 // templates, billing runs) all change on a human timescale, not a real-time
 // one. The previous 30s was triggering refetches on almost every interaction
@@ -230,9 +241,9 @@ export default function App() {
                   }
                 />
 
-                {/* Emails: booking-journey templates, editor + media library.
-                    `media` must precede `:templateKey` so it isn't swallowed
-                    by the param route. */}
+                {/* Emails: booking-journey templates + editor + media library.
+                    `emails/media` must precede `emails/:templateKey` so it
+                    isn't swallowed by the param route. */}
                 <Route
                   path="emails"
                   element={
@@ -384,6 +395,25 @@ export default function App() {
                   element={
                     <LazyRoute>
                       <FranchiseeBookingDetail />
+                    </LazyRoute>
+                  }
+                />
+
+                {/* Help section: index + article detail. `help` must precede
+                    `help/:slug` so the index isn't swallowed by the param route. */}
+                <Route
+                  path="help"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeHelpIndex />
+                    </LazyRoute>
+                  }
+                />
+                <Route
+                  path="help/:slug"
+                  element={
+                    <LazyRoute>
+                      <FranchiseeHelpArticle />
                     </LazyRoute>
                   }
                 />

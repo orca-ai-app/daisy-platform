@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRole } from '@/features/auth/RoleContext';
 import { formatPence } from '@/lib/format';
 import { useFranchiseeDashboard, useRecentBookings, useUpcomingCourses } from './dashboardQueries';
+import { MedicalQr } from './components/MedicalQr';
 
 // ---------------------------------------------------------------------------
 // Date / time formatters — Europe/London, never toISOString().split('T')[0]
@@ -219,7 +220,8 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Coming up this week */}
+        {/* Right column: upcoming courses + the permanent medical QR tile */}
+        <div className="flex flex-col gap-4">
         <Card className="overflow-hidden">
           <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint border-b px-5 py-4">
             <CardTitle className="text-daisy-primary-deep text-[15px] font-extrabold tracking-[0.06em] uppercase">
@@ -266,6 +268,9 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+
+        {franchisee?.number ? <MedicalQr franchiseeNumber={franchisee.number} compact /> : null}
+        </div>
       </section>
     </div>
   );

@@ -171,7 +171,7 @@ Deno.serve(async (req: Request) => {
         : londonToday();
     const fr = await admin
       .from('da_franchisees')
-      .select('id')
+      .select('id, name')
       .eq('number', instructorNumber)
       .maybeSingle();
     if (fr.error) {
@@ -200,7 +200,12 @@ Deno.serve(async (req: Request) => {
     }
     return jsonResponse(
       {
-        courses: ((day.data ?? []) as any[]).map(toCard),
+        // Inject the instructor's display name (the confirmation banner's
+        // typo-catcher: wrong number → wrong name → attendee corrects it).
+        courses: ((day.data ?? []) as any[]).map((r) => ({
+          ...toCard(r),
+          franchisee_name: (fr.data as any).name ?? null,
+        })),
         territory_status: 'none',
         suggest_interest_form: false,
       },
