@@ -1,5 +1,5 @@
 /**
- * TanStack Query hooks for the Customers feature (Wave 11).
+ * TanStack Query hooks for the Customers feature (Wave 11 + Wave 12 contacts).
  *
  * da_customers is read directly via the anon Supabase client. The RLS policy
  * `franchisee_read_own_customers` (SELECT where the customer has a booking
@@ -90,6 +90,46 @@ export function useOwnCustomers() {
         ...c,
         booking_count: countMap.get(c.id) ?? 0,
       }));
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useMedicalContacts — Wave 12
+// ---------------------------------------------------------------------------
+
+/**
+ * Medical-form contacts for the signed-in franchisee (RLS-scoped automatically).
+ *
+ * NEVER selects declaration_data. Used only to build the "All contacts" union
+ * view in CustomersList. Contacts are identified by attendee_email; those with
+ * no email are always included as distinct rows.
+ */
+export interface MedicalContact {
+  id: string;
+  created_at: string;
+  attendee_name: string;
+  attendee_email: string | null;
+  email_opt_in: boolean | null;
+  photo_consent: boolean | null;
+}
+
+export function useMedicalContacts() {
+  return useQuery<MedicalContact[]>({
+    queryKey: franchiseeKeys.medicalContacts(),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('da_medical_declarations')
+        .select('id, created_at, attendee_name, attendee_email, email_opt_in, photo_consent')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        // Table not yet migrated in some environments — fail silently
+        if (error.code === '42P01' || error.code === 'PGRST205') return [];
+        throw error;
+      }
+
+      return (data ?? []) as MedicalContact[];
     },
   });
 }

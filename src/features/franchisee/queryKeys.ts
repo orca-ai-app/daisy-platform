@@ -49,6 +49,7 @@ export const franchiseeKeys = {
 
   customers: () => [...franchiseeKeys.all, 'customers'] as const,
   customer: (id: string) => [...franchiseeKeys.customers(), id] as const,
+  medicalContacts: () => [...franchiseeKeys.all, 'customers', 'medical-contacts'] as const,
 
   discounts: () => [...franchiseeKeys.all, 'discounts'] as const,
   discount: (id: string) => [...franchiseeKeys.discounts(), id] as const,

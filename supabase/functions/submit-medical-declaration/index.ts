@@ -23,6 +23,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { encryptJson } from '../_shared/medicalCrypto.ts';
+import { buildJourneyRows } from '../_shared/emailSchedule.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -59,6 +60,11 @@ interface RequestBody {
   attendee_email?: unknown;
   declaration_data?: unknown;
   consent_given?: unknown;
+  // v2 (July 2026 — attendee → booking linkage + email enrolment):
+  course_token?: unknown; // booking_token of the exact course (from the QR / today-resolver)
+  booker_reference?: unknown; // "who made the booking" (name or email, verbatim)
+  email_opt_in?: unknown; // Jenni's Kartra opt-in checkbox
+  photo_consent?: unknown; // photo/promo consent (plaintext — trainer visibility)
 }
 
 Deno.serve(async (req: Request) => {
@@ -111,24 +117,94 @@ Deno.serve(async (req: Request) => {
   if (!frRes.data) return jsonResponse({ error: 'Instructor not found' }, 404);
   const franchiseeId = (frRes.data as any).id;
 
-  // --- Best-effort link to a recent course instance -------------------------
-  // Same franchisee + matching venue postcode prefix, within the last 24h.
+  // --- Resolve the course instance -------------------------------------------
+  // Exact: course_token (from the per-event QR or the static-QR today-resolver).
+  // Fallback: legacy fuzzy match (franchisee + postcode prefix, last 24h).
+  const courseToken = reqStr(body.course_token);
   let courseInstanceId: string | null = null;
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const prefix =
-    territoryPostcode.toUpperCase().replace(/\s+/g, '').slice(0, -3) || territoryPostcode;
-  const ciRes = await admin
-    .from('da_course_instances')
-    .select('id, venue_postcode, event_date')
-    .eq('franchisee_id', franchiseeId)
-    .gte('event_date', since)
-    .order('event_date', { ascending: false })
-    .limit(20);
-  if (ciRes.data) {
-    const match = (ciRes.data as any[]).find((c) =>
-      (c.venue_postcode ?? '').toUpperCase().replace(/\s+/g, '').startsWith(prefix.toUpperCase()),
-    );
-    courseInstanceId = match?.id ?? null;
+  let courseTimes: {
+    event_date: string;
+    start_time: string | null;
+    end_time: string | null;
+  } | null = null;
+
+  if (courseToken) {
+    const exact = await admin
+      .from('da_course_instances')
+      .select('id, franchisee_id, event_date, start_time, end_time')
+      .eq('booking_token', courseToken)
+      .maybeSingle();
+    if (exact.data && (exact.data as any).franchisee_id === franchiseeId) {
+      courseInstanceId = (exact.data as any).id;
+      courseTimes = {
+        event_date: (exact.data as any).event_date,
+        start_time: (exact.data as any).start_time,
+        end_time: (exact.data as any).end_time,
+      };
+    }
+  }
+
+  if (!courseInstanceId) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const prefix =
+      territoryPostcode.toUpperCase().replace(/\s+/g, '').slice(0, -3) || territoryPostcode;
+    const ciRes = await admin
+      .from('da_course_instances')
+      .select('id, venue_postcode, event_date, start_time, end_time')
+      .eq('franchisee_id', franchiseeId)
+      .gte('event_date', since)
+      .order('event_date', { ascending: false })
+      .limit(20);
+    if (ciRes.data) {
+      const match = (ciRes.data as any[]).find((c) =>
+        (c.venue_postcode ?? '').toUpperCase().replace(/\s+/g, '').startsWith(prefix.toUpperCase()),
+      );
+      if (match) {
+        courseInstanceId = match.id;
+        courseTimes = {
+          event_date: match.event_date,
+          start_time: match.start_time,
+          end_time: match.end_time,
+        };
+      }
+    }
+  }
+
+  // --- Match the booking ("who made the booking?") ---------------------------
+  // On the resolved course's bookings: exact booker email → exact booker full
+  // name (both case-insensitive) → single-booking auto-match. No confident
+  // match → declaration saved unlinked (HQ sees it as such).
+  const bookerReference = reqStr(body.booker_reference);
+  let bookingId: string | null = null;
+  let bookingCustomerEmail: string | null = null;
+
+  if (courseInstanceId) {
+    const bookingsRes = await admin
+      .from('da_bookings')
+      .select('id, customer:da_customers ( email, first_name, last_name )')
+      .eq('course_instance_id', courseInstanceId)
+      .neq('booking_status', 'cancelled');
+    const bookings = (bookingsRes.data ?? []) as any[];
+
+    if (bookerReference && bookings.length > 0) {
+      const ref = bookerReference.toLowerCase();
+      const byEmail = bookings.filter((b) => (b.customer?.email ?? '').toLowerCase() === ref);
+      const byName = bookings.filter(
+        (b) =>
+          `${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim().toLowerCase() ===
+          ref,
+      );
+      const matched = byEmail.length === 1 ? byEmail[0] : byName.length === 1 ? byName[0] : null;
+      if (matched) {
+        bookingId = matched.id;
+        bookingCustomerEmail = (matched.customer?.email ?? '').toLowerCase() || null;
+      }
+    }
+    if (!bookingId && bookings.length === 1) {
+      // Only one booking on the class — unambiguous.
+      bookingId = bookings[0].id;
+      bookingCustomerEmail = (bookings[0].customer?.email ?? '').toLowerCase() || null;
+    }
   }
 
   // --- Retention window from settings (default 3 years) ---------------------
@@ -150,14 +226,23 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Could not securely store your declaration' }, 500);
   }
 
+  const attendeeEmail = reqStr(body.attendee_email)?.toLowerCase() ?? null;
+  const emailOptIn = body.email_opt_in === true;
+  const photoConsent =
+    typeof body.photo_consent === 'boolean' ? (body.photo_consent as boolean) : null;
+
   const ins = await admin
     .from('da_medical_declarations')
     .insert({
       franchisee_id: franchiseeId,
       territory_postcode: territoryPostcode.toUpperCase(),
       course_instance_id: courseInstanceId,
+      booking_id: bookingId,
       attendee_name: attendeeName,
-      attendee_email: reqStr(body.attendee_email)?.toLowerCase() ?? null,
+      attendee_email: attendeeEmail,
+      email_opt_in: emailOptIn,
+      photo_consent: photoConsent,
+      booker_reference: bookerReference,
       declaration_data: encrypted,
       consent_given: true,
       consent_timestamp: new Date().toISOString(),
@@ -173,6 +258,60 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Could not submit your declaration' }, 500);
   }
 
+  // --- Enrol the attendee in the post-course email journey -------------------
+  // Conditions: opted in + gave an email + confidently linked to a booking
+  // (da_email_sequences requires booking_id + customer_id). Dedup: skip when
+  // the attendee IS the booker (they got the full journey at payment) or when
+  // this email already has journey rows for this booking (repeat submission).
+  let enrolled = false;
+  if (emailOptIn && attendeeEmail && bookingId && courseTimes) {
+    try {
+      const isBooker = bookingCustomerEmail !== null && bookingCustomerEmail === attendeeEmail;
+      if (!isBooker) {
+        const cust = await admin
+          .from('da_customers')
+          .upsert(
+            {
+              email: attendeeEmail,
+              first_name: attendeeName.split(' ')[0] || attendeeName,
+              last_name: attendeeName.split(' ').slice(1).join(' ') || 'Unknown',
+            },
+            { onConflict: 'email', ignoreDuplicates: false },
+          )
+          .select('id')
+          .single();
+        if (cust.data) {
+          const customerId = (cust.data as any).id;
+          const existing = await admin
+            .from('da_email_sequences')
+            .select('id')
+            .eq('booking_id', bookingId)
+            .eq('customer_id', customerId)
+            .limit(1);
+          if ((existing.data ?? []).length === 0) {
+            const rows = buildJourneyRows({
+              customerId,
+              bookingId,
+              eventDate: courseTimes.event_date,
+              startTime: courseTimes.start_time,
+              endTime: courseTimes.end_time,
+              now: new Date(),
+              set: 'post_course',
+            });
+            if (rows.length > 0) {
+              const er = await admin.from('da_email_sequences').insert(rows);
+              if (er.error) console.error('attendee enrolment insert failed', er.error);
+              else enrolled = true;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Enrolment must never block the declaration itself.
+      console.error('attendee enrolment failed', err);
+    }
+  }
+
   // Activity row carries NO health data — just that a declaration was submitted.
   await admin
     .from('da_activities')
@@ -185,6 +324,8 @@ Deno.serve(async (req: Request) => {
       metadata: {
         franchisee_id: franchiseeId,
         territory_postcode: territoryPostcode.toUpperCase(),
+        booking_linked: bookingId !== null,
+        attendee_enrolled: enrolled,
       },
       description: `Medical declaration submitted for instructor ${instructorNumber}`,
     })

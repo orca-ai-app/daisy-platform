@@ -67,12 +67,15 @@ interface RequestBody {
   franchisee_id?: unknown;
   limit?: unknown;
   booking_token?: unknown;
+  instructor_number?: unknown;
+  on_date?: unknown;
 }
 
 // Shape one da_course_instances row (+ joined names + ticket types) into a card.
 function toCard(r: any) {
   return {
     id: r.id,
+    booking_token: r.booking_token ?? null,
     template_name: r.template_name ?? r.template?.name ?? null,
     template_slug: r.template_slug ?? r.template?.slug ?? null,
     event_date: r.event_date,
@@ -86,6 +89,12 @@ function toCard(r: any) {
     spots_remaining: r.spots_remaining,
     ticket_types: Array.isArray(r.ticket_types) ? r.ticket_types : [],
   };
+}
+
+// Today's date in Europe/London ('YYYY-MM-DD') — a 23:30 UTC submission in BST
+// is already "tomorrow" in London.
+function londonToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
 }
 
 Deno.serve(async (req: Request) => {
@@ -125,7 +134,7 @@ Deno.serve(async (req: Request) => {
     const single = await admin
       .from('da_course_instances')
       .select(
-        `id, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
+        `id, booking_token, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
          template:da_course_templates ( name, slug ),
          franchisee:da_franchisees ( name ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed )`,
@@ -144,6 +153,57 @@ Deno.serve(async (req: Request) => {
     }
     return jsonResponse(
       { courses: [toCard(single.data)], territory_status: 'none', suggest_interest_form: false },
+      200,
+    );
+  }
+
+  // --- instructor_number path: the medical form's STATIC-QR resolver ---------
+  // "Which class is instructor NNNN running on <date>?" (default: today,
+  // Europe/London). Includes PRIVATE classes — attendees at a private class
+  // still fill the medical form, and the response only reveals what anyone
+  // standing in the room already knows (class name, time, venue).
+  const instructorNumber =
+    typeof body.instructor_number === 'string' ? body.instructor_number.trim() : '';
+  if (instructorNumber) {
+    const onDate =
+      typeof body.on_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.on_date)
+        ? body.on_date
+        : londonToday();
+    const fr = await admin
+      .from('da_franchisees')
+      .select('id')
+      .eq('number', instructorNumber)
+      .maybeSingle();
+    if (fr.error) {
+      console.error('instructor lookup failed', fr.error);
+      return jsonResponse({ error: 'Could not look up that instructor' }, 500);
+    }
+    if (!fr.data) {
+      return jsonResponse(
+        { courses: [], territory_status: 'none', suggest_interest_form: false },
+        200,
+      );
+    }
+    const day = await admin
+      .from('da_course_instances')
+      .select(
+        `id, booking_token, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining,
+         template:da_course_templates ( name, slug )`,
+      )
+      .eq('franchisee_id', (fr.data as any).id)
+      .eq('status', 'scheduled')
+      .eq('event_date', onDate)
+      .order('start_time', { ascending: true });
+    if (day.error) {
+      console.error('instructor day lookup failed', day.error);
+      return jsonResponse({ error: 'Could not look up classes' }, 500);
+    }
+    return jsonResponse(
+      {
+        courses: ((day.data ?? []) as any[]).map(toCard),
+        territory_status: 'none',
+        suggest_interest_form: false,
+      },
       200,
     );
   }

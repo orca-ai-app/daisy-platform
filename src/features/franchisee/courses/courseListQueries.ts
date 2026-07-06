@@ -57,6 +57,7 @@ export interface OwnCourseListRow {
   price_pence: number;
   template_id: string;
   template_name: string;
+  booking_token: string | null;
 }
 
 export interface OwnCoursesResult {
@@ -96,6 +97,7 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
            spots_remaining,
            price_pence,
            template_id,
+           booking_token,
            template:da_course_templates ( id, name )`,
           { count: 'exact' },
         )
@@ -141,6 +143,7 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
         spots_remaining: row.spots_remaining,
         price_pence: row.price_pence,
         template_id: row.template_id,
+        booking_token: row.booking_token,
         template_name: row.template?.name ?? '-',
       }));
 

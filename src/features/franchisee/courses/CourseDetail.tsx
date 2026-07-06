@@ -387,6 +387,7 @@ export default function CourseDetail() {
                 <MedicalQrCard
                   franchiseeNumber={ownProfile.number}
                   venuePostcode={instance.venue_postcode}
+                  bookingToken={instance.booking_token}
                 />
               ) : null}
             </aside>
@@ -791,11 +792,15 @@ const MEDICAL_BASE = 'https://medical.daisyfirstaid.com/';
 interface MedicalQrCardProps {
   franchiseeNumber: string;
   venuePostcode: string | null;
+  bookingToken?: string | null;
 }
 
-function MedicalQrCard({ franchiseeNumber, venuePostcode }: MedicalQrCardProps) {
+function MedicalQrCard({ franchiseeNumber, venuePostcode, bookingToken }: MedicalQrCardProps) {
   const prefix = postcodePrefix(venuePostcode);
-  const url = `${MEDICAL_BASE}?instructor=${encodeURIComponent(franchiseeNumber)}&postcode=${encodeURIComponent(prefix)}`;
+  let url = `${MEDICAL_BASE}?instructor=${encodeURIComponent(franchiseeNumber)}&postcode=${encodeURIComponent(prefix)}`;
+  if (bookingToken) {
+    url += `&course=${encodeURIComponent(bookingToken)}`;
+  }
 
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
@@ -822,7 +827,7 @@ function MedicalQrCard({ franchiseeNumber, venuePostcode }: MedicalQrCardProps) 
     if (!dataUrl) return;
     const a = document.createElement('a');
     a.href = dataUrl;
-    a.download = `medical-declaration-qr-${franchiseeNumber}-${prefix}.png`;
+    a.download = `medical-declaration-qr-${franchiseeNumber}-${prefix}${bookingToken ? `-${bookingToken}` : ''}.png`;
     a.click();
   };
 

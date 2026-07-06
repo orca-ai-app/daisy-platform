@@ -37,26 +37,39 @@ export interface MedicalDeclarationRow {
   id: string;
   created_at: string;
   attendee_name: string;
-  attendee_email: string;
+  attendee_email: string | null;
   territory_postcode: string | null;
   consent: boolean;
+  email_opt_in: boolean | null;
+  photo_consent: boolean | null;
+  booker_reference: string | null;
+  booking_reference: string | null;
+  franchisee_name: string | null;
+  franchisee_number: string | null;
 }
 
 // ---------------------------------------------------------------------------
-// Decrypted health fields returned by the Edge Function
+// Decrypted health fields returned by the Edge Function — NEW shape (Wave 12)
 // ---------------------------------------------------------------------------
 
+/**
+ * Condition keys returned in declaration_data.conditions[].
+ * Back-end values mapped to human labels in the UI.
+ */
+export type MedicalConditionKey =
+  | 'back_neck_arm_knee'
+  | 'rupture_hernia'
+  | 'heart_bp_chest'
+  | 'blackouts_seizures_epilepsy'
+  | 'pregnant'
+  | 'none';
+
 export interface DecryptedDeclarationData {
-  has_medical_conditions: boolean;
-  medical_condition_details: string | null;
-  has_allergies: boolean;
-  allergy_details: string | null;
-  has_mobility_limitations: boolean;
-  mobility_details: string | null;
-  is_pregnant: boolean;
-  emergency_contact_name: string | null;
-  emergency_contact_phone: string | null;
-  additional_info: string | null;
+  conditions: MedicalConditionKey[];
+  property_disclaimer_acknowledged: boolean;
+  special_requirements_advised: 'yes' | 'not_applicable';
+  age_16_plus_confirmed: boolean;
+  gdpr_terms_agreed: boolean;
 }
 
 export interface DecryptedDeclaration {
@@ -77,7 +90,17 @@ export function useMedicalDeclarations() {
       const { data, error } = await supabase
         .from('da_medical_declarations')
         .select(
-          'id, created_at, attendee_name, attendee_email, territory_postcode, consent:consent_given',
+          `id,
+           created_at,
+           attendee_name,
+           attendee_email,
+           territory_postcode,
+           consent:consent_given,
+           email_opt_in,
+           photo_consent,
+           booker_reference,
+           booking:da_bookings ( booking_reference ),
+           franchisee:da_franchisees ( name, number )`,
         )
         .order('created_at', { ascending: false });
 
@@ -85,7 +108,29 @@ export function useMedicalDeclarations() {
         if (isTableMissing(error.code)) return [];
         throw error;
       }
-      return (data ?? []) as MedicalDeclarationRow[];
+
+      type Raw = Omit<
+        MedicalDeclarationRow,
+        'booking_reference' | 'franchisee_name' | 'franchisee_number'
+      > & {
+        booking: { booking_reference: string } | null;
+        franchisee: { name: string; number: string } | null;
+      };
+
+      return ((data ?? []) as unknown as Raw[]).map((row) => ({
+        id: row.id,
+        created_at: row.created_at,
+        attendee_name: row.attendee_name,
+        attendee_email: row.attendee_email,
+        territory_postcode: row.territory_postcode,
+        consent: row.consent,
+        email_opt_in: row.email_opt_in,
+        photo_consent: row.photo_consent,
+        booker_reference: row.booker_reference,
+        booking_reference: row.booking?.booking_reference ?? null,
+        franchisee_name: row.franchisee?.name ?? null,
+        franchisee_number: row.franchisee?.number ?? null,
+      }));
     },
   });
 }

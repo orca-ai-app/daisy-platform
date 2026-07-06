@@ -65,17 +65,26 @@ function extractWebhookAllowedSet(src: string): Set<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Extract the keys the webhook actually queues via push('<key>', ...).
+// Queued keys: the journey builder now lives in _shared/emailSchedule.ts and is
+// a pure module — so instead of parsing source, we CALL it and read the keys it
+// actually emits for a booking made well before a future class (nothing dropped
+// as past). Far more robust than regex-parsing the webhook body.
 // ---------------------------------------------------------------------------
 
-function extractQueuedKeys(src: string): string[] {
-  // Only the buildEmailSequenceRows body calls push('<literal>', ...).
-  return [...src.matchAll(/push\(\s*'([a-z0-9_]+)'/g)].map((m) => m[1]);
-}
+import { buildJourneyRows } from '../_shared/emailSchedule';
+
+const queuedKeys = buildJourneyRows({
+  customerId: 'c-test',
+  bookingId: 'b-test',
+  eventDate: '2030-06-01',
+  startTime: '10:00:00',
+  endTime: '12:00:00',
+  now: new Date('2030-01-01T00:00:00Z'),
+  set: 'full',
+}).map((r) => r.template_key);
 
 const migrationKeys = extractMigrationKeys(migration028);
 const allowedSet = extractWebhookAllowedSet(webhookSrc);
-const queuedKeys = extractQueuedKeys(webhookSrc);
 
 // ---------------------------------------------------------------------------
 // Sanity: parsing actually found something.

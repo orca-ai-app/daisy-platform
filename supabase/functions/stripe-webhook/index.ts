@@ -31,6 +31,7 @@
 
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=denonext';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { buildJourneyRows, type SequenceRow } from '../_shared/emailSchedule.ts';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -65,6 +66,8 @@ interface CourseInstanceRow {
   id: string;
   franchisee_id: string;
   event_date: string; // DATE as ISO string 'YYYY-MM-DD'
+  start_time: string | null; // TIME, Europe/London wall clock
+  end_time: string | null;
   private_client_id: string | null;
 }
 
@@ -87,94 +90,35 @@ interface CustomerRow {
 // Email sequence helpers
 // ---------------------------------------------------------------------------
 
-// Compute the scheduled_for timestamp (UTC) by adding days to a base date.
-function daysFromDate(baseDate: Date, days: number): Date {
-  const d = new Date(baseDate.getTime());
-  d.setUTCDate(d.getUTCDate() + days);
-  return d;
-}
-
-// Build da_email_sequences rows for a confirmed booking — Daisy's real Kartra
-// journey (docs/M3-email-journey.md). All keys MUST be in ALLOWED_TEMPLATE_KEYS
-// (migration 028 CHECK). Schedule:
-//   now: new_booking_notification (→ franchisee), booking_confirmation (→ customer)
-//   event_date − 1h: medical_reminder (only if still future)
-//   event_date + 7h: post_course_welcome
-//   event_date + 28d: recap_anaphylaxis
-//   then +42d each: recap_choking (70), recap_head_injuries (112), recap_cpr (154),
-//     recap_febrile_convulsions (196), recap_burns (238), quiz_general (280),
-//     refresher (322)
-//   event_date + 329d: refresher_elearning_option
-// The send-emails cron renders the matching template per template_key. Copy for
-// each template is lifted from Kartra (Wave 13 templates).
+// The journey builder lives in _shared/emailSchedule.ts (shared with
+// submit-medical-declaration's attendee enrolment). It anchors every send to
+// the course's REAL Europe/London start/end times: medical_reminder = start−1h,
+// post_course_welcome = end+7h ("7 hours after the session ends" — Chris),
+// recaps = end + 28/70/112/154/196/238/280/322/329 days. Past sends are dropped.
 function buildEmailSequenceRows(
   customerId: string,
   bookingId: string,
   now: Date,
-  eventDate: Date,
-): Array<{
-  customer_id: string;
-  booking_id: string;
-  template_key: string;
-  sequence_day: number;
-  scheduled_for: string;
-  status: 'pending';
-}> {
-  const rows: Array<{
-    customer_id: string;
-    booking_id: string;
-    template_key: string;
-    sequence_day: number;
-    scheduled_for: string;
-    status: 'pending';
-  }> = [];
-
-  function push(templateKey: string, scheduledFor: Date, sequenceDay: number): void {
-    if (!ALLOWED_TEMPLATE_KEYS.has(templateKey)) {
-      // Belt-and-braces guard — should never fire given the constant above.
-      console.error(`stripe-webhook: refusing to queue disallowed template_key="${templateKey}"`);
-      return;
-    }
-    rows.push({
-      customer_id: customerId,
-      booking_id: bookingId,
-      template_key: templateKey,
-      sequence_day: sequenceDay,
-      scheduled_for: scheduledFor.toISOString(),
-      status: 'pending',
-    });
-  }
-
-  function hoursFromDate(baseDate: Date, hours: number): Date {
-    return new Date(baseDate.getTime() + hours * 3600_000);
-  }
-
-  // Immediate (booking time)
-  push('new_booking_notification', now, 0);
-  push('booking_confirmation', now, 0);
-
-  // Pre-event medical reminder — 1h before the class. Only queue if that moment
-  // is still in the future (a reminder for a past event would fire immediately).
-  const medicalReminderAt = hoursFromDate(eventDate, -1);
-  if (medicalReminderAt.getTime() > now.getTime()) {
-    push('medical_reminder', medicalReminderAt, 0);
-  }
-
-  // Post-course journey (Daisy's real Kartra sequence — docs/M3-email-journey.md).
-  // Offsets are relative to the event date; cumulative day counts match Kartra's
-  // per-step delays (welcome +7h, then +28d, then +42d each, last +7d).
-  push('post_course_welcome', hoursFromDate(eventDate, 7), 0);
-  push('recap_anaphylaxis', daysFromDate(eventDate, 28), 28);
-  push('recap_choking', daysFromDate(eventDate, 70), 70);
-  push('recap_head_injuries', daysFromDate(eventDate, 112), 112);
-  push('recap_cpr', daysFromDate(eventDate, 154), 154);
-  push('recap_febrile_convulsions', daysFromDate(eventDate, 196), 196);
-  push('recap_burns', daysFromDate(eventDate, 238), 238);
-  push('quiz_general', daysFromDate(eventDate, 280), 280);
-  push('refresher', daysFromDate(eventDate, 322), 322);
-  push('refresher_elearning_option', daysFromDate(eventDate, 329), 329);
-
-  return rows;
+  eventDate: string,
+  startTime: string | null,
+  endTime: string | null,
+): SequenceRow[] {
+  return buildJourneyRows({
+    customerId,
+    bookingId,
+    eventDate,
+    startTime,
+    endTime,
+    now,
+    set: 'full',
+  }).filter((row) => {
+    if (ALLOWED_TEMPLATE_KEYS.has(row.template_key)) return true;
+    // Belt-and-braces — should never fire; the shared builder only emits known keys.
+    console.error(
+      `stripe-webhook: refusing to queue disallowed template_key="${row.template_key}"`,
+    );
+    return false;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +295,7 @@ async function finalisePendingBooking(
 
   const instRes = await admin
     .from('da_course_instances')
-    .select('event_date')
+    .select('event_date, start_time, end_time')
     .eq('id', booking.course_instance_id)
     .maybeSingle();
   const eventDateStr = (instRes.data as any)?.event_date ?? null;
@@ -398,7 +342,9 @@ async function finalisePendingBooking(
       booking.customer_id,
       booking.id,
       now,
-      new Date(`${eventDateStr}T00:00:00Z`),
+      eventDateStr,
+      (instRes.data as any)?.start_time ?? null,
+      (instRes.data as any)?.end_time ?? null,
     );
     if (rows.length > 0) {
       const er = await admin.from('da_email_sequences').insert(rows);
@@ -561,7 +507,7 @@ async function handleCheckoutSessionCompleted(
   // -------------------------------------------------------------------------
   const instanceResult = await admin
     .from('da_course_instances')
-    .select('id, franchisee_id, event_date, private_client_id')
+    .select('id, franchisee_id, event_date, start_time, end_time, private_client_id')
     .eq('id', courseInstanceId)
     .single();
 
@@ -689,10 +635,14 @@ async function handleCheckoutSessionCompleted(
   // Step 8 — Queue da_email_sequences
   // -------------------------------------------------------------------------
   const now = new Date();
-  // Parse event_date as UTC midnight so refresher offsets don't drift by timezone.
-  const eventDate = new Date(`${instance.event_date}T00:00:00Z`);
-
-  const emailRows = buildEmailSequenceRows(customerId, bookingId, now, eventDate);
+  const emailRows = buildEmailSequenceRows(
+    customerId,
+    bookingId,
+    now,
+    instance.event_date,
+    instance.start_time,
+    instance.end_time,
+  );
 
   if (emailRows.length > 0) {
     const emailInsert = await admin.from('da_email_sequences').insert(emailRows);
