@@ -19,9 +19,10 @@
 // upsert customer → resolve client (email dedup) → write a PENDING booking →
 // create Stripe Checkout on the connected account → stamp the session id.
 //
-// Spots are NOT decremented here — the webhook decrements on payment (matches
-// M2, avoids held seats on abandoned checkouts). uses_count is bumped at
-// confirmation too. If Stripe fails, the pending booking is rolled back.
+// Spots ARE reserved here (reserve_spots, migration 035) so two checkouts can
+// never both pay for the last place; the webhook only confirms. Abandoned
+// checkouts release their hold via the hourly sweep (35 min). uses_count is
+// bumped at confirmation. If Stripe fails, booking + hold are rolled back.
 
 // deno-lint-ignore-file no-explicit-any
 
