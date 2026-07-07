@@ -1,8 +1,8 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import tseslint from '@typescript-eslint/eslint-plugin'
-import tsparser from '@typescript-eslint/parser'
-import reactHooks from 'eslint-plugin-react-hooks'
+import js from '@eslint/js';
+import globals from 'globals';
+import tseslint from '@typescript-eslint/eslint-plugin';
+import tsparser from '@typescript-eslint/parser';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
   {
@@ -31,6 +31,8 @@ export default [
         // Google Maps SDK is loaded at runtime by @vis.gl/react-google-maps;
         // its types come from @types/google.maps.
         google: 'readonly',
+        // Build stamp injected by the `define` block in vite.config.ts.
+        __APP_VERSION__: 'readonly',
       },
       parser: tsparser,
       parserOptions: {
@@ -62,4 +64,4 @@ export default [
       },
     },
   },
-]
+];

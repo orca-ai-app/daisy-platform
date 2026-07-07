@@ -231,6 +231,30 @@ Deno.serve(async (req: Request) => {
   const photoConsent =
     typeof body.photo_consent === 'boolean' ? (body.photo_consent as boolean) : null;
 
+  // Idempotent retries: the form sends the same client-generated submission_id
+  // on every retry of one session; a duplicate returns the original reference
+  // instead of inserting a second declaration (migration 037).
+  const submissionId = reqStr((body as any).submission_id);
+  const validSubmissionId =
+    submissionId && /^[0-9a-f-]{8,40}$/i.test(submissionId) ? submissionId : null;
+  if (validSubmissionId) {
+    const existingDup = await admin
+      .from('da_medical_declarations')
+      .select('id')
+      .eq('submission_id', validSubmissionId)
+      .maybeSingle();
+    if (existingDup.data) {
+      return jsonResponse(
+        {
+          ok: true,
+          reference: ((existingDup.data as any).id as string).slice(0, 8).toUpperCase(),
+          duplicate: true,
+        },
+        200,
+      );
+    }
+  }
+
   const ins = await admin
     .from('da_medical_declarations')
     .insert({
@@ -249,11 +273,34 @@ Deno.serve(async (req: Request) => {
       gdpr_retention_expires_at: retentionExpires.toISOString(),
       ip_address: ip !== 'unknown' ? ip : null,
       user_agent: req.headers.get('user-agent'),
+      submission_id: validSubmissionId,
     })
     .select('id')
     .single();
 
   if (ins.error || !ins.data) {
+    // A concurrent retry may have won the unique submission_id race — treat
+    // that as the duplicate case, not a failure.
+    if (
+      validSubmissionId &&
+      (ins.error?.code === '23505' || /duplicate/i.test(ins.error?.message ?? ''))
+    ) {
+      const winner = await admin
+        .from('da_medical_declarations')
+        .select('id')
+        .eq('submission_id', validSubmissionId)
+        .maybeSingle();
+      if (winner.data) {
+        return jsonResponse(
+          {
+            ok: true,
+            reference: ((winner.data as any).id as string).slice(0, 8).toUpperCase(),
+            duplicate: true,
+          },
+          200,
+        );
+      }
+    }
     console.error('medical declaration insert failed', ins.error);
     return jsonResponse({ error: 'Could not submit your declaration' }, 500);
   }
@@ -333,5 +380,14 @@ Deno.serve(async (req: Request) => {
       if (r.error) console.error('activity insert failed', r.error);
     });
 
-  return jsonResponse({ success: true }, 201);
+  // `reference` = short form of the declaration id, shown on the success page
+  // so an attendee can quote it if anything needs tracing later.
+  return jsonResponse(
+    {
+      success: true,
+      ok: true,
+      reference: ((ins.data as any).id as string).slice(0, 8).toUpperCase(),
+    },
+    201,
+  );
 });

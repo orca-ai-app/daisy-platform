@@ -21,6 +21,7 @@ import { renderTemplate, type TemplateContext } from './templates.ts';
 import { renderBlocks, fillMerge, type EmailBlock } from '../_shared/emailBlocks.ts';
 import { buildUnsubscribeUrl } from '../_shared/unsubscribeToken.ts';
 import { processBroadcast } from '../_shared/broadcastSender.ts';
+import { logSystem } from '../_shared/log.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -119,19 +120,6 @@ Deno.serve(async (req: Request) => {
   if (!postmarkToken) return jsonResponse({ error: 'POSTMARK_SERVER_TOKEN not set' }, 500);
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
-  const due = await admin
-    .from('da_email_sequences')
-    .select('id, template_key, customer_id, booking_id')
-    .eq('status', 'pending')
-    .lte('scheduled_for', new Date().toISOString())
-    .order('scheduled_for', { ascending: true })
-    .limit(100);
-  if (due.error) {
-    console.error('send-emails: select failed', due.error);
-    return jsonResponse({ error: 'Could not load the queue' }, 500);
-  }
-  const rows = (due.data ?? []) as any[];
-
   // HQ-editable templates (migrations 030/031) — one load per invocation.
   // Keys without a row fall back to the code templates in templates.ts.
   const templatesRes = await admin
@@ -160,116 +148,200 @@ Deno.serve(async (req: Request) => {
   let sent = 0;
   let failed = 0;
   let cancelled = 0;
+  let processed = 0;
 
-  for (const row of rows) {
-    try {
-      // Load booking → customer, course instance + template, franchisee.
-      const booking = await admin
-        .from('da_bookings')
-        .select(
-          `booking_reference,
+  // Drain until empty (bounded): re-select each page since every processed row
+  // leaves 'pending'. The old single limit(100) silently lagged on busy days.
+  const PAGE_SIZE = 100;
+  const MAX_PAGES = 10;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const due = await admin
+      .from('da_email_sequences')
+      .select('id, template_key, customer_id, booking_id')
+      .eq('status', 'pending')
+      .lte('scheduled_for', new Date().toISOString())
+      .order('scheduled_for', { ascending: true })
+      .limit(PAGE_SIZE);
+    if (due.error) {
+      console.error('send-emails: select failed', due.error);
+      return jsonResponse({ error: 'Could not load the queue' }, 500);
+    }
+    const rows = (due.data ?? []) as any[];
+    if (rows.length === 0) break;
+    processed += rows.length;
+    if (page === MAX_PAGES - 1 && rows.length === PAGE_SIZE) {
+      await logSystem(admin, {
+        level: 'warn',
+        source: 'send-emails',
+        message: `queue not fully drained after ${MAX_PAGES * PAGE_SIZE} rows — backlog building`,
+      });
+    }
+
+    for (const row of rows) {
+      try {
+        // Load booking → customer, course instance + template, franchisee.
+        const booking = await admin
+          .from('da_bookings')
+          .select(
+            `booking_reference,
            customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
              event_date, start_time, venue_name, venue_postcode,
              template:da_course_templates ( name )
            ),
            franchisee:da_franchisees ( name, email )`,
-        )
-        .eq('id', row.booking_id)
-        .maybeSingle();
-      if (booking.error || !booking.data) throw new Error('booking load failed');
-      const b = booking.data as any;
+          )
+          .eq('id', row.booking_id)
+          .maybeSingle();
+        if (booking.error || !booking.data) throw new Error('booking load failed');
+        const b = booking.data as any;
 
-      // new_booking_notification goes to the franchisee; everything else to the customer.
-      const toFranchisee = row.template_key === 'new_booking_notification';
-      const recipient = toFranchisee ? b.franchisee?.email : b.customer?.email;
-      if (!recipient) throw new Error('no recipient email');
+        // new_booking_notification goes to the franchisee; everything else to the customer.
+        const toFranchisee = row.template_key === 'new_booking_notification';
+        const recipient = toFranchisee ? b.franchisee?.email : b.customer?.email;
+        if (!recipient) throw new Error('no recipient email');
 
-      const dbTemplate = dbTemplates.get(row.template_key);
+        const dbTemplate = dbTemplates.get(row.template_key);
 
-      // Suppression: opted-out customers get no marketing emails. Their queued
-      // marketing rows are cancelled (not failed); transactional still sends.
-      // Keys without a DB row are the transactional set — never suppressed.
-      if (
-        !toFranchisee &&
-        dbTemplate?.is_marketing &&
-        (b.customer?.marketing_opt_out || suppressed.has(recipient.toLowerCase()))
-      ) {
-        await admin.from('da_email_sequences').update({ status: 'cancelled' }).eq('id', row.id);
-        cancelled++;
-        continue;
-      }
+        // Suppression: opted-out customers get no marketing emails. Their queued
+        // marketing rows are cancelled (not failed); transactional still sends.
+        // Keys without a DB row are the transactional set — never suppressed.
+        if (
+          !toFranchisee &&
+          dbTemplate?.is_marketing &&
+          (b.customer?.marketing_opt_out || suppressed.has(recipient.toLowerCase()))
+        ) {
+          await admin.from('da_email_sequences').update({ status: 'cancelled' }).eq('id', row.id);
+          cancelled++;
+          continue;
+        }
 
-      const ctx: TemplateContext = {
-        first_name: b.customer?.first_name ?? 'there',
-        customer_name: `${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim(),
-        template_name: b.course_instance?.template?.name ?? 'your class',
-        event_date: formatDate(b.course_instance?.event_date ?? null),
-        start_time: (b.course_instance?.start_time ?? '').slice(0, 5),
-        venue: b.course_instance?.venue_name ?? b.course_instance?.venue_postcode ?? '',
-        franchisee_name: b.franchisee?.name ?? 'Daisy First Aid',
-        franchisee_email: b.franchisee?.email ?? '',
-        booking_reference: b.booking_reference,
-        unsubscribe_url: await buildUnsubscribeUrl(row.customer_id),
-      };
+        const ctx: TemplateContext = {
+          first_name: b.customer?.first_name ?? 'there',
+          customer_name: `${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim(),
+          template_name: b.course_instance?.template?.name ?? 'your class',
+          event_date: formatDate(b.course_instance?.event_date ?? null),
+          start_time: (b.course_instance?.start_time ?? '').slice(0, 5),
+          venue: b.course_instance?.venue_name ?? b.course_instance?.venue_postcode ?? '',
+          franchisee_name: b.franchisee?.name ?? 'Daisy First Aid',
+          franchisee_email: b.franchisee?.email ?? '',
+          booking_reference: b.booking_reference,
+          unsubscribe_url: await buildUnsubscribeUrl(row.customer_id),
+        };
 
-      let tmpl: { subject: string; html: string; text: string } | null;
-      if (dbTemplate) {
-        const rendered = renderBlocks(
-          (dbTemplate.blocks ?? []) as EmailBlock[],
-          ctx,
-          dbTemplate.preheader ?? undefined,
+        let tmpl: { subject: string; html: string; text: string } | null;
+        if (dbTemplate) {
+          const rendered = renderBlocks(
+            (dbTemplate.blocks ?? []) as EmailBlock[],
+            ctx,
+            dbTemplate.preheader ?? undefined,
+          );
+          tmpl = { subject: fillMerge(dbTemplate.subject, ctx), ...rendered };
+        } else {
+          tmpl = renderTemplate(row.template_key, ctx);
+        }
+        if (!tmpl) throw new Error(`no template for key ${row.template_key}`);
+
+        const replyTo = toFranchisee ? null : (b.franchisee?.email ?? null);
+        const result = await sendViaPostmark(
+          postmarkToken,
+          fromEmail,
+          recipient,
+          replyTo,
+          tmpl.subject,
+          tmpl.html,
+          tmpl.text,
+          { sequence_id: row.id, template_key: row.template_key },
+          ctx.unsubscribe_url,
+          dbTemplate?.is_marketing ? 'broadcasts' : 'outbound',
         );
-        tmpl = { subject: fillMerge(dbTemplate.subject, ctx), ...rendered };
-      } else {
-        tmpl = renderTemplate(row.template_key, ctx);
-      }
-      if (!tmpl) throw new Error(`no template for key ${row.template_key}`);
 
-      const replyTo = toFranchisee ? null : (b.franchisee?.email ?? null);
-      const result = await sendViaPostmark(
-        postmarkToken,
-        fromEmail,
-        recipient,
-        replyTo,
-        tmpl.subject,
-        tmpl.html,
-        tmpl.text,
-        { sequence_id: row.id, template_key: row.template_key },
-        ctx.unsubscribe_url,
-        dbTemplate?.is_marketing ? 'broadcasts' : 'outbound',
-      );
-
-      if (result.ok) {
+        if (result.ok) {
+          await admin
+            .from('da_email_sequences')
+            .update({
+              status: 'sent',
+              sent_at: new Date().toISOString(),
+              provider_message_id: result.messageId ?? null,
+            })
+            .eq('id', row.id);
+          sent++;
+        } else {
+          throw new Error(result.error ?? 'Postmark send failed');
+        }
+      } catch (err) {
+        failed++;
+        await admin.from('da_email_sequences').update({ status: 'failed' }).eq('id', row.id);
         await admin
-          .from('da_email_sequences')
-          .update({
-            status: 'sent',
-            sent_at: new Date().toISOString(),
-            provider_message_id: result.messageId ?? null,
+          .from('da_activities')
+          .insert({
+            actor_type: 'system',
+            actor_id: null,
+            entity_type: 'email_sequence',
+            entity_id: row.id,
+            action: 'email_failed',
+            metadata: { template_key: row.template_key, error: String(err).slice(0, 300) },
+            description: `Email ${row.template_key} failed to send`,
           })
-          .eq('id', row.id);
-        sent++;
-      } else {
-        throw new Error(result.error ?? 'Postmark send failed');
+          .then((r: { error: unknown }) => {
+            if (r.error) console.error('email_failed activity insert failed', r.error);
+          });
       }
-    } catch (err) {
-      failed++;
-      await admin.from('da_email_sequences').update({ status: 'failed' }).eq('id', row.id);
-      await admin
-        .from('da_activities')
-        .insert({
-          actor_type: 'system',
-          actor_id: null,
-          entity_type: 'email_sequence',
-          entity_id: row.id,
-          action: 'email_failed',
-          metadata: { template_key: row.template_key, error: String(err).slice(0, 300) },
-          description: `Email ${row.template_key} failed to send`,
-        })
-        .then((r: { error: unknown }) => {
-          if (r.error) console.error('email_failed activity insert failed', r.error);
+    }
+  }
+
+  // --- Expire stale pending checkouts (migration 035) ------------------------
+  // Stripe Checkout sessions expire after 30 minutes; anything still 'pending'
+  // at 35+ minutes was abandoned. Release its seat hold and close the booking
+  // (payment failed, booking cancelled) so spots go back on sale.
+  const stale = await admin
+    .from('da_bookings')
+    .select('id, booking_reference, course_instance_id, reserved_seats')
+    .eq('payment_status', 'pending')
+    .not('reserved_seats', 'is', null)
+    .lt('created_at', new Date(Date.now() - 35 * 60_000).toISOString());
+  if (stale.error) {
+    console.error('send-emails: stale pending select failed', stale.error);
+  } else {
+    for (const b of (stale.data ?? []) as any[]) {
+      const rel = await admin.rpc('release_spots', {
+        instance_id: b.course_instance_id,
+        seats: b.reserved_seats,
+      });
+      if (rel.error) {
+        await logSystem(admin, {
+          level: 'error',
+          source: 'send-emails',
+          entityType: 'booking',
+          entityId: b.id,
+          message: `release_spots failed for expired pending booking ${b.booking_reference}`,
+          context: { error: rel.error.message },
         });
+        continue; // don't close the booking if the hold wasn't released
+      }
+      const close = await admin
+        .from('da_bookings')
+        .update({ payment_status: 'failed', booking_status: 'cancelled', reserved_seats: null })
+        .eq('id', b.id)
+        .eq('payment_status', 'pending'); // guard: webhook may have just landed
+      if (close.error) {
+        await logSystem(admin, {
+          level: 'error',
+          source: 'send-emails',
+          entityType: 'booking',
+          entityId: b.id,
+          message: `expiry close failed for booking ${b.booking_reference}`,
+          context: { error: close.error.message },
+        });
+      } else {
+        await logSystem(admin, {
+          level: 'info',
+          source: 'send-emails',
+          entityType: 'booking',
+          entityId: b.id,
+          message: `expired abandoned checkout ${b.booking_reference}, released ${b.reserved_seats} seat(s)`,
+        });
+      }
     }
   }
 
@@ -312,8 +384,14 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  return jsonResponse(
-    { processed: rows.length, sent, failed, cancelled, broadcasts: broadcastsProcessed },
-    200,
-  );
+  // Heartbeat: one info row per run — the HQ dashboard's cron-staleness tile
+  // reads the newest of these.
+  await logSystem(admin, {
+    level: 'info',
+    source: 'send-emails',
+    message: 'run complete',
+    context: { processed, sent, failed, cancelled, broadcasts: broadcastsProcessed },
+  });
+
+  return jsonResponse({ processed, sent, failed, cancelled, broadcasts: broadcastsProcessed }, 200);
 });

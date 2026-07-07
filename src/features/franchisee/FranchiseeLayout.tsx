@@ -7,6 +7,7 @@ import { ErrorFallback } from '@/components/error-boundary/ErrorFallback';
 import { useRole } from '@/features/auth/RoleContext';
 import { getInitials } from '@/utils/initials';
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import { DevRoleSwitch } from './DevRoleSwitch';
 import { franchiseeNavLinks } from './nav';
 import type { FranchiseeNavLink } from './nav';
@@ -285,7 +286,12 @@ export function FranchiseeLayout() {
           FallbackComponent={ErrorFallback}
           resetKeys={[location.pathname]}
           onError={(err) => {
-            console.error('FranchiseeLayout caught route error:', err);
+            // Ship through the browser logger so route errors reach
+            // da_system_logs as well as the console.
+            const message = err instanceof Error ? err.message : String(err);
+            logger.error(`Franchisee route error: ${message}`, {
+              route: location.pathname,
+            });
           }}
         >
           <Outlet />

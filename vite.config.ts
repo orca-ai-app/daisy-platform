@@ -5,6 +5,11 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    // Build stamp shipped with browser error logs. Netlify sets COMMIT_REF;
+    // local dev builds report 'dev'.
+    __APP_VERSION__: JSON.stringify(process.env.COMMIT_REF ?? 'dev'),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

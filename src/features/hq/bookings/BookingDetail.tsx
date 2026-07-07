@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { formatPence } from '@/lib/format';
 import { useRole } from '@/features/auth/RoleContext';
+import { BookingEmailsCard } from '@/features/bookings/BookingEmailsCard';
 import {
   useCourseInstance,
   EditInstanceDialog,
@@ -322,6 +323,8 @@ export default function BookingDetail() {
                   </div>
                 </CardContent>
               </Card>
+
+              <BookingEmailsCard bookingId={booking.id} />
 
               <Card>
                 <CardHeader>

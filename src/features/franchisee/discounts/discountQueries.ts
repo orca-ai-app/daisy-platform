@@ -65,13 +65,17 @@ async function callEdgeFunction<TResult>(path: string, payload: unknown): Promis
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
+    let requestId: string | undefined;
     try {
-      const body = (await response.json()) as { error?: string };
+      const body = (await response.json()) as { error?: string; request_id?: string };
       if (body.error) message = body.error;
+      if (typeof body.request_id === 'string') requestId = body.request_id;
     } catch {
       // body wasn't JSON
     }
-    throw new Error(message);
+    const err = new Error(message);
+    if (requestId) (err as Error & { request_id?: string }).request_id = requestId;
+    throw err;
   }
 
   return (await response.json()) as TResult;

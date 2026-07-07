@@ -74,6 +74,11 @@ verify_jwt = false
 # secret in the URL query; no JWT.
 verify_jwt = false
 
+[functions.log-client-event]
+# Public browser-error ingestion (all three frontends) → da_system_logs.
+# No user session on public pages; strict shape + per-IP rate limit in-code.
+verify_jwt = false
+
 [functions.gdpr-erasure]
 # HQ-only GDPR right-to-erasure (M3). JWT verified; is_hq gate in-code.
 verify_jwt = true

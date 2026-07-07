@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatPence } from '@/lib/format';
+import { BookingEmailsCard } from '@/features/bookings/BookingEmailsCard';
 import type { ActivityRow, BookingStatus, PaymentStatus } from '@/types/franchisee';
 import type { StatusVariant } from '@/components/daisy/StatusPill';
 import {
@@ -703,6 +704,9 @@ export default function BookingDetail() {
                   </dl>
                 </CardContent>
               </Card>
+
+              {/* Emails */}
+              <BookingEmailsCard bookingId={booking.id} />
 
               {/* Notes */}
               <Card>

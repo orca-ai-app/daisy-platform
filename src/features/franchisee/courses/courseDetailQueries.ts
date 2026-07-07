@@ -63,13 +63,17 @@ async function callEdgeFunction<T>(
   });
   if (!res.ok) {
     let message = `${functionName} failed (${res.status})`;
+    let requestId: string | undefined;
     try {
-      const errBody = (await res.json()) as { error?: string };
+      const errBody = (await res.json()) as { error?: string; request_id?: string };
       if (errBody.error) message = errBody.error;
+      if (typeof errBody.request_id === 'string') requestId = errBody.request_id;
     } catch {
       // body was not JSON
     }
-    throw new Error(message);
+    const err = new Error(message);
+    if (requestId) (err as Error & { request_id?: string }).request_id = requestId;
+    throw err;
   }
   return res.json() as Promise<T>;
 }

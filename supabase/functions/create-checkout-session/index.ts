@@ -27,6 +27,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=denonext';
+import { logSystem, newRequestId } from '../_shared/log.ts';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -272,6 +273,25 @@ Deno.serve(async (req: Request) => {
           .ilike('contact_email', email)
           .maybeSingle();
         privateClientId = (refetch.data as any)?.id ?? null;
+        if (!privateClientId) {
+          // Insert lost AND refetch missed — never proceed with a null
+          // linkage (breaks client attribution). Ask the user to retry.
+          const requestId = newRequestId();
+          await logSystem(admin, {
+            level: 'error',
+            source: 'create-checkout-session',
+            requestId,
+            message: 'private client insert and refetch both failed',
+            context: {
+              insert_error: created.error?.message ?? null,
+              franchisee_id: instance.franchisee_id,
+            },
+          });
+          return jsonResponse(
+            { error: 'Could not save your details — please try again', request_id: requestId },
+            500,
+          );
+        }
       }
     }
   }
@@ -285,6 +305,35 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Could not start your booking' }, 500);
   }
   const bookingReference = refRes.data as string;
+
+  // --- Reserve the spots (migration 035) -------------------------------------
+  // Atomic conditional hold: two concurrent checkouts can no longer both pay
+  // for the last spot. Released by the rollback below, or by the hourly
+  // pending-expiry sweep (send-emails) if the checkout is abandoned.
+  const reserve = await admin.rpc('reserve_spots', {
+    instance_id: instance.id,
+    seats: seatsNeeded,
+  });
+  if (reserve.error) {
+    const requestId = newRequestId();
+    await logSystem(admin, {
+      level: 'error',
+      source: 'create-checkout-session',
+      requestId,
+      entityType: 'course_instance',
+      entityId: instance.id,
+      message: `reserve_spots failed: ${reserve.error.message}`,
+    });
+    return jsonResponse(
+      { error: 'Could not reserve your places — please try again', request_id: requestId },
+      500,
+    );
+  }
+  if (reserve.data !== true) {
+    return jsonResponse({ error: 'Not enough spaces remaining on this course' }, 409);
+  }
+  const releaseHold = () =>
+    admin.rpc('release_spots', { instance_id: instance.id, seats: seatsNeeded });
 
   const bookingRes = await admin
     .from('da_bookings')
@@ -301,12 +350,21 @@ Deno.serve(async (req: Request) => {
       discount_amount_pence: discountOffPence,
       payment_status: 'pending',
       booking_status: 'confirmed',
+      reserved_seats: seatsNeeded,
     })
     .select('id')
     .single();
   if (bookingRes.error || !bookingRes.data) {
-    console.error('pending booking insert failed', bookingRes.error);
-    return jsonResponse({ error: 'Could not start your booking' }, 500);
+    await releaseHold();
+    const requestId = newRequestId();
+    await logSystem(admin, {
+      level: 'error',
+      source: 'create-checkout-session',
+      requestId,
+      message: `pending booking insert failed: ${bookingRes.error?.message}`,
+      context: { booking_reference: bookingReference },
+    });
+    return jsonResponse({ error: 'Could not start your booking', request_id: requestId }, 500);
   }
   const bookingId = (bookingRes.data as any).id;
 
@@ -334,7 +392,7 @@ Deno.serve(async (req: Request) => {
           },
         ],
         payment_intent_data: { application_fee_amount: applicationFee },
-        success_url: `${origin}/booking/success?session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${origin}/booking/success?session_id={CHECKOUT_SESSION_ID}&ref=${encodeURIComponent(bookingReference)}`,
         cancel_url: `${origin}/booking/cancelled`,
         metadata: {
           booking_id: bookingId,
@@ -349,12 +407,23 @@ Deno.serve(async (req: Request) => {
       { stripeAccount: franchisee.stripe_account_id },
     );
   } catch (err: any) {
-    // Roll back the orphaned pending booking.
+    // Roll back the orphaned pending booking and release its hold.
     await admin.from('da_bookings').delete().eq('id', bookingId);
-    console.error('Stripe checkout.sessions.create failed', err);
+    await releaseHold();
+    const requestId = newRequestId();
+    await logSystem(admin, {
+      level: 'error',
+      source: 'create-checkout-session',
+      requestId,
+      entityType: 'booking',
+      entityId: bookingId,
+      message: `Stripe checkout.sessions.create failed: ${typeof err?.message === 'string' ? err.message : String(err)}`,
+      context: { booking_reference: bookingReference, franchisee_id: instance.franchisee_id },
+    });
     return jsonResponse(
       {
         error: `Could not start payment: ${typeof err?.message === 'string' ? err.message : 'Stripe error'}`,
+        request_id: requestId,
       },
       502,
     );

@@ -1,8 +1,11 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from 'sonner';
+import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query';
+import { Toaster, toast } from 'sonner';
+import { ErrorBoundary } from 'react-error-boundary';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { AppErrorFallback } from '@/components/error-boundary/AppErrorFallback';
+import { logger, extractRequestId, newClientRef } from '@/lib/logger';
 import { RoleContextProvider } from '@/features/auth/RoleContext';
 import { RequireRole } from '@/features/auth/RequireRole';
 import LoginPage from '@/features/auth/LoginPage';
@@ -81,6 +84,9 @@ const ListDetailPage = lazy(() =>
 const InstancesList = lazy(() =>
   import('@/features/hq/courses/instances').then((m) => ({ default: m.InstancesList })),
 );
+const SystemLogsPage = lazy(() =>
+  import('@/features/hq/system-logs').then((m) => ({ default: m.SystemLogsPage })),
+);
 const InstanceDetail = lazy(() =>
   import('@/features/hq/courses/instances').then((m) => ({ default: m.InstanceDetail })),
 );
@@ -137,12 +143,53 @@ const FranchiseeHelpArticle = lazy(() =>
   import('@/features/franchisee/help').then((m) => ({ default: m.HelpArticle })),
 );
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return 'Something went wrong.';
+}
+
 // 5-minute staleTime by default — Daisy's data (franchisees, territories,
 // templates, billing runs) all change on a human timescale, not a real-time
 // one. The previous 30s was triggering refetches on almost every interaction
 // in long-lived sessions. Individual queries can override via their own
 // staleTime if they need fresher data.
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    // Log only — background refetch failures must not toast-spam the user.
+    onError: (error, query) => {
+      logger.error(`Query failed: ${errorMessage(error)}`, {
+        queryKey: query.queryKey,
+        request_id: extractRequestId(error) ?? undefined,
+      });
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => {
+      const message = errorMessage(error);
+      // Edge Function callers attach the server's request_id to the thrown
+      // error; PostgREST errors won't have one, so mint a client ref instead.
+      const requestId = extractRequestId(error) ?? newClientRef();
+      logger.error(`Mutation failed: ${message}`, {
+        mutationKey: mutation.options.mutationKey,
+        request_id: requestId,
+      });
+
+      // Safety-net toast for mutations with no error handling of their own.
+      // Hook-level handlers are visible via mutation.options.onError, but most
+      // of this codebase toasts from mutate()-callbacks or try/catch around
+      // mutateAsync, which the cache cannot see. So: defer a tick, and if a
+      // local handler has raised an error toast in the meantime, stay quiet
+      // (sonner does not dedupe by content, so we check its live toast list).
+      if (mutation.options.onError) return;
+      const seen = new Set(toast.getToasts().map((t) => t.id));
+      window.setTimeout(() => {
+        const locallyToasted = toast
+          .getToasts()
+          .some((t) => !seen.has(t.id) && (t as { type?: string }).type === 'error');
+        if (!locallyToasted) toast.error(`${message} (ref ${requestId})`);
+      }, 150);
+    },
+  }),
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
@@ -158,334 +205,361 @@ function LazyRoute({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<RouteLoadingSkeleton />}>{children}</Suspense>;
 }
 
+/**
+ * Stamp a short ref onto the error before logging so AppErrorFallback shows
+ * the same value the logger ships to da_system_logs.
+ */
+function handleAppError(error: unknown, info: { componentStack?: string | null }) {
+  const ref = extractRequestId(error) ?? newClientRef();
+  if (error && typeof error === 'object') {
+    (error as { __daisyRef?: string }).__daisyRef = ref;
+  }
+  logger.error(`Unhandled render error: ${errorMessage(error)}`, {
+    request_id: ref,
+    componentStack: info.componentStack ?? undefined,
+  });
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <RoleContextProvider>
           <TooltipProvider>
-            <Routes>
-              <Route path="/" element={<Navigate to="/login" replace />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              <Route path="/unauthorized" element={<Unauthorized />} />
+            <ErrorBoundary FallbackComponent={AppErrorFallback} onError={handleAppError}>
+              <Routes>
+                <Route path="/" element={<Navigate to="/login" replace />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/unauthorized" element={<Unauthorized />} />
 
-              {/* HQ: sticky topbar shell wraps every nested route. */}
-              <Route
-                path="/hq"
-                element={
-                  <RequireRole hq>
-                    <HQLayout />
-                  </RequireRole>
-                }
-              >
-                <Route index element={<Navigate to="/hq/dashboard" replace />} />
-                <Route path="dashboard" element={<Dashboard />} />
+                {/* HQ: sticky topbar shell wraps every nested route. */}
+                <Route
+                  path="/hq"
+                  element={
+                    <RequireRole hq>
+                      <HQLayout />
+                    </RequireRole>
+                  }
+                >
+                  <Route index element={<Navigate to="/hq/dashboard" replace />} />
+                  <Route path="dashboard" element={<Dashboard />} />
 
-                {/* Wave 2B: Franchisees (real pages); Wave 4A adds /new + edit dialog */}
-                <Route path="franchisees" element={<FranchiseeList />} />
-                <Route path="franchisees/new" element={<NewFranchiseePage />} />
-                <Route path="franchisees/:id" element={<FranchiseeDetail />} />
+                  {/* Wave 2B: Franchisees (real pages); Wave 4A adds /new + edit dialog */}
+                  <Route path="franchisees" element={<FranchiseeList />} />
+                  <Route path="franchisees/new" element={<NewFranchiseePage />} />
+                  <Route path="franchisees/:id" element={<FranchiseeDetail />} />
 
-                {/* Wave 2C: Course templates + activity log (real pages) */}
-                <Route path="courses" element={<Navigate to="/hq/courses/templates" replace />} />
-                <Route path="courses/templates" element={<TemplatesPage />} />
-                {/* Wave 4B: Course instances list + detail (HQ override) */}
-                <Route
-                  path="courses/instances"
-                  element={
-                    <LazyRoute>
-                      <InstancesList />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="courses/instances/:id"
-                  element={
-                    <LazyRoute>
-                      <InstanceDetail />
-                    </LazyRoute>
-                  }
-                />
-                <Route path="activity" element={<ActivityPage />} />
+                  {/* Wave 2C: Course templates + activity log (real pages) */}
+                  <Route path="courses" element={<Navigate to="/hq/courses/templates" replace />} />
+                  <Route path="courses/templates" element={<TemplatesPage />} />
+                  {/* Wave 4B: Course instances list + detail (HQ override) */}
+                  <Route
+                    path="courses/instances"
+                    element={
+                      <LazyRoute>
+                        <InstancesList />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="courses/instances/:id"
+                    element={
+                      <LazyRoute>
+                        <InstanceDetail />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route path="activity" element={<ActivityPage />} />
 
-                {/* Wave 3A: Territories (real page, lazy-loaded for the Maps lib) */}
-                <Route
-                  path="territories"
-                  element={
-                    <LazyRoute>
-                      <TerritoriesPage />
-                    </LazyRoute>
-                  }
-                />
+                  {/* System logs: da_system_logs debug trail (HQ RLS). */}
+                  <Route
+                    path="system-logs"
+                    element={
+                      <LazyRoute>
+                        <SystemLogsPage />
+                      </LazyRoute>
+                    }
+                  />
 
-                {/* Wave 3B: Bookings list + detail (real pages) */}
-                <Route
-                  path="bookings"
-                  element={
-                    <LazyRoute>
-                      <BookingsList />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="medical"
-                  element={
-                    <LazyRoute>
-                      <MedicalDeclarationsList />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="bookings/:id"
-                  element={
-                    <LazyRoute>
-                      <BookingDetail />
-                    </LazyRoute>
-                  }
-                />
+                  {/* Wave 3A: Territories (real page, lazy-loaded for the Maps lib) */}
+                  <Route
+                    path="territories"
+                    element={
+                      <LazyRoute>
+                        <TerritoriesPage />
+                      </LazyRoute>
+                    }
+                  />
 
-                {/* Wave 3B: Reports (Recharts) reachable from the Dashboard's
+                  {/* Wave 3B: Bookings list + detail (real pages) */}
+                  <Route
+                    path="bookings"
+                    element={
+                      <LazyRoute>
+                        <BookingsList />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="medical"
+                    element={
+                      <LazyRoute>
+                        <MedicalDeclarationsList />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="bookings/:id"
+                    element={
+                      <LazyRoute>
+                        <BookingDetail />
+                      </LazyRoute>
+                    }
+                  />
+
+                  {/* Wave 3B: Reports (Recharts) reachable from the Dashboard's
                     Network revenue KPI card; not in topbar nav. */}
-                <Route
-                  path="reports"
-                  element={
-                    <LazyRoute>
-                      <ReportsPage />
-                    </LazyRoute>
-                  }
-                />
+                  <Route
+                    path="reports"
+                    element={
+                      <LazyRoute>
+                        <ReportsPage />
+                      </LazyRoute>
+                    }
+                  />
 
-                {/* Emails: booking-journey templates + editor, broadcasts,
+                  {/* Emails: booking-journey templates + editor, broadcasts,
                     lists and the media library. The static segments
                     (`broadcasts`, `lists`, `media`) must precede
                     `:templateKey` so they aren't swallowed by the param
                     route. */}
-                <Route
-                  path="emails"
-                  element={
-                    <LazyRoute>
-                      <EmailsPage />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="emails/broadcasts"
-                  element={
-                    <LazyRoute>
-                      <BroadcastsPage />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="emails/broadcasts/new"
-                  element={
-                    <LazyRoute>
-                      <BroadcastComposerPage />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="emails/broadcasts/:id"
-                  element={
-                    <LazyRoute>
-                      <BroadcastDetailPage />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="emails/broadcasts/:id/edit"
-                  element={
-                    <LazyRoute>
-                      <BroadcastComposerPage />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="emails/lists"
-                  element={
-                    <LazyRoute>
-                      <ListsPage />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="emails/lists/:id"
-                  element={
-                    <LazyRoute>
-                      <ListDetailPage />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="emails/media"
-                  element={
-                    <LazyRoute>
-                      <MediaLibraryPage />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="emails/:templateKey"
-                  element={
-                    <LazyRoute>
-                      <EmailEditorPage />
-                    </LazyRoute>
-                  }
-                />
+                  <Route
+                    path="emails"
+                    element={
+                      <LazyRoute>
+                        <EmailsPage />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="emails/broadcasts"
+                    element={
+                      <LazyRoute>
+                        <BroadcastsPage />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="emails/broadcasts/new"
+                    element={
+                      <LazyRoute>
+                        <BroadcastComposerPage />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="emails/broadcasts/:id"
+                    element={
+                      <LazyRoute>
+                        <BroadcastDetailPage />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="emails/broadcasts/:id/edit"
+                    element={
+                      <LazyRoute>
+                        <BroadcastComposerPage />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="emails/lists"
+                    element={
+                      <LazyRoute>
+                        <ListsPage />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="emails/lists/:id"
+                    element={
+                      <LazyRoute>
+                        <ListDetailPage />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="emails/media"
+                    element={
+                      <LazyRoute>
+                        <MediaLibraryPage />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="emails/:templateKey"
+                    element={
+                      <LazyRoute>
+                        <EmailEditorPage />
+                      </LazyRoute>
+                    }
+                  />
 
-                {/* Wave 3C: Interest form queue */}
-                <Route path="interest-forms" element={<InterestFormsPage />} />
-                <Route path="territory-requests" element={<TerritoryRequestsPage />} />
+                  {/* Wave 3C: Interest form queue */}
+                  <Route path="interest-forms" element={<InterestFormsPage />} />
+                  <Route path="territory-requests" element={<TerritoryRequestsPage />} />
 
-                {/* Wave 4C: Billing preview + accountant export (jsPDF + html2canvas) */}
+                  {/* Wave 4C: Billing preview + accountant export (jsPDF + html2canvas) */}
+                  <Route
+                    path="billing"
+                    element={
+                      <LazyRoute>
+                        <BillingPage />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="billing/:run_id"
+                    element={
+                      <LazyRoute>
+                        <BillingRunDetail />
+                      </LazyRoute>
+                    }
+                  />
+                </Route>
+
+                {/* Wave 6 (M2): franchisee portal shell wraps every nested route. */}
                 <Route
-                  path="billing"
+                  path="/franchisee"
                   element={
-                    <LazyRoute>
-                      <BillingPage />
-                    </LazyRoute>
+                    <RequireRole franchisee>
+                      <FranchiseeLayout />
+                    </RequireRole>
                   }
-                />
-                <Route
-                  path="billing/:run_id"
-                  element={
-                    <LazyRoute>
-                      <BillingRunDetail />
-                    </LazyRoute>
-                  }
-                />
-              </Route>
+                >
+                  <Route index element={<Navigate to="/franchisee/dashboard" replace />} />
+                  <Route path="dashboard" element={<FranchiseeDashboard />} />
+                  <Route path="profile" element={<FranchiseeProfile />} />
+                  <Route path="territories" element={<FranchiseeTerritories />} />
 
-              {/* Wave 6 (M2): franchisee portal shell wraps every nested route. */}
-              <Route
-                path="/franchisee"
-                element={
-                  <RequireRole franchisee>
-                    <FranchiseeLayout />
-                  </RequireRole>
-                }
-              >
-                <Route index element={<Navigate to="/franchisee/dashboard" replace />} />
-                <Route path="dashboard" element={<FranchiseeDashboard />} />
-                <Route path="profile" element={<FranchiseeProfile />} />
-                <Route path="territories" element={<FranchiseeTerritories />} />
-
-                {/* Wave 7 (M2): course management. `new` must precede `:id`
+                  {/* Wave 7 (M2): course management. `new` must precede `:id`
                     so it isn't swallowed by the param route. */}
-                <Route
-                  path="courses"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeCoursesList />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="courses/new"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeCreateCourse />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="courses/:id"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeCourseDetail />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="courses/:id/edit"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeEditCourse />
-                    </LazyRoute>
-                  }
-                />
+                  <Route
+                    path="courses"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeCoursesList />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="courses/new"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeCreateCourse />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="courses/:id"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeCourseDetail />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="courses/:id/edit"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeEditCourse />
+                      </LazyRoute>
+                    }
+                  />
 
-                {/* Wave 9 (M2): discount codes (9B) + private clients (9C). */}
-                <Route
-                  path="discounts"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeDiscountsList />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="clients"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeClientsList />
-                    </LazyRoute>
-                  }
-                />
+                  {/* Wave 9 (M2): discount codes (9B) + private clients (9C). */}
+                  <Route
+                    path="discounts"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeDiscountsList />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="clients"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeClientsList />
+                      </LazyRoute>
+                    }
+                  />
 
-                {/* Wave 11: customers view (RLS-scoped da_customers). */}
-                <Route
-                  path="customers"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeCustomersList />
-                    </LazyRoute>
-                  }
-                />
+                  {/* Wave 11: customers view (RLS-scoped da_customers). */}
+                  <Route
+                    path="customers"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeCustomersList />
+                      </LazyRoute>
+                    }
+                  />
 
-                {/* Wave 8 (M2): Stripe Connect / payments hub (8A). Also the
+                  {/* Wave 8 (M2): Stripe Connect / payments hub (8A). Also the
                     Account Link return/refresh landing — the page reads
                     `?success` / `?refresh` query params off this same route. */}
-                <Route
-                  path="payments"
-                  element={
-                    <LazyRoute>
-                      <FranchiseePaymentsPage />
-                    </LazyRoute>
-                  }
-                />
+                  <Route
+                    path="payments"
+                    element={
+                      <LazyRoute>
+                        <FranchiseePaymentsPage />
+                      </LazyRoute>
+                    }
+                  />
 
-                {/* Wave 9A (M2): franchisee bookings list + detail. */}
-                <Route
-                  path="bookings"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeBookingsList />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="bookings/:id"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeBookingDetail />
-                    </LazyRoute>
-                  }
-                />
+                  {/* Wave 9A (M2): franchisee bookings list + detail. */}
+                  <Route
+                    path="bookings"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeBookingsList />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="bookings/:id"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeBookingDetail />
+                      </LazyRoute>
+                    }
+                  />
 
-                {/* Help section: index + article detail. `help` must precede
+                  {/* Help section: index + article detail. `help` must precede
                     `help/:slug` so the index isn't swallowed by the param route. */}
-                <Route
-                  path="help"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeHelpIndex />
-                    </LazyRoute>
-                  }
-                />
-                <Route
-                  path="help/:slug"
-                  element={
-                    <LazyRoute>
-                      <FranchiseeHelpArticle />
-                    </LazyRoute>
-                  }
-                />
-              </Route>
+                  <Route
+                    path="help"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeHelpIndex />
+                      </LazyRoute>
+                    }
+                  />
+                  <Route
+                    path="help/:slug"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeHelpArticle />
+                      </LazyRoute>
+                    }
+                  />
+                </Route>
 
-              <Route path="*" element={<Navigate to="/login" replace />} />
-            </Routes>
+                <Route path="*" element={<Navigate to="/login" replace />} />
+              </Routes>
+            </ErrorBoundary>
             <Toaster richColors position="top-right" />
           </TooltipProvider>
         </RoleContextProvider>

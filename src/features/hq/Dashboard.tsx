@@ -16,6 +16,7 @@ import {
   type ActivityRow as LibActivityRow,
 } from '@/lib/queries/activities';
 import { useAttentionItems, useNetworkStats, useRecentActivity } from './queries';
+import { PlatformHealth } from './PlatformHealth';
 
 const dateFormatter = new Intl.DateTimeFormat('en-GB', {
   weekday: 'short',
@@ -197,6 +198,9 @@ export default function Dashboard() {
           </>
         )}
       </section>
+
+      {/* PLATFORM HEALTH */}
+      <PlatformHealth />
 
       {/* MAIN GRID */}
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">

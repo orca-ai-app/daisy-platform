@@ -340,14 +340,17 @@ async function callEdgeFunction<T>(path: string, payload: unknown): Promise<T> {
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
+    let requestId: string | undefined;
     try {
-      const body = (await response.json()) as { error?: string };
+      const body = (await response.json()) as { error?: string; request_id?: string };
       if (body.error) message = body.error;
+      if (typeof body.request_id === 'string') requestId = body.request_id;
     } catch {
       // body was not JSON
     }
     const err = new Error(message);
-    (err as Error & { status: number }).status = response.status;
+    (err as Error & { status: number; request_id?: string }).status = response.status;
+    if (requestId) (err as Error & { request_id?: string }).request_id = requestId;
     throw err;
   }
 

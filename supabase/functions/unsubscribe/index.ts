@@ -19,6 +19,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { verifyUnsubscribeToken, type UnsubscribeKind } from '../_shared/unsubscribeToken.ts';
+import { logSystem, newRequestId } from '../_shared/log.ts';
 
 const DAISY_BLUE = '#006FAC';
 
@@ -99,13 +100,34 @@ Deno.serve(async (req: Request) => {
   }
   const emailKey = email.toLowerCase();
 
+  // Any failed write must show the error page — a recipient must NEVER see a
+  // success page for an opt-out/opt-in that didn't stick (PECR/GDPR).
+  const failPage = async (step: string, errMsg: string) => {
+    const requestId = newRequestId();
+    await logSystem(admin, {
+      level: 'error',
+      source: 'unsubscribe',
+      requestId,
+      entityType: kind === 'c' ? 'customer' : 'email_list_member',
+      entityId: id,
+      message: `${action} failed at ${step}: ${errMsg}`,
+    });
+    return page(
+      'Something went wrong',
+      `<p style="font-size:15px;line-height:1.6">We could not update your email preferences just now — please try the link again in a few minutes. If it keeps happening, reply to any of our emails quoting reference <strong>${requestId}</strong>.</p>`,
+      500,
+    );
+  };
+
   if (action === 'resubscribe') {
-    await admin.from('da_email_suppressions').delete().eq('email', emailKey);
+    const del = await admin.from('da_email_suppressions').delete().eq('email', emailKey);
+    if (del.error) return await failPage('suppression delete', del.error.message);
     if (kind === 'c') {
-      await admin
+      const upd = await admin
         .from('da_customers')
         .update({ marketing_opt_out: false, marketing_opt_out_at: null })
         .eq('id', id);
+      if (upd.error) return await failPage('customer flag clear', upd.error.message);
     }
     await admin.from('da_activities').insert({
       actor_type: 'system',
@@ -124,30 +146,43 @@ Deno.serve(async (req: Request) => {
 
   // Opt out: global suppression first (the authoritative check), then the
   // customer-specific bookkeeping.
-  await admin
+  const sup = await admin
     .from('da_email_suppressions')
     .upsert({ email: emailKey, source: 'unsubscribe' }, { onConflict: 'email' });
+  if (sup.error) return await failPage('suppression upsert', sup.error.message);
 
   if (kind === 'c') {
-    await admin
+    const flag = await admin
       .from('da_customers')
       .update({ marketing_opt_out: true, marketing_opt_out_at: new Date().toISOString() })
       .eq('id', id);
+    if (flag.error) return await failPage('customer flag set', flag.error.message);
 
     // Cancel this customer's pending marketing sends. Marketing keys come from
     // da_email_templates; transactional keys (no row / is_marketing=false) stay.
+    // Non-fatal if it errors (the suppression above already blocks sends) —
+    // but log it, the drainer will cancel on next tick anyway.
     const marketingKeys = await admin
       .from('da_email_templates')
       .select('template_key')
       .eq('is_marketing', true);
     const keys = (marketingKeys.data ?? []).map((r: any) => r.template_key);
     if (keys.length > 0) {
-      await admin
+      const cancel = await admin
         .from('da_email_sequences')
         .update({ status: 'cancelled' })
         .eq('customer_id', id)
         .eq('status', 'pending')
         .in('template_key', keys);
+      if (cancel.error) {
+        await logSystem(admin, {
+          level: 'warn',
+          source: 'unsubscribe',
+          entityType: 'customer',
+          entityId: id,
+          message: `pending-row cancel failed (suppression already in place): ${cancel.error.message}`,
+        });
+      }
     }
   }
 

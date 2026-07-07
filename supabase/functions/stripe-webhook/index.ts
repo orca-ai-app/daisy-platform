@@ -32,6 +32,7 @@
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=denonext';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { buildJourneyRows, type SequenceRow } from '../_shared/emailSchedule.ts';
+import { logSystem } from '../_shared/log.ts';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -269,7 +270,7 @@ async function finalisePendingBooking(
   const bRes = await admin
     .from('da_bookings')
     .select(
-      'id, payment_status, course_instance_id, ticket_type_id, quantity, customer_id, booking_reference, franchisee_id, discount_code',
+      'id, payment_status, course_instance_id, ticket_type_id, quantity, customer_id, booking_reference, franchisee_id, discount_code, reserved_seats',
     )
     .eq('id', bookingId)
     .maybeSingle();
@@ -300,13 +301,30 @@ async function finalisePendingBooking(
     .maybeSingle();
   const eventDateStr = (instRes.data as any)?.event_date ?? null;
 
-  // Atomic decrement. false → overbook (rare race): flag manual for HQ review.
-  const dec = await admin.rpc('decrement_spots', {
-    instance_id: booking.course_instance_id,
-    seats,
-  });
-  if (dec.error) throw new Error(`decrement_spots failed: ${dec.error.message}`);
-  const ok = dec.data === true;
+  // Spots handling (migration 035): bookings created by create-checkout-session
+  // already HOLD their seats (reserved_seats set via reserve_spots), so payment
+  // just confirms — no decrement, no overbook possible. The decrement path
+  // remains only for legacy pending rows created before the reservation model;
+  // its 'manual' flag should never fire for new bookings.
+  let ok = true;
+  if (booking.reserved_seats == null) {
+    const dec = await admin.rpc('decrement_spots', {
+      instance_id: booking.course_instance_id,
+      seats,
+    });
+    if (dec.error) throw new Error(`decrement_spots failed: ${dec.error.message}`);
+    ok = dec.data === true;
+    if (!ok) {
+      await logSystem(admin, {
+        level: 'error',
+        source: 'stripe-webhook',
+        entityType: 'booking',
+        entityId: booking.id,
+        message: `OVERBOOK on legacy (pre-reservation) booking ${booking.booking_reference} — flagged manual`,
+        context: { course_instance_id: booking.course_instance_id, seats },
+      });
+    }
+  }
   const paymentStatus: 'paid' | 'manual' = ok ? 'paid' : 'manual';
   const paymentIntentId =
     typeof session.payment_intent === 'string' ? session.payment_intent : null;
@@ -321,19 +339,22 @@ async function finalisePendingBooking(
     .eq('id', booking.id);
   if (upd.error) throw new Error(`booking finalise update failed: ${upd.error.message}`);
 
-  // Bump the discount use now that the booking is confirmed (read-modify-write;
-  // the small race on a shared counter is acceptable for discount accounting).
+  // Bump the discount use atomically — concurrent webhooks must not lose
+  // increments or max-use codes over-redeem.
   if (booking.discount_code) {
-    const dc = await admin
-      .from('da_discount_codes')
-      .select('uses_count')
-      .eq('code', booking.discount_code)
-      .maybeSingle();
-    if (dc.data) {
-      await admin
-        .from('da_discount_codes')
-        .update({ uses_count: ((dc.data as any).uses_count ?? 0) + 1 })
-        .eq('code', booking.discount_code);
+    const bump = await admin.rpc('increment_discount_use', {
+      discount_code: booking.discount_code,
+    });
+    if (bump.error) {
+      console.error('stripe-webhook: discount increment failed', bump.error);
+      await logSystem(admin, {
+        level: 'warn',
+        source: 'stripe-webhook',
+        entityType: 'booking',
+        entityId: booking.id,
+        message: `discount uses_count increment failed for ${booking.discount_code}`,
+        context: { error: bump.error.message },
+      });
     }
   }
 
@@ -348,7 +369,33 @@ async function finalisePendingBooking(
     );
     if (rows.length > 0) {
       const er = await admin.from('da_email_sequences').insert(rows);
-      if (er.error) console.error('stripe-webhook: email queue insert failed', er.error);
+      if (er.error) {
+        // The booking is paid but the customer will get NO emails — make that
+        // loudly visible: activity row (HQ feed) + system log.
+        console.error('stripe-webhook: email queue insert failed', er.error);
+        await logSystem(admin, {
+          level: 'error',
+          source: 'stripe-webhook',
+          entityType: 'booking',
+          entityId: booking.id,
+          message: `email journey queue FAILED for booking ${booking.booking_reference} — customer gets no confirmation`,
+          context: { error: er.error.message, row_count: rows.length },
+        });
+        await admin
+          .from('da_activities')
+          .insert({
+            actor_type: 'system',
+            actor_id: null,
+            entity_type: 'booking',
+            entity_id: booking.id,
+            action: 'email_queue_failed',
+            metadata: { booking_reference: booking.booking_reference, error: er.error.message },
+            description: `Email journey failed to queue for booking ${booking.booking_reference}`,
+          })
+          .then((r: { error: unknown }) => {
+            if (r.error) console.error('email_queue_failed activity insert failed', r.error);
+          });
+      }
     }
   }
 

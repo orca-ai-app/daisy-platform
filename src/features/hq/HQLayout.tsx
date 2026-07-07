@@ -7,6 +7,7 @@ import { ErrorFallback } from '@/components/error-boundary/ErrorFallback';
 import { useRole } from '@/features/auth/RoleContext';
 import { getInitials } from '@/utils/initials';
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import { DevRoleSwitch } from '@/features/franchisee/DevRoleSwitch';
 
 interface HQNavItem {
@@ -27,6 +28,7 @@ const HQ_NAV: HQNavItem[] = [
   { to: '/hq/medical', label: 'Medical' },
   { to: '/hq/billing', label: 'Billing' },
   { to: '/hq/activity', label: 'Activity' },
+  { to: '/hq/system-logs', label: 'System' },
 ];
 
 /**
@@ -81,10 +83,11 @@ export function HQLayout() {
           FallbackComponent={ErrorFallback}
           resetKeys={[location.pathname]}
           onError={(err) => {
-            // Bubble to the console so dev tooling and Sentry-like wrappers
-            // (added in M2) can pick the error up. The fallback hides the
+            // Route errors go through the browser logger so they reach
+            // da_system_logs (and the console). The fallback hides the
             // detail from the user.
-            console.error('HQLayout caught route error:', err);
+            const message = err instanceof Error ? err.message : String(err);
+            logger.error(`HQ route error: ${message}`, { route: location.pathname });
           }}
         >
           <Outlet />

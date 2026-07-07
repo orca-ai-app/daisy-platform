@@ -15,6 +15,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { logSystem } from '../_shared/log.ts';
 
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -38,23 +39,55 @@ async function handleSubscriptionChange(admin: any, payload: any): Promise<Respo
   const email: string | null = payload?.Recipient ?? null;
   if (!email) return json({ ok: true, ignored: 'no recipient' }, 200);
   const emailKey = email.toLowerCase();
+  // Non-2xx makes Postmark retry the webhook — desirable when our DB write
+  // fails, so the suppression mirror can't silently drift.
   if (payload?.SuppressSending) {
     const source =
       payload?.SuppressionReason === 'SpamComplaint' ? 'spam_complaint' : 'unsubscribe';
-    await admin
+    const sup = await admin
       .from('da_email_suppressions')
       .upsert({ email: emailKey, source }, { onConflict: 'email' });
-    await admin
+    if (sup.error) {
+      await logSystem(admin, {
+        level: 'error',
+        source: 'postmark-webhook',
+        message: `SubscriptionChange suppression upsert failed: ${sup.error.message}`,
+      });
+      return json({ error: 'suppression write failed' }, 500);
+    }
+    const flag = await admin
       .from('da_customers')
       .update({ marketing_opt_out: true, marketing_opt_out_at: new Date().toISOString() })
       .eq('email', email);
+    if (flag.error) {
+      await logSystem(admin, {
+        level: 'warn',
+        source: 'postmark-webhook',
+        message: `SubscriptionChange customer flag failed (suppression stored): ${flag.error.message}`,
+      });
+    }
   } else {
     // Reactivated inside Postmark — lift our suppression too.
-    await admin.from('da_email_suppressions').delete().eq('email', emailKey);
-    await admin
+    const del = await admin.from('da_email_suppressions').delete().eq('email', emailKey);
+    if (del.error) {
+      await logSystem(admin, {
+        level: 'error',
+        source: 'postmark-webhook',
+        message: `SubscriptionChange suppression delete failed: ${del.error.message}`,
+      });
+      return json({ error: 'suppression delete failed' }, 500);
+    }
+    const flag = await admin
       .from('da_customers')
       .update({ marketing_opt_out: false, marketing_opt_out_at: null })
       .eq('email', email);
+    if (flag.error) {
+      await logSystem(admin, {
+        level: 'warn',
+        source: 'postmark-webhook',
+        message: `SubscriptionChange customer unflag failed: ${flag.error.message}`,
+      });
+    }
   }
   return json({ ok: true }, 200);
 }
@@ -123,18 +156,32 @@ Deno.serve(async (req: Request) => {
   if (eventType === 'opened') {
     // First open only — don't move the timestamp on re-opens.
     if (sequenceId) {
-      await admin
+      const upd = await admin
         .from('da_email_sequences')
         .update({ opened_at: occurredAt })
         .eq('id', sequenceId)
         .is('opened_at', null);
+      if (upd.error) {
+        await logSystem(admin, {
+          level: 'warn',
+          source: 'postmark-webhook',
+          message: `opened_at update failed for sequence ${sequenceId}: ${upd.error.message}`,
+        });
+      }
     }
     if (broadcastRecipientId) {
-      await admin
+      const upd = await admin
         .from('da_email_broadcast_recipients')
         .update({ opened_at: occurredAt })
         .eq('id', broadcastRecipientId)
         .is('opened_at', null);
+      if (upd.error) {
+        await logSystem(admin, {
+          level: 'warn',
+          source: 'postmark-webhook',
+          message: `opened_at update failed for broadcast recipient ${broadcastRecipientId}: ${upd.error.message}`,
+        });
+      }
     }
   }
 
@@ -143,12 +190,22 @@ Deno.serve(async (req: Request) => {
     // when the send is traceable to a customer.
     const complainant: string | null = payload?.Recipient ?? payload?.Email ?? null;
     if (complainant) {
-      await admin
+      const sup = await admin
         .from('da_email_suppressions')
         .upsert(
           { email: complainant.toLowerCase(), source: 'spam_complaint' },
           { onConflict: 'email' },
         );
+      if (sup.error) {
+        // A failed spam-complaint suppression means we keep emailing someone
+        // who reported us as spam — fail the webhook so Postmark retries.
+        await logSystem(admin, {
+          level: 'error',
+          source: 'postmark-webhook',
+          message: `spam-complaint suppression upsert failed: ${sup.error.message}`,
+        });
+        return json({ error: 'suppression write failed' }, 500);
+      }
     }
     if (sequenceId) {
       const seq = await admin
