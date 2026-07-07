@@ -334,6 +334,9 @@ async function finalisePendingBooking(
     .update({
       payment_status: paymentStatus,
       stripe_payment_intent_id: paymentIntentId,
+      // The hold becomes the booking's permanent seat consumption; clearing it
+      // means no later sweep/cancel logic can mistake this row for a live hold.
+      reserved_seats: null,
       updated_at: now.toISOString(),
     })
     .eq('id', booking.id);

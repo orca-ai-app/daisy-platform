@@ -302,28 +302,23 @@ Deno.serve(async (req: Request) => {
     .lt('created_at', new Date(Date.now() - 35 * 60_000).toISOString());
   if (stale.error) {
     console.error('send-emails: stale pending select failed', stale.error);
+    await logSystem(admin, {
+      level: 'error',
+      source: 'send-emails',
+      message: `expiry sweep skipped — stale pending select failed: ${stale.error.message}`,
+    });
   } else {
     for (const b of (stale.data ?? []) as any[]) {
-      const rel = await admin.rpc('release_spots', {
-        instance_id: b.course_instance_id,
-        seats: b.reserved_seats,
-      });
-      if (rel.error) {
-        await logSystem(admin, {
-          level: 'error',
-          source: 'send-emails',
-          entityType: 'booking',
-          entityId: b.id,
-          message: `release_spots failed for expired pending booking ${b.booking_reference}`,
-          context: { error: rel.error.message },
-        });
-        continue; // don't close the booking if the hold wasn't released
-      }
+      // CLAIM FIRST, release after: atomically flip pending → failed/cancelled
+      // (clearing reserved_seats) and only release the hold when we actually
+      // won the row. Releasing first raced the webhook — a payment landing in
+      // that window kept its booking but lost its seats (oversell).
       const close = await admin
         .from('da_bookings')
         .update({ payment_status: 'failed', booking_status: 'cancelled', reserved_seats: null })
         .eq('id', b.id)
-        .eq('payment_status', 'pending'); // guard: webhook may have just landed
+        .eq('payment_status', 'pending')
+        .select('id');
       if (close.error) {
         await logSystem(admin, {
           level: 'error',
@@ -332,6 +327,28 @@ Deno.serve(async (req: Request) => {
           entityId: b.id,
           message: `expiry close failed for booking ${b.booking_reference}`,
           context: { error: close.error.message },
+        });
+        continue;
+      }
+      if (!close.data || close.data.length === 0) {
+        // Webhook won the race — booking was finalised between select and
+        // claim. Its hold is the real decrement now; nothing to release.
+        continue;
+      }
+      const rel = await admin.rpc('release_spots', {
+        instance_id: b.course_instance_id,
+        seats: b.reserved_seats,
+      });
+      if (rel.error) {
+        // Booking is closed but the seats didn't go back on sale — loud error;
+        // rerunning won't retry (reserved_seats cleared), so HQ must act.
+        await logSystem(admin, {
+          level: 'error',
+          source: 'send-emails',
+          entityType: 'booking',
+          entityId: b.id,
+          message: `HOLD NOT RELEASED for expired booking ${b.booking_reference} — ${b.reserved_seats} seat(s) stuck; add them back on the course`,
+          context: { error: rel.error.message, course_instance_id: b.course_instance_id },
         });
       } else {
         await logSystem(admin, {
