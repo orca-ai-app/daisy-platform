@@ -51,6 +51,12 @@ interface TerritoryBreakdownRow {
   territory_name: string;
   base_fee_pence: number;
   revenue_pence: number;
+  // Merchandise (migration 038): the franchisee's product-sales revenue for
+  // the period, attributed to their highest-booking-revenue territory (their
+  // only territory in the common case). Joins the revenue pool BEFORE the
+  // max(base, 10%) test — Jenni, 2026-07-13. 0 on all other rows; absent on
+  // pre-038 stored runs (UI must default to 0).
+  merchandise_pence: number;
   percentage_fee_pence: number;
   fee_charged_pence: number;
   logic:
@@ -155,6 +161,22 @@ async function calculateFranchiseePreview(
 
   const territories = (territoriesRes.data ?? []) as Territory[];
 
+  // Merchandise revenue for the period (migration 038) — one figure per
+  // franchisee, pooled into the fee test below.
+  const merchRes = await admin
+    .from('da_product_sales')
+    .select('total_pence')
+    .eq('franchisee_id', franchisee.id)
+    .gte('sold_at', periodStart)
+    .lte('sold_at', periodEnd);
+  if (merchRes.error) {
+    throw new Error(`Failed to load product sales: ${merchRes.error.message}`);
+  }
+  const merchandisePence = ((merchRes.data ?? []) as { total_pence: number }[]).reduce(
+    (acc, row) => acc + (row.total_pence ?? 0),
+    0,
+  );
+
   // Pro-rata: if the franchisee was created mid-period, scale the base fee
   // by (days_active_in_period / days_in_period). PRD §7.3.
   const periodDays = daysBetween(periodStart, periodEnd);
@@ -182,7 +204,25 @@ async function calculateFranchiseePreview(
 
   if (territories.length === 0) {
     // No territories — nothing to bill. Return an empty breakdown so the
-    // caller can render a 'no territories' state.
+    // caller can render a 'no territories' state. Merch with no territory is
+    // an edge case (unprovisioned franchisee) — billed at 10% via a pseudo-row
+    // so recorded revenue is never silently dropped from the run.
+    const merchOnly: TerritoryBreakdownRow[] = [];
+    let merchOnlyFee = 0;
+    if (merchandisePence > 0) {
+      merchOnlyFee = Math.floor(merchandisePence * 0.1);
+      merchOnly.push({
+        territory_id: '',
+        postcode_prefix: '—',
+        territory_name: 'Merchandise (no territory)',
+        base_fee_pence: 0,
+        revenue_pence: 0,
+        merchandise_pence: merchandisePence,
+        percentage_fee_pence: merchOnlyFee,
+        fee_charged_pence: merchOnlyFee,
+        logic: 'percentage_wins',
+      });
+    }
     return {
       franchisee_id: franchisee.id,
       franchisee_number: franchisee.number,
@@ -190,17 +230,17 @@ async function calculateFranchiseePreview(
       fee_tier: franchisee.fee_tier,
       billing_period_start: periodStart,
       billing_period_end: periodEnd,
-      territory_breakdown: [],
+      territory_breakdown: merchOnly,
       total_base_fees_pence: 0,
-      total_percentage_fees_pence: 0,
-      total_due_pence: 0,
+      total_percentage_fees_pence: merchOnlyFee,
+      total_due_pence: merchOnlyFee,
       pro_rata_applied: proRataApplied,
     };
   }
 
+  // Pass 1: booking revenue per territory (PRD §7.1 rules).
+  const territoryRevenues: number[] = [];
   for (const territory of territories) {
-    // Pull bookings linked to course_instances scheduled in this territory
-    // within the period. Filter to PRD §7.1 revenue rules.
     const bookingsRes = await admin
       .from('da_bookings')
       .select(
@@ -220,13 +260,29 @@ async function calculateFranchiseePreview(
     const rows = (bookingsRes.data ?? []) as unknown as BookingRow[];
     // PostgREST `!inner` join still returns rows where the join match is non-null,
     // but we double-check territory_id here in case schema oddities slip through.
-    const revenuePence = rows.reduce((acc, row) => {
-      if (!row.course_instance) return acc;
-      if (row.course_instance.territory_id !== territory.id) return acc;
-      return acc + (row.total_price_pence ?? 0);
-    }, 0);
+    territoryRevenues.push(
+      rows.reduce((acc, row) => {
+        if (!row.course_instance) return acc;
+        if (row.course_instance.territory_id !== territory.id) return acc;
+        return acc + (row.total_price_pence ?? 0);
+      }, 0),
+    );
+  }
 
-    const percentageFeePence = Math.floor(revenuePence * 0.1);
+  // Merch attaches to the highest-booking-revenue territory this period
+  // (ties/zero bookings → first territory by postcode order).
+  let merchIdx = 0;
+  for (let i = 1; i < territoryRevenues.length; i++) {
+    if (territoryRevenues[i] > territoryRevenues[merchIdx]) merchIdx = i;
+  }
+
+  // Pass 2: fee test per territory over booking + merch revenue combined.
+  for (let i = 0; i < territories.length; i++) {
+    const territory = territories[i];
+    const revenuePence = territoryRevenues[i];
+    const merchPence = i === merchIdx ? merchandisePence : 0;
+
+    const percentageFeePence = Math.floor((revenuePence + merchPence) * 0.1);
     const baseWins = baseFeePencePerTerritory >= percentageFeePence;
     const feeCharged = baseWins ? baseFeePencePerTerritory : percentageFeePence;
 
@@ -243,6 +299,7 @@ async function calculateFranchiseePreview(
       territory_name: territory.name,
       base_fee_pence: baseFeePencePerTerritory,
       revenue_pence: revenuePence,
+      merchandise_pence: merchPence,
       percentage_fee_pence: percentageFeePence,
       fee_charged_pence: feeCharged,
       logic: logicTag,

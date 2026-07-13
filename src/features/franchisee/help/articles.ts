@@ -45,6 +45,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Customers: people who have booked with you, plus anyone who has submitted a medical form for your classes.',
           'Clients: private clients (companies and groups) you run tailored courses for.',
           'Discounts: promotional codes you create for customers to use at checkout.',
+          'Merchandise: book sales you record, with a running total for the month.',
           'Payments: your Stripe connection. All card payments from customers are handled here.',
           'Profile: your personal details and your permanent medical form QR code.',
           'Help: these guides.',
@@ -80,7 +81,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Why you need to connect Stripe',
         body: [
           'Card payments from customers go directly into your own bank account via Stripe. Without a connected Stripe account, customers cannot pay online for your courses. You must complete this before the switchover from BookWhen.',
-          'Daisy takes a 2% platform fee. All other revenue settles directly to your bank on Stripe\'s normal payout schedule, which is usually within a few working days.',
+          "Daisy takes a 2% platform fee. All other revenue settles directly to your bank on Stripe's normal payout schedule, which is usually within a few working days.",
         ],
       },
       {
@@ -88,7 +89,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         steps: [
           'Go to the Payments section in the left-hand navigation.',
           'Click "Connect with Stripe".',
-          'You will be taken to Stripe\'s website. Sign in to your existing Stripe account, or follow the steps to create one if you do not have one yet.',
+          "You will be taken to Stripe's website. Sign in to your existing Stripe account, or follow the steps to create one if you do not have one yet.",
           'Once you authorise the connection, Stripe sends you back to the portal. The Payments page will show "Connected" with your masked account ID.',
         ],
       },
@@ -111,8 +112,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     slug: 'managing-courses',
     title: 'Adding and managing your classes',
-    summary:
-      'How to add a new course, edit it, cancel it, and manage ticket types and capacity.',
+    summary: 'How to add a new course, edit it, cancel it, and manage ticket types and capacity.',
     keywords: [
       'course',
       'class',
@@ -243,7 +243,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Choose the class from the list.',
           'Choose the ticket type.',
           'Enter the quantity.',
-          'Fill in the customer\'s name, email, and phone number.',
+          "Fill in the customer's name, email, and phone number.",
           'Save. The booking is created and you are taken to its detail page.',
         ],
       },
@@ -389,9 +389,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     sections: [
       {
         heading: 'Creating a code',
-        body: [
-          'Go to Discounts and click "+ Create code". A dialog opens.',
-        ],
+        body: ['Go to Discounts and click "+ Create code". A dialog opens.'],
         steps: [
           'Enter a code. It will be uppercased automatically, for example "SUMMER25".',
           'Choose whether it is a percentage off or a fixed pound amount off.',
@@ -452,7 +450,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'On switchover day',
         steps: [
           'First thing that morning, switch off your BookWhen booking pages (hide or close the event listings in your BookWhen account).',
-          'The Daisy website\'s postcode search will point at the new system from that morning.',
+          "The Daisy website's postcode search will point at the new system from that morning.",
           'Share booking links for your classes from the course detail pages using "Copy link" or "Send via WhatsApp".',
         ],
       },
@@ -460,12 +458,103 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'The week after switchover',
         steps: [
           'Keep your BookWhen account open for one more week in case you need to look anything up, but leave the booking pages switched off.',
-          'Download your BookWhen history for your own records using BookWhen\'s export function.',
+          "Download your BookWhen history for your own records using BookWhen's export function.",
           'After that week, cancel your BookWhen subscription.',
         ],
       },
     ],
     related: ['connecting-stripe', 'managing-courses', 'bookings'],
+  },
+
+  {
+    slug: 'selling-merchandise',
+    title: 'Selling merchandise',
+    summary:
+      'How to sell books at your classes, record standalone sales, adjust prices for postage, and correct mistakes.',
+    keywords: [
+      'merchandise',
+      'merch',
+      'book',
+      'books',
+      'book sale',
+      'sell books',
+      'first aid book',
+      'paediatric book',
+      'record sale',
+      'product',
+      'products',
+      'rrp',
+      'postage',
+      'upsell',
+      'combined ticket',
+      'cash',
+      'card',
+      'franchise fee',
+      'delete sale',
+    ],
+    sections: [
+      {
+        heading: 'Selling a book with a class place (the easy in-class path)',
+        body: [
+          'If you regularly sell books alongside class places, the simplest route is a combined ticket type. The customer books and pays for both in one go, and the book revenue is captured with the booking automatically, so there is nothing extra to record.',
+        ],
+        steps: [
+          'Open the class from the Courses list.',
+          'Scroll to the ticket types section and click "Add ticket type".',
+          'Name it clearly, for example "Class ticket + Paediatric First Aid book".',
+          'Set the price to the class price plus the book price (for example, a £30 class plus a £5 book is £35).',
+          'Set "Seats used" to 1, the book does not take up a space.',
+          'Save. The combined ticket now appears on the booking page for customers to choose.',
+        ],
+      },
+      {
+        heading: 'Recording a standalone sale',
+        body: [
+          'Use the Merchandise page whenever a book is sold on its own, for example cash on the day, a card payment at a class, or a book posted to a customer.',
+        ],
+        steps: [
+          'Go to Merchandise in the navigation and click "Record sale".',
+          'Choose the product. The unit price fills in automatically from the recommended retail price.',
+          'Enter the quantity and adjust the unit price if needed.',
+          'Choose how the customer paid: Cash, Card, or Other.',
+          'Check the date sold, it defaults to today.',
+          'Optionally link the sale to the class it was sold at, and add a note.',
+          'Click "Record sale". The running total updates as you type so you can check it before saving.',
+        ],
+      },
+      {
+        heading: 'Recording a sale from a class page',
+        body: [
+          'You can also record a sale directly from a class. Open the class from the Courses list and click "Record book sale" at the top. The same form opens with that class already selected, so the sale is linked to the right session automatically.',
+        ],
+      },
+      {
+        heading: 'Adjusting the price for postage or discounts',
+        body: [
+          'The unit price starts at the recommended retail price but you can change it freely. If you post a book to a customer, add the postage to the unit price (for example £5.00 plus £2.00 postage is £7.00). If you give a discount, enter the reduced price. Use the note field to record why the price differs.',
+        ],
+      },
+      {
+        heading: 'Correcting mistakes',
+        body: [
+          'If you record a sale incorrectly, delete it and record it again. In the Merchandise list, click the bin icon on the row and confirm. Then click "Record sale" and enter the correct details.',
+          'Deletion is blocked once the sale falls in a period that has already been billed, because your monthly franchise fee has been calculated on it. If that happens you will see a message asking you to contact HQ, and they can correct it for you.',
+        ],
+      },
+      {
+        heading: 'How merchandise counts towards your figures',
+        body: [
+          'Merchandise revenue counts towards your monthly franchise fee, the same as course revenue. Your dashboard shows a "Merchandise this month" figure, and the Merchandise page shows a running "This month" total so you always know where you stand.',
+        ],
+      },
+      {
+        heading: 'New products',
+        body: [
+          'The product list is set by HQ and is the same across the whole network. If you would like a new item added to the catalogue, or a price changed, contact HQ and they can update it for everyone.',
+        ],
+      },
+    ],
+    related: ['managing-courses', 'bookings', 'getting-help'],
   },
 
   {

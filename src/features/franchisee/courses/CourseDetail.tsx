@@ -12,7 +12,17 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { formatInTimeZone } from 'date-fns-tz';
-import { Pencil, XCircle, Plus, Trash2, Edit2, Copy, MessageCircle, Link2 } from 'lucide-react';
+import {
+  Pencil,
+  XCircle,
+  Plus,
+  Trash2,
+  Edit2,
+  Copy,
+  MessageCircle,
+  Link2,
+  ShoppingBag,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { PageHeader, StatusPill, EmptyState } from '@/components/daisy';
@@ -54,6 +64,7 @@ import {
 import type { TicketType } from './types';
 import { useOwnProfile } from '../profileQueries';
 import { MedicalQr } from '../components/MedicalQr';
+import { RecordSaleDialog } from '../merchandise/RecordSaleDialog';
 
 // ---------------------------------------------------------------------------
 // Date / time helpers (BST-safe — never reconstruct via toISOString)
@@ -114,6 +125,7 @@ export default function CourseDetail() {
   const navigate = useNavigate();
 
   const [cancelling, setCancelling] = useState(false);
+  const [recordingSale, setRecordingSale] = useState(false);
   const [addingTicket, setAddingTicket] = useState(false);
   const [editingTicket, setEditingTicket] = useState<TicketType | null>(null);
   const [deletingTicket, setDeletingTicket] = useState<TicketType | null>(null);
@@ -181,6 +193,10 @@ export default function CourseDetail() {
                 >
                   <Pencil aria-hidden className="h-4 w-4" />
                   Edit course
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setRecordingSale(true)}>
+                  <ShoppingBag aria-hidden className="h-4 w-4" />
+                  Record book sale
                 </Button>
                 <Button
                   variant="destructive"
@@ -383,6 +399,12 @@ export default function CourseDetail() {
           </div>
 
           {/* Modals */}
+          <RecordSaleDialog
+            open={recordingSale}
+            onOpenChange={setRecordingSale}
+            presetCourseInstanceId={instance.id}
+          />
+
           {cancelling ? (
             <CancelDialog
               instanceId={instance.id}
@@ -759,7 +781,6 @@ function DeleteTicketTypeDialog({
     </Dialog>
   );
 }
-
 
 // ---------------------------------------------------------------------------
 // BookingLinkCard — all scheduled courses with a booking_token (Wave 11)

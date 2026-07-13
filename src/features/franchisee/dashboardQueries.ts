@@ -60,14 +60,16 @@ export interface FranchiseeDashboardStats {
   revenueMtd: number;
   /** Sum of spots_remaining on scheduled course instances in the next 30 days. */
   outstandingCapacity: number;
+  /** Total merchandise sales for the current calendar month, in pence. */
+  merchandiseMtd: number;
 }
 
 async function fetchDashboardStats(): Promise<FranchiseeDashboardStats> {
   const mtd = currentMonthRange();
   const next30 = nextDaysRange(30);
 
-  // RLS restricts all four queries to rows belonging to the signed-in franchisee.
-  const [bookingsRes, coursesRes] = await Promise.all([
+  // RLS restricts all queries to rows belonging to the signed-in franchisee.
+  const [bookingsRes, coursesRes, merchRes] = await Promise.all([
     // Bookings MTD — no franchisee_id filter; RLS handles scoping.
     supabase
       .from('da_bookings')
@@ -82,6 +84,13 @@ async function fetchDashboardStats(): Promise<FranchiseeDashboardStats> {
       .eq('status', 'scheduled')
       .gte('event_date', next30.startIso)
       .lt('event_date', next30.endIso),
+
+    // Merchandise sales MTD — sold_at is a DATE, so compare date strings.
+    supabase
+      .from('da_product_sales')
+      .select('total_pence')
+      .gte('sold_at', mtd.startIso.slice(0, 10))
+      .lt('sold_at', mtd.endIso.slice(0, 10)),
   ]);
 
   if (bookingsRes.error && !isTableMissing(bookingsRes.error.code)) {
@@ -90,16 +99,21 @@ async function fetchDashboardStats(): Promise<FranchiseeDashboardStats> {
   if (coursesRes.error && !isTableMissing(coursesRes.error.code)) {
     throw coursesRes.error;
   }
+  if (merchRes.error && !isTableMissing(merchRes.error.code)) {
+    throw merchRes.error;
+  }
 
   const bookings = bookingsRes.data ?? [];
   const courses = coursesRes.data ?? [];
+  const merchSales = merchRes.data ?? [];
 
   const bookingsMtd = bookings.length;
   const revenueMtd = bookings.reduce((acc, row) => acc + (row.total_price_pence ?? 0), 0);
   const upcomingCourses = courses.length;
   const outstandingCapacity = courses.reduce((acc, row) => acc + (row.spots_remaining ?? 0), 0);
+  const merchandiseMtd = merchSales.reduce((acc, row) => acc + (row.total_pence ?? 0), 0);
 
-  return { upcomingCourses, bookingsMtd, revenueMtd, outstandingCapacity };
+  return { upcomingCourses, bookingsMtd, revenueMtd, outstandingCapacity, merchandiseMtd };
 }
 
 export function useFranchiseeDashboard() {

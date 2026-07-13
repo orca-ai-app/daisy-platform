@@ -50,6 +50,7 @@ describe('Franchisee Dashboard', () => {
         bookingsMtd: 12,
         revenueMtd: 123456, // £1,234.56
         outstandingCapacity: 8,
+        merchandiseMtd: 2500, // £25.00
       }),
     );
 
@@ -67,6 +68,7 @@ describe('Franchisee Dashboard', () => {
         bookingsMtd: 0,
         revenueMtd: 0,
         outstandingCapacity: 0,
+        merchandiseMtd: 0,
       }),
     );
 
@@ -81,12 +83,14 @@ describe('Franchisee Dashboard', () => {
         bookingsMtd: 0,
         revenueMtd: 0,
         outstandingCapacity: 0,
+        merchandiseMtd: 0,
       }),
     );
 
     render(<Dashboard />);
 
-    expect(screen.getByText('£0.00')).toBeInTheDocument();
+    // Revenue and merchandise KPIs both render as £0.00.
+    expect(screen.getAllByText('£0.00')).toHaveLength(2);
     expect(screen.getByText('No bookings yet')).toBeInTheDocument();
     expect(screen.getByText('Nothing scheduled this week')).toBeInTheDocument();
     // greeting still renders without throwing on empty data

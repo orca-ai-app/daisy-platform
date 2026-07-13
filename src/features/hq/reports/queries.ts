@@ -337,6 +337,99 @@ export interface FranchiseeRevenueResult {
   totalPence: number;
 }
 
+// ---------------------------------------------------------------------------
+// Merchandise sales (da_product_sales)
+// ---------------------------------------------------------------------------
+
+export interface FranchiseeMerchandiseRow {
+  franchisee_id: string;
+  number: string;
+  name: string;
+  /** Total quantity of items sold in the period. */
+  units: number;
+  /** Revenue in pence. */
+  revenuePence: number;
+}
+
+export interface MerchandiseSalesResult {
+  rows: FranchiseeMerchandiseRow[];
+  totalUnits: number;
+  totalPence: number;
+}
+
+interface MerchandiseSaleJoined {
+  quantity: number;
+  total_pence: number;
+  franchisee_id: string;
+  franchisee: { id: string; number: string; name: string } | null;
+}
+
+/**
+ * Network merchandise sales for a period: total units + revenue, and a
+ * per-franchisee breakdown sorted by revenue (desc). `sold_at` is a DATE
+ * column on da_product_sales itself, so the window filter runs server-side
+ * (unlike bookings, which filter on a joined event_date client-side).
+ */
+export function useMerchandiseSales(
+  period: RevenuePeriod = 'last-6-months',
+  fromDate?: string,
+  toDate?: string,
+) {
+  return useQuery<MerchandiseSalesResult>({
+    queryKey: ['hq', 'reports', 'merchandise-sales', { period, fromDate, toDate }],
+    queryFn: async () => {
+      const window = windowForPeriod(period, fromDate, toDate);
+
+      const { data, error } = await supabase
+        .from('da_product_sales')
+        .select(
+          `quantity,
+           total_pence,
+           franchisee_id,
+           franchisee:da_franchisees ( id, number, name )`,
+        )
+        .gte('sold_at', window.fromIso.slice(0, 10))
+        .lt('sold_at', window.toIso.slice(0, 10));
+
+      if (error) {
+        if (isTableMissing(error.code)) {
+          return { rows: [], totalUnits: 0, totalPence: 0 };
+        }
+        throw error;
+      }
+
+      const byFranchisee = new Map<string, FranchiseeMerchandiseRow>();
+      let totalUnits = 0;
+      let totalPence = 0;
+
+      for (const row of (data ?? []) as unknown as MerchandiseSaleJoined[]) {
+        const fid = row.franchisee?.id ?? row.franchisee_id;
+        if (!fid) continue;
+        const existing = byFranchisee.get(fid);
+        if (existing) {
+          existing.units += row.quantity;
+          existing.revenuePence += row.total_pence;
+        } else {
+          byFranchisee.set(fid, {
+            franchisee_id: fid,
+            number: row.franchisee?.number ?? '',
+            name: row.franchisee?.name ?? '',
+            units: row.quantity,
+            revenuePence: row.total_pence,
+          });
+        }
+        totalUnits += row.quantity;
+        totalPence += row.total_pence;
+      }
+
+      const rows = Array.from(byFranchisee.values());
+      rows.sort((a, b) => b.revenuePence - a.revenuePence);
+
+      return { rows, totalUnits, totalPence };
+    },
+  });
+}
+
 export function usePerFranchiseeRevenue(
   period: RevenuePeriod = 'last-6-months',
   fromDate?: string,

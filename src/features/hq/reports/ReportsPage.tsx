@@ -17,7 +17,9 @@ import { formatPence } from '@/lib/format';
 import {
   useNetworkRevenueByMonth,
   usePerFranchiseeRevenue,
+  useMerchandiseSales,
   type FranchiseeRevenueRow,
+  type FranchiseeMerchandiseRow,
   type RevenuePeriod,
   type MonthRevenuePoint,
 } from './queries';
@@ -86,6 +88,7 @@ export default function ReportsPage() {
 
   const network = useNetworkRevenueByMonth(period, customArgs.fromDate, customArgs.toDate, compare);
   const perFranchisee = usePerFranchiseeRevenue(period, customArgs.fromDate, customArgs.toDate);
+  const merchandise = useMerchandiseSales(period, customArgs.fromDate, customArgs.toDate);
 
   const buckets = network.data?.buckets ?? [];
   const hasData = buckets.some((b) => b.revenuePence > 0 || (b.revenuePencePrev ?? 0) > 0);
@@ -125,6 +128,38 @@ export default function ReportsPage() {
           <span className="text-daisy-muted text-[13px] font-semibold">
             {row.original.pctOfNetwork}%
           </span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const merchandiseColumns = useMemo<ColumnDef<FranchiseeMerchandiseRow>[]>(
+    () => [
+      {
+        accessorKey: 'number',
+        header: 'Number',
+        cell: ({ row }) => (
+          <span className="text-daisy-ink-soft font-mono text-[13px] font-bold">
+            {row.original.number ? `#${row.original.number.padStart(4, '0')}` : '-'}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => <span className="font-bold">{row.original.name || '-'}</span>,
+      },
+      {
+        accessorKey: 'units',
+        header: 'Units',
+        cell: ({ row }) => <span className="font-semibold">{row.original.units}</span>,
+      },
+      {
+        accessorKey: 'revenuePence',
+        header: 'Revenue',
+        cell: ({ row }) => (
+          <span className="font-semibold">{formatPence(row.original.revenuePence)}</span>
         ),
       },
     ],
@@ -301,6 +336,40 @@ export default function ReportsPage() {
               />
             }
           />
+        </CardContent>
+      </Card>
+
+      {/* Merchandise (da_product_sales) — separate from booking revenue */}
+      <Card className="overflow-hidden">
+        <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint flex flex-row items-center justify-between gap-2 border-b px-5 py-4">
+          <CardTitle className="text-daisy-primary-deep text-[15px] font-extrabold tracking-[0.06em] uppercase">
+            Merchandise
+          </CardTitle>
+          <Badge variant="primary">
+            {merchandise.data?.totalUnits ?? 0} unit
+            {(merchandise.data?.totalUnits ?? 0) === 1 ? '' : 's'} ·{' '}
+            {formatPence(merchandise.data?.totalPence ?? 0)}
+          </Badge>
+        </CardHeader>
+        <CardContent className="p-5">
+          {merchandise.isError ? (
+            <div className="rounded-[8px] border border-[#FDEAE5] bg-[#FDEAE5]/40 p-4 text-sm text-[#8A2A2A]">
+              Could not load merchandise sales: {merchandise.error.message}
+            </div>
+          ) : (
+            <DataTable<FranchiseeMerchandiseRow>
+              columns={merchandiseColumns}
+              data={merchandise.data?.rows ?? []}
+              isLoading={merchandise.isLoading}
+              searchable={false}
+              emptyState={
+                <EmptyState
+                  title="No merchandise sales in this period"
+                  body="Book sales recorded by franchisees will appear here."
+                />
+              }
+            />
+          )}
         </CardContent>
       </Card>
     </div>

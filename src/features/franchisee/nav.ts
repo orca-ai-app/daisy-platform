@@ -6,6 +6,7 @@ import {
   Users,
   UserCheck,
   Percent,
+  ShoppingBag,
   CreditCard,
   UserCog,
   CircleHelp,
@@ -84,6 +85,13 @@ export const franchiseeNavLinks: FranchiseeNavLink[] = [
     icon: Percent,
     ready: true,
     matchPrefix: '/franchisee/discounts',
+  },
+  {
+    label: 'Merchandise',
+    path: '/franchisee/merchandise',
+    icon: ShoppingBag,
+    ready: true,
+    matchPrefix: '/franchisee/merchandise',
   },
   {
     label: 'Payments',

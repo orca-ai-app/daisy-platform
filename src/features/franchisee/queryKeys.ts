@@ -56,4 +56,13 @@ export const franchiseeKeys = {
 
   payments: () => [...franchiseeKeys.all, 'payments'] as const,
   payment: (id: string) => [...franchiseeKeys.payments(), id] as const,
+
+  // --- Merchandise (book sales) -----------------------------------------
+  merchandise: () => [...franchiseeKeys.all, 'merchandise'] as const,
+  /** Active da_products catalogue (network-wide, RLS: any authenticated). */
+  merchandiseProducts: () => [...franchiseeKeys.merchandise(), 'products'] as const,
+  /** The signed-in franchisee's own da_product_sales rows. */
+  merchandiseSales: () => [...franchiseeKeys.merchandise(), 'sales'] as const,
+  /** Course-instance options for linking a sale to a class. */
+  merchandiseCourseOptions: () => [...franchiseeKeys.merchandise(), 'course-options'] as const,
 } as const;

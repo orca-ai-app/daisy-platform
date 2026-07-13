@@ -140,6 +140,21 @@ verify_jwt = true
 [functions.preview-billing-run]
 verify_jwt = true
 
+# Merchandise (migration 038)
+[functions.create-product-sale]
+verify_jwt = true
+
+[functions.delete-product-sale]
+verify_jwt = true
+
+[functions.create-product]
+# HQ-only; is_hq gate in-code.
+verify_jwt = true
+
+[functions.update-product]
+# HQ-only; is_hq gate in-code.
+verify_jwt = true
+
 [functions.send-test-email]
 # HQ-only test send from the email editor. JWT verified; is_hq gate in-code.
 verify_jwt = true

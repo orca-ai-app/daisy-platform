@@ -34,6 +34,9 @@ export interface TerritoryBreakdownRow {
   territory_name: string;
   base_fee_pence: number;
   revenue_pence: number;
+  // Merchandise revenue pooled into the 10% test (migration 038). Absent on
+  // runs stored before the merch feature — treat as 0 when rendering.
+  merchandise_pence?: number;
   percentage_fee_pence: number;
   fee_charged_pence: number;
   logic:

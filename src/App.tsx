@@ -115,6 +115,18 @@ const FranchiseeClientsList = lazy(() => import('@/features/franchisee/clients/C
 const FranchiseeCustomersList = lazy(() => import('@/features/franchisee/customers/CustomersList'));
 
 /*
+ * Merchandise: franchisee book sales + the HQ product catalogue. Both are
+ * simple DataTable + dialog pages; lazy-loaded to keep them off the
+ * dashboard's critical path, matching the Wave 9 pages.
+ */
+const FranchiseeMerchandisePage = lazy(
+  () => import('@/features/franchisee/merchandise/MerchandisePage'),
+);
+const HQProductsPage = lazy(() =>
+  import('@/features/hq/products').then((m) => ({ default: m.ProductsPage })),
+);
+
+/*
  * Wave 8 (M2): Stripe Connect / payments hub (8A). Lazy-loaded — the page is
  * reached from the Payments nav link and also serves as the Account Link
  * `return_url` / `refresh_url` landing (it reads `?success` / `?refresh` query
@@ -271,6 +283,16 @@ export default function App() {
                     }
                   />
                   <Route path="activity" element={<ActivityPage />} />
+
+                  {/* Merchandise catalogue (network-wide da_products). */}
+                  <Route
+                    path="products"
+                    element={
+                      <LazyRoute>
+                        <HQProductsPage />
+                      </LazyRoute>
+                    }
+                  />
 
                   {/* System logs: da_system_logs debug trail (HQ RLS). */}
                   <Route
@@ -503,6 +525,16 @@ export default function App() {
                     element={
                       <LazyRoute>
                         <FranchiseeCustomersList />
+                      </LazyRoute>
+                    }
+                  />
+
+                  {/* Merchandise: the franchisee's own book sales. */}
+                  <Route
+                    path="merchandise"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeMerchandisePage />
                       </LazyRoute>
                     }
                   />

@@ -176,6 +176,7 @@ export default function BillingRunDetail() {
                   <th className="px-3 py-2">Postcode</th>
                   <th className="px-3 py-2 text-right">Base fee</th>
                   <th className="px-3 py-2 text-right">Revenue</th>
+                  <th className="px-3 py-2 text-right">Merch</th>
                   <th className="px-3 py-2 text-right">10% fee</th>
                   <th className="px-3 py-2 text-right">Charged</th>
                   <th className="px-3 py-2 text-right">Logic</th>
@@ -204,6 +205,13 @@ export default function BillingRunDetail() {
                       </td>
                       <td className="text-daisy-ink px-3 py-3 text-right">
                         {formatPence(row.revenue_pence)}
+                      </td>
+                      <td className="text-daisy-ink px-3 py-3 text-right">
+                        {(row.merchandise_pence ?? 0) > 0 ? (
+                          formatPence(row.merchandise_pence ?? 0)
+                        ) : (
+                          <span className="text-daisy-muted">—</span>
+                        )}
                       </td>
                       <td
                         className={`px-3 py-3 text-right ${
