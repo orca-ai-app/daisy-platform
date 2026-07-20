@@ -403,6 +403,16 @@ export default function MedicalDeclarationsList() {
                     : 'Not applicable'
                 }
               />
+              {(revealed.declaration_data as { special_requirements_detail?: string })
+                .special_requirements_detail ? (
+                <Field
+                  label="Special requirements detail"
+                  value={
+                    (revealed.declaration_data as { special_requirements_detail?: string })
+                      .special_requirements_detail ?? ''
+                  }
+                />
+              ) : null}
               <Field
                 label="Property disclaimer acknowledged"
                 value={revealed.declaration_data.property_disclaimer_acknowledged ? 'Yes' : 'No'}

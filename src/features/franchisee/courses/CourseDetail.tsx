@@ -678,7 +678,7 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="tt-seats">Seats used</Label>
+              <Label htmlFor="tt-seats">Seats used per ticket</Label>
               <Input
                 id="tt-seats"
                 type="number"
@@ -686,6 +686,10 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
                 min="1"
                 {...register('seats_consumed', { valueAsNumber: true })}
               />
+              <p className="text-daisy-muted text-xs">
+                How many spaces on the course one ticket takes up — almost always 1. This is NOT how
+                many tickets are available (use Max available for that).
+              </p>
               {errors.seats_consumed ? (
                 <p className="text-daisy-orange text-xs">{errors.seats_consumed.message}</p>
               ) : null}

@@ -81,7 +81,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Why you need to connect Stripe',
         body: [
           'Card payments from customers go directly into your own bank account via Stripe. Without a connected Stripe account, customers cannot pay online for your courses. You must complete this before the switchover from BookWhen.',
-          "Daisy takes a 2% platform fee. All other revenue settles directly to your bank on Stripe's normal payout schedule, which is usually within a few working days.",
+          "The platform takes a 2% fee. All other revenue settles directly to your bank on Stripe's normal payout schedule, which is usually within a few working days.",
         ],
       },
       {
@@ -248,10 +248,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
-        heading: 'Marking a booking as paid',
+        heading: 'Taking a cheque or invoice payment',
         body: [
-          'Open the booking and click "Mark as paid". A small form asks for a payment reference, for example a cheque number or invoice ID. Enter the reference and confirm. The payment status updates to "manual" and the action is logged in the activity timeline.',
-          'This button is only available when the booking\'s payment status is "pending".',
+          'For a booking paid offline (cheque, invoice or phone payment), use "Add booking": open the Bookings tab, click "Add booking", choose the class and ticket type, enter the quantity and the customer\'s details, and save. The booking is recorded with a manual payment in one step — there is nothing further to mark.',
+          'A separate "Mark as paid" button appears only on a booking that already exists and is still showing payment status "pending" (for example a website booking whose payment did not complete). Open that booking, click "Mark as paid", enter a payment reference such as the cheque number, and confirm.',
         ],
       },
       {
@@ -542,12 +542,6 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
-        heading: 'How merchandise counts towards your figures',
-        body: [
-          'Merchandise revenue counts towards your monthly franchise fee, the same as course revenue. Your dashboard shows a "Merchandise this month" figure, and the Merchandise page shows a running "This month" total so you always know where you stand.',
-        ],
-      },
-      {
         heading: 'New products',
         body: [
           'The product list is set by HQ and is the same across the whole network. If you would like a new item added to the catalogue, or a price changed, contact HQ and they can update it for everyone.',
@@ -583,7 +577,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Quick answers to common questions',
         body: [
-          'Cannot log in: check your spam folder for the invite email. If the link has expired, reply to the announcement email and HQ will send a new one. You can also use the password reset link on the /login page.',
+          'Cannot log in: check you are using your @daisyfirstaid.com email address. Check your spam folder for the invite email. If the link has expired, reply to the announcement email and HQ will send a new one. You can also use the password reset link on the /login page.',
           'Customer cannot pay by card: check that your Stripe account is connected. Go to Payments, the status should show "Connected". If it shows the "Connect with Stripe" button, complete that step first.',
           'My class is not showing on the Daisy website: the class must be set to Public, the date must be in the future, and there must be at least one space remaining. Open the class in Courses and check the visibility and capacity settings.',
         ],
@@ -591,7 +585,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Contacting HQ',
         body: [
-          'If the guides do not answer your question, contact HQ directly. Reply to any email from Daisy First Aid, or use the contact details in your franchise agreement. HQ will respond as quickly as possible.',
+          'If the guides do not answer your question, please contact support@daisyfirstaid.com. HQ will respond as quickly as possible.',
         ],
       },
     ],

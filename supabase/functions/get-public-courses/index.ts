@@ -78,6 +78,9 @@ function toCard(r: any) {
     booking_token: r.booking_token ?? null,
     template_name: r.template_name ?? r.template?.name ?? null,
     template_slug: r.template_slug ?? r.template?.slug ?? null,
+    // Class content + suitability, shown before booking (Jenni, M3 feedback §1).
+    template_description: r.template_description ?? r.template?.description ?? null,
+    age_range: r.age_range ?? r.template?.age_range ?? null,
     event_date: r.event_date,
     start_time: r.start_time,
     end_time: r.end_time,
@@ -135,7 +138,7 @@ Deno.serve(async (req: Request) => {
       .from('da_course_instances')
       .select(
         `id, booking_token, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
-         template:da_course_templates ( name, slug ),
+         template:da_course_templates ( name, slug, description, age_range ),
          franchisee:da_franchisees ( name ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed )`,
       )

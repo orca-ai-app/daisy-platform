@@ -250,7 +250,20 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Failed to reserve seats' }, 500);
   }
   if (decrement.data !== true) {
-    return jsonResponse({ error: 'Not enough spaces remaining on this course' }, 409);
+    // Say the numbers — "not enough spaces" alone reads like a system fault
+    // when the real cause is quantity × seats-per-ticket vs what's left
+    // (Jenni's 75-place cheque booking, M3 feedback §10).
+    const cur = await admin
+      .from('da_course_instances')
+      .select('spots_remaining')
+      .eq('id', courseInstanceId)
+      .maybeSingle();
+    const left = (cur.data as { spots_remaining: number } | null)?.spots_remaining;
+    const detail =
+      left == null
+        ? ''
+        : ` This booking needs ${seatsToDecrement} space${seatsToDecrement === 1 ? '' : 's'} (${quantity} × ${ticket.seats_consumed} seat${ticket.seats_consumed === 1 ? '' : 's'} per ticket) but only ${left} ${left === 1 ? 'is' : 'are'} left. If seats-per-ticket looks wrong, check the ticket type on the course page.`;
+    return jsonResponse({ error: `Not enough spaces remaining on this course.${detail}` }, 409);
   }
 
   // --- Booking reference ---------------------------------------------------
