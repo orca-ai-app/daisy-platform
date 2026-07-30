@@ -16,8 +16,9 @@
 // }
 //
 // Only PUBLIC, SCHEDULED courses with spots remaining are returned. Geocoding is
-// done server-side with the server-restricted GOOGLE_MAPS_API_KEY (never exposed
-// to the browser). Best-effort per-IP rate limit (20/min) per PRD §12.5.
+// done server-side via postcodes.io (free, keyless — replaced Google Geocoding
+// 2026-07-30 after Google Cloud billing lapsed). Best-effort per-IP rate limit
+// (20/min) per PRD §12.5.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -118,7 +119,6 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const googleKey = Deno.env.get('GOOGLE_MAPS_API_KEY') ?? '';
   if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ error: 'Server misconfigured' }, 500);
   }
@@ -257,23 +257,22 @@ Deno.serve(async (req: Request) => {
   let lat = typeof body.lat === 'number' ? body.lat : NaN;
   let lng = typeof body.lng === 'number' ? body.lng : NaN;
   if (Number.isNaN(lat) || Number.isNaN(lng)) {
-    if (!googleKey) {
-      return jsonResponse({ error: 'Server misconfigured: geocoding unavailable' }, 500);
-    }
-    const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
-    url.searchParams.set('address', postcode);
-    url.searchParams.set('region', 'uk');
-    url.searchParams.set('components', 'country:GB');
-    url.searchParams.set('key', googleKey);
     try {
-      const geo = await fetch(url.toString());
-      const payload = (await geo.json()) as any;
-      const loc = payload?.results?.[0]?.geometry?.location;
-      if (payload.status !== 'OK' || !loc) {
+      const geo = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
+      if (geo.status === 404) {
         return jsonResponse({ error: `Could not locate postcode ${postcode}` }, 404);
       }
-      lat = loc.lat;
-      lng = loc.lng;
+      const payload = (await geo.json()) as any;
+      const result = payload?.result;
+      if (
+        !geo.ok ||
+        typeof result?.latitude !== 'number' ||
+        typeof result?.longitude !== 'number'
+      ) {
+        return jsonResponse({ error: `Could not locate postcode ${postcode}` }, 404);
+      }
+      lat = result.latitude;
+      lng = result.longitude;
     } catch (err) {
       console.error('geocode failed', err);
       return jsonResponse({ error: 'Could not look up that postcode right now' }, 502);
