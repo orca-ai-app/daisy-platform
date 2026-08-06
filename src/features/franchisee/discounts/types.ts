@@ -10,6 +10,7 @@
  *
  * Every column name below matches the real DB schema exactly:
  *   - supabase/migrations/005_billing_tables.sql (da_discount_codes)
+ *   - supabase/migrations/042_prelaunch_discounts.sql (group_name)
  *
  * Money rule: when `type === 'fixed'`, `value` is in PENCE (integer). When
  * `type === 'percentage'`, `value` is a whole-number percentage 0-100. The DB
@@ -44,6 +45,8 @@ export interface DiscountCode {
   /** ISO timestamp; NULL = no expiry. */
   valid_until: string | null;
   is_active: boolean;
+  /** Batch label for single-use code groups (migration 042); NULL = standalone. */
+  group_name: string | null;
 }
 
 /**
@@ -58,6 +61,27 @@ export interface CreateDiscountCodePayload {
   /** Percentage 0-100 when type='percentage'; pence when type='fixed'. */
   value: number;
   max_uses?: number | null;
+  valid_from?: string | null;
+  valid_until?: string | null;
+  is_active?: boolean;
+  group_name?: string | null;
+}
+
+/**
+ * Payload for the create-discount-code Edge Function in BATCH mode
+ * (batch_count > 1). The server generates `batch_count` single-use codes
+ * ({PREFIX}-{4 alphanumerics}, prefix from `code` or the group name),
+ * forces max_uses=1 on each, and returns the array of inserted rows.
+ */
+export interface CreateDiscountBatchPayload {
+  /** Optional prefix source; the group name is used when omitted. */
+  code?: string;
+  group_name: string;
+  /** 2-200 (1 would be a plain single-code create). */
+  batch_count: number;
+  type: DiscountType;
+  /** Percentage 0-100 when type='percentage'; pence when type='fixed'. */
+  value: number;
   valid_from?: string | null;
   valid_until?: string | null;
   is_active?: boolean;

@@ -12,7 +12,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { franchiseeKeys } from '../queryKeys';
-import type { DiscountCode, CreateDiscountCodePayload, UpdateDiscountCodePayload } from './types';
+import type {
+  DiscountCode,
+  CreateDiscountCodePayload,
+  CreateDiscountBatchPayload,
+  UpdateDiscountCodePayload,
+} from './types';
 
 const STALE_TIME = 2 * 60_000;
 
@@ -89,6 +94,20 @@ export function useCreateDiscountCode() {
   const queryClient = useQueryClient();
   return useMutation<DiscountCode, Error, CreateDiscountCodePayload>({
     mutationFn: (payload) => callEdgeFunction<DiscountCode>('create-discount-code', payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: franchiseeKeys.discounts() });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Create batch (single-use code groups; migration 042)
+// ---------------------------------------------------------------------------
+
+export function useCreateDiscountBatch() {
+  const queryClient = useQueryClient();
+  return useMutation<DiscountCode[], Error, CreateDiscountBatchPayload>({
+    mutationFn: (payload) => callEdgeFunction<DiscountCode[]>('create-discount-code', payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: franchiseeKeys.discounts() });
     },

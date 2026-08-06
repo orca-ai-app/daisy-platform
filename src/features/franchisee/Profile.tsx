@@ -14,13 +14,21 @@ import { useOwnProfile, useUpdateOwnProfile } from './profileQueries';
 import { MedicalQr } from './components/MedicalQr';
 
 // ---------------------------------------------------------------------------
-// Schema — only name and phone are mutable on this surface.
+// Schema — only name, phone and business name are mutable on this surface.
 // Email is read-only: only HQ can change it via the admin form.
 // ---------------------------------------------------------------------------
 
 const profileSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters'),
   phone: z.string().trim().optional(),
+  business_name: z
+    .string()
+    .trim()
+    .max(80, 'Business name must be 80 characters or fewer')
+    .refine((v) => v.length === 0 || v.length >= 2, {
+      message: 'Business name must be at least 2 characters',
+    })
+    .optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -43,6 +51,7 @@ export default function Profile() {
     defaultValues: {
       name: '',
       phone: '',
+      business_name: '',
     },
   });
 
@@ -52,6 +61,7 @@ export default function Profile() {
       reset({
         name: profile.data.name ?? '',
         phone: profile.data.phone ?? '',
+        business_name: profile.data.business_name ?? '',
       });
     }
   }, [profile.data, reset]);
@@ -62,11 +72,20 @@ export default function Profile() {
     const trimmedName = values.name.trim();
     const trimmedPhone = values.phone?.trim() ?? '';
     const phoneValue = trimmedPhone.length > 0 ? trimmedPhone : null;
+    const trimmedBusinessName = values.business_name?.trim() ?? '';
 
-    // Compute diff — only send changed fields.
-    const fields: { name?: string; phone?: string | null } = {};
+    // Compute diff — only send changed fields. Business name cannot be
+    // cleared from this surface (the server requires 2-80 characters), so an
+    // emptied field is treated as "no change".
+    const fields: { name?: string; phone?: string | null; business_name?: string } = {};
     if (trimmedName !== profile.data.name) fields.name = trimmedName;
     if (phoneValue !== (profile.data.phone ?? null)) fields.phone = phoneValue;
+    if (
+      trimmedBusinessName.length > 0 &&
+      trimmedBusinessName !== (profile.data.business_name ?? '')
+    ) {
+      fields.business_name = trimmedBusinessName;
+    }
 
     if (Object.keys(fields).length === 0) {
       toast.info('No changes to save');
@@ -86,7 +105,7 @@ export default function Profile() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="My profile"
-        subtitle="Update your name and contact number. Email changes must go through HQ."
+        subtitle="Update your name, contact number and business name. Email changes must go through HQ."
       />
 
       {profile.isLoading ? (
@@ -142,19 +161,21 @@ export default function Profile() {
                   <Input id="profile-phone" type="tel" {...register('phone')} />
                 </div>
 
-                {/* Business name — display only; HQ sets this */}
-                {profile.data?.business_name ? (
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Business name</Label>
-                    <Input
-                      value={profile.data.business_name}
-                      readOnly
-                      disabled
-                      className="cursor-not-allowed opacity-60"
-                    />
-                    <p className="text-daisy-muted text-xs">Business name is managed by HQ.</p>
-                  </div>
-                ) : null}
+                {/* Business name — the public trading name shown to customers */}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="profile-business-name">Business name</Label>
+                  <Input
+                    id="profile-business-name"
+                    placeholder="e.g. Daisy First Aid Sutton"
+                    {...register('business_name')}
+                  />
+                  <p className="text-daisy-muted text-xs">
+                    Your public trading name — shown to customers on booking pages.
+                  </p>
+                  {errors.business_name ? (
+                    <p className="text-daisy-orange text-xs">{errors.business_name.message}</p>
+                  ) : null}
+                </div>
 
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="submit" disabled={isSubmitting || update.isPending || !isDirty}>

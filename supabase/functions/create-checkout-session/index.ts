@@ -23,6 +23,10 @@
 // never both pay for the last place; the webhook only confirms. Abandoned
 // checkouts release their hold via the hourly sweep (35 min). uses_count is
 // bumped at confirmation. If Stripe fails, booking + hold are rolled back.
+//
+// Platform fee removed pre-launch (2026-08): HQ bills franchisees monthly
+// (MAX(base, 10%)), so the per-transaction application fee was an artefact.
+// PLATFORM_FEE_PERCENT now defaults to 0 and a 0 fee is omitted entirely.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -95,7 +99,8 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
   const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
-  const feePercent = Number(Deno.env.get('PLATFORM_FEE_PERCENT') ?? '2') || 2;
+  const feePercentRaw = Number(Deno.env.get('PLATFORM_FEE_PERCENT') ?? '0');
+  const feePercent = Number.isFinite(feePercentRaw) ? feePercentRaw : 0;
   if (!supabaseUrl || !serviceRoleKey || !stripeSecretKey) {
     return jsonResponse({ error: 'Server misconfigured' }, 500);
   }
@@ -392,7 +397,11 @@ Deno.serve(async (req: Request) => {
             quantity: 1,
           },
         ],
-        payment_intent_data: { application_fee_amount: applicationFee },
+        // Stripe rejects application_fee_amount: 0 in some flows — omit the
+        // key entirely when there is no fee.
+        ...(applicationFee > 0
+          ? { payment_intent_data: { application_fee_amount: applicationFee } }
+          : {}),
         success_url: `${origin}/booking/success?session_id={CHECKOUT_SESSION_ID}&ref=${encodeURIComponent(bookingReference)}`,
         cancel_url: `${origin}/booking/cancelled`,
         metadata: {

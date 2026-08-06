@@ -112,6 +112,8 @@ export interface OwnBookingDetail {
   booking_status: BookingStatus;
   cancellation_reason: string | null;
   refund_amount_pence: number | null;
+  stripe_payment_intent_id: string | null;
+  stripe_checkout_session_id: string | null;
   notes: string | null;
   quantity: number;
   created_at: string;
@@ -166,6 +168,22 @@ export interface CancelBookingPayload {
   booking_id: string;
   cancellation_reason: string;
   refund_amount_pence?: number;
+}
+
+export interface TransferBookingPayload {
+  booking_id: string;
+  target_course_instance_id: string;
+  notify_customer: boolean;
+}
+
+export interface UpdateCustomerPayload {
+  /** Used for cache invalidation only — not sent to the Edge Function. */
+  booking_id: string;
+  customer_id: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string | null;
+  email?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -345,6 +363,8 @@ export function useBookingDetail(id: string | undefined) {
            booking_status,
            cancellation_reason,
            refund_amount_pence,
+           stripe_payment_intent_id,
+           stripe_checkout_session_id,
            notes,
            quantity,
            created_at,
@@ -368,6 +388,69 @@ export function useBookingDetail(id: string | undefined) {
         throw error;
       }
       return data as unknown as OwnBookingDetail | null;
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Transfer target type
+// ---------------------------------------------------------------------------
+
+export interface TransferTargetRow {
+  id: string;
+  event_date: string;
+  start_time: string | null;
+  venue_name: string | null;
+  venue_postcode: string | null;
+  spots_remaining: number;
+  template_name: string | null;
+}
+
+/**
+ * useTransferTargets — the franchisee's OTHER upcoming scheduled courses,
+ * candidates for moving a booking onto. RLS scopes the list to the caller's
+ * own instances (the transfer-booking EF re-validates ownership server-side).
+ */
+export function useTransferTargets(excludeInstanceId: string | undefined, enabled: boolean) {
+  return useQuery<TransferTargetRow[]>({
+    enabled: enabled && !!excludeInstanceId,
+    queryKey: [...franchiseeKeys.bookings(), 'transfer-targets', excludeInstanceId],
+    queryFn: async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      let qb = supabase
+        .from('da_course_instances')
+        .select(
+          'id, event_date, start_time, venue_name, venue_postcode, spots_remaining, template:da_course_templates(name)',
+        )
+        .eq('status', 'scheduled')
+        .gte('event_date', today)
+        .order('event_date', { ascending: true });
+      if (excludeInstanceId) {
+        qb = qb.neq('id', excludeInstanceId);
+      }
+      const { data, error } = await qb;
+      if (error) {
+        if (isTableMissing(error.code)) return [];
+        throw error;
+      }
+      type Row = {
+        id: string;
+        event_date: string;
+        start_time: string | null;
+        venue_name: string | null;
+        venue_postcode: string | null;
+        spots_remaining: number;
+        template: { name: string } | null;
+      };
+      return ((data ?? []) as unknown as Row[]).map((r) => ({
+        id: r.id,
+        event_date: r.event_date,
+        start_time: r.start_time,
+        venue_name: r.venue_name,
+        venue_postcode: r.venue_postcode,
+        spots_remaining: r.spots_remaining,
+        template_name: r.template?.name ?? null,
+      }));
     },
   });
 }
@@ -449,6 +532,46 @@ export function useCancelBooking() {
       void queryClient.invalidateQueries({
         queryKey: franchiseeKeys.booking(variables.booking_id),
       });
+    },
+  });
+}
+
+/**
+ * useTransferBooking — moves a booking to another of the franchisee's
+ * scheduled courses via the transfer-booking Edge Function. Spots move with
+ * it, so course lists and the add-booking course picker are invalidated too.
+ */
+export function useTransferBooking() {
+  const queryClient = useQueryClient();
+  return useMutation<unknown, Error, TransferBookingPayload>({
+    mutationFn: (payload) => callEdgeFunction('transfer-booking', payload),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: franchiseeKeys.bookings() });
+      void queryClient.invalidateQueries({
+        queryKey: franchiseeKeys.booking(variables.booking_id),
+      });
+      void queryClient.invalidateQueries({ queryKey: franchiseeKeys.courses() });
+      void queryClient.invalidateQueries({ queryKey: ['bookable-instances'] });
+    },
+  });
+}
+
+/**
+ * useUpdateCustomer — edits a customer's contact details via the
+ * update-customer Edge Function. booking_id is only used to invalidate the
+ * detail page the edit was made from (customer data is joined into it).
+ */
+export function useUpdateCustomer() {
+  const queryClient = useQueryClient();
+  return useMutation<unknown, Error, UpdateCustomerPayload>({
+    mutationFn: ({ booking_id: _bookingId, ...payload }) =>
+      callEdgeFunction('update-customer', payload),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: franchiseeKeys.bookings() });
+      void queryClient.invalidateQueries({
+        queryKey: franchiseeKeys.booking(variables.booking_id),
+      });
+      void queryClient.invalidateQueries({ queryKey: franchiseeKeys.customers() });
     },
   });
 }

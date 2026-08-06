@@ -90,8 +90,12 @@ export interface CourseInstance {
   end_time: string;
   venue_name: string | null;
   venue_address: string | null;
-  /** NOT NULL in the schema. */
-  venue_postcode: string;
+  /**
+   * Nullable since migration 040: public courses always have a full postcode;
+   * private courses may carry a full postcode, an outcode only (e.g. 'GU1'),
+   * or NULL when venue_tbc.
+   */
+  venue_postcode: string | null;
   lat: number | null;
   lng: number | null;
   visibility: Visibility;
@@ -116,6 +120,13 @@ export interface CourseInstance {
    * da_bookings.private_client_id automatically.
    */
   private_client_id: string | null;
+  /**
+   * Optional customer-facing class name override (migration 040), e.g.
+   * "BOOKED – Private 2hr Class for Anne S". Fall back to the template name.
+   */
+  display_name: string | null;
+  /** Venue not yet confirmed (private courses only, migration 040). */
+  venue_tbc: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +144,10 @@ export interface TicketType {
   /** NULL means unlimited (capped only by the instance's spots_remaining). */
   max_available: number | null;
   sort_order: number | null;
+  /** Optional session details shown under the name (migration 040), e.g. "6-hour · 9:30–15:30". */
+  session_label: string | null;
+  /** Optional VAT rate percentage the price includes (migration 040), e.g. 20. */
+  vat_rate: number | null;
 }
 
 /**
@@ -216,6 +231,10 @@ export interface CreateCourseTicketTypeInput {
   seats_consumed: number;
   max_available: number | null;
   sort_order: number;
+  /** Optional session details (migration 040). */
+  session_label?: string | null;
+  /** Optional VAT rate percentage (migration 040). */
+  vat_rate?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +264,11 @@ export interface CreateCourseInstanceRequest {
   end_time: string;
   venue_name?: string | null;
   venue_address?: string | null;
-  venue_postcode: string;
+  /**
+   * Public: full postcode required. Private: full postcode, outcode only
+   * (e.g. 'GU1'), or null when venue_tbc (migration 040).
+   */
+  venue_postcode: string | null;
   visibility: Visibility;
   capacity: number;
   price_pence: number;
@@ -263,6 +286,10 @@ export interface CreateCourseInstanceRequest {
    * Only meaningful for visibility='private' courses.
    */
   private_client_id?: string | null;
+  /** Optional customer-facing class name override (migration 040). */
+  display_name?: string | null;
+  /** Venue not yet confirmed (private courses only, migration 040). */
+  venue_tbc?: boolean;
 }
 
 /** 2xx success body for create-course-instance. */

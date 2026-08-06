@@ -39,6 +39,10 @@ export interface OwnCoursesFilters {
   from?: string;
   /** 'YYYY-MM-DD' inclusive upper bound. */
   to?: string;
+  /** Course-type filter: da_course_templates.id or 'all' (NTH-3). */
+  templateId?: string | 'all';
+  /** Sort direction on event_date. Defaults to 'asc' (soonest first). */
+  sortDir?: 'asc' | 'desc';
   page?: number;
   /** Defaults to 20. */
   pageSize?: number;
@@ -51,13 +55,21 @@ export interface OwnCourseListRow {
   end_time: string;
   status: CourseInstanceStatus;
   venue_name: string | null;
-  venue_postcode: string;
+  /** Null for private venue-TBC courses (migration 040). */
+  venue_postcode: string | null;
+  venue_tbc: boolean;
   capacity: number;
   spots_remaining: number;
   price_pence: number;
   template_id: string;
   template_name: string;
+  /** Customer-facing name override (migration 040); null → template name. */
+  display_name: string | null;
   booking_token: string | null;
+  /** Lowest ticket price for "From £X" display (NTH-2); null when no tickets. */
+  ticket_price_from: number | null;
+  /** True when >1 ticket type with differing prices (NTH-2). */
+  ticket_prices_differ: boolean;
 }
 
 export interface OwnCoursesResult {
@@ -75,10 +87,26 @@ export interface OwnCoursesResult {
  * Sorted ascending by event_date by default.
  */
 export function useOwnCourses(filters: OwnCoursesFilters = {}) {
-  const { status = 'all', from, to, page = 0, pageSize = 20 } = filters;
+  const {
+    status = 'all',
+    from,
+    to,
+    templateId = 'all',
+    sortDir = 'asc',
+    page = 0,
+    pageSize = 20,
+  } = filters;
 
   // Build a stable, serialisable filter object for the cache key.
-  const filterKey: Record<string, unknown> = { status, from, to, page, pageSize };
+  const filterKey: Record<string, unknown> = {
+    status,
+    from,
+    to,
+    templateId,
+    sortDir,
+    page,
+    pageSize,
+  };
 
   const query = useQuery<OwnCoursesResult>({
     queryKey: franchiseeKeys.coursesList(filterKey),
@@ -93,20 +121,27 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
            status,
            venue_name,
            venue_postcode,
+           venue_tbc,
            capacity,
            spots_remaining,
            price_pence,
            template_id,
+           display_name,
            booking_token,
-           template:da_course_templates ( id, name )`,
+           template:da_course_templates ( id, name ),
+           ticket_types:da_ticket_types ( price_pence )`,
           { count: 'exact' },
         )
-        // Default sort: upcoming courses first, then past
-        .order('event_date', { ascending: true })
-        .order('start_time', { ascending: true });
+        // Default sort: upcoming courses first (asc), toggleable (NTH-3)
+        .order('event_date', { ascending: sortDir === 'asc' })
+        .order('start_time', { ascending: sortDir === 'asc' });
 
       if (status !== 'all') {
         qb = qb.eq('status', status);
+      }
+
+      if (templateId !== 'all') {
+        qb = qb.eq('template_id', templateId);
       }
 
       if (from) {
@@ -127,25 +162,36 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
         throw error;
       }
 
-      type Joined = Omit<OwnCourseListRow, 'template_name'> & {
+      type Joined = Omit<
+        OwnCourseListRow,
+        'template_name' | 'ticket_price_from' | 'ticket_prices_differ'
+      > & {
         template: { id: string; name: string } | null;
+        ticket_types: Array<{ price_pence: number }> | null;
       };
 
-      const rows: OwnCourseListRow[] = ((data ?? []) as unknown as Joined[]).map((row) => ({
-        id: row.id,
-        event_date: row.event_date,
-        start_time: row.start_time,
-        end_time: row.end_time,
-        status: row.status,
-        venue_name: row.venue_name,
-        venue_postcode: row.venue_postcode,
-        capacity: row.capacity,
-        spots_remaining: row.spots_remaining,
-        price_pence: row.price_pence,
-        template_id: row.template_id,
-        booking_token: row.booking_token,
-        template_name: row.template?.name ?? '-',
-      }));
+      const rows: OwnCourseListRow[] = ((data ?? []) as unknown as Joined[]).map((row) => {
+        const ticketPrices = (row.ticket_types ?? []).map((tt) => tt.price_pence);
+        return {
+          id: row.id,
+          event_date: row.event_date,
+          start_time: row.start_time,
+          end_time: row.end_time,
+          status: row.status,
+          venue_name: row.venue_name,
+          venue_postcode: row.venue_postcode,
+          venue_tbc: row.venue_tbc,
+          capacity: row.capacity,
+          spots_remaining: row.spots_remaining,
+          price_pence: row.price_pence,
+          template_id: row.template_id,
+          display_name: row.display_name,
+          booking_token: row.booking_token,
+          template_name: row.template?.name ?? '-',
+          ticket_price_from: ticketPrices.length > 0 ? Math.min(...ticketPrices) : null,
+          ticket_prices_differ: ticketPrices.length > 1 && new Set(ticketPrices).size > 1,
+        };
+      });
 
       return { rows, totalCount: count ?? 0 };
     },

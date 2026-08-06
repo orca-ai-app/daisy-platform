@@ -78,6 +78,10 @@ interface CreateCourseTicketTypeInput {
   seats_consumed: number;
   max_available: number | null;
   sort_order: number;
+  /** Optional session details shown under the ticket name (migration 040). */
+  session_label?: string | null;
+  /** Optional VAT rate percentage the price includes, e.g. 20 (migration 040). */
+  vat_rate?: number | null;
 }
 
 interface DefaultTicketType {
@@ -93,7 +97,11 @@ interface CreateCourseInstanceRequest {
   end_time: string;
   venue_name?: string | null;
   venue_address?: string | null;
-  venue_postcode: string;
+  /**
+   * Public courses: a full UK postcode (required). Private courses: a full
+   * postcode, an outcode only (e.g. 'GU1'), or null when venue_tbc.
+   */
+  venue_postcode: string | null;
   visibility: Visibility;
   capacity: number;
   price_pence: number;
@@ -102,6 +110,10 @@ interface CreateCourseInstanceRequest {
   out_of_territory_confirmed?: boolean;
   /** Optional: the private client this course is for (Wave 9C / migration 021). */
   private_client_id?: string | null;
+  /** Optional customer-facing class name override (migration 040). */
+  display_name?: string | null;
+  /** Venue not yet confirmed (private courses only, migration 040). */
+  venue_tbc?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +237,8 @@ async function resolveTerritory(
 // ---------------------------------------------------------------------------
 
 const UK_POSTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
+// Outward code only (e.g. 'GU1', 'SW1A') — accepted for PRIVATE courses.
+const UK_OUTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?$/i;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/;
@@ -249,11 +263,35 @@ function validateBody(
   if (typeof b.end_time !== 'string' || !TIME_RE.test(b.end_time)) {
     return { ok: false, error: 'end_time must be HH:MM or HH:MM:SS' };
   }
-  if (typeof b.venue_postcode !== 'string' || !UK_POSTCODE_RE.test(b.venue_postcode)) {
-    return { ok: false, error: 'venue_postcode must be a valid UK postcode' };
-  }
   if (b.visibility !== 'public' && b.visibility !== 'private') {
     return { ok: false, error: 'visibility must be "public" or "private"' };
+  }
+
+  // Postcode rules (migration 040 / NTH-9):
+  //   public  — a full UK postcode is REQUIRED (unchanged behaviour).
+  //   private — a full postcode, an outcode only (e.g. 'GU1'), or nothing
+  //             when the venue is TBC.
+  const venueTbc = b.venue_tbc === true;
+  const rawPostcode = typeof b.venue_postcode === 'string' ? b.venue_postcode.trim() : '';
+  if (b.visibility === 'public') {
+    if (!rawPostcode || !UK_POSTCODE_RE.test(rawPostcode)) {
+      return { ok: false, error: 'venue_postcode must be a valid UK postcode' };
+    }
+    if (venueTbc) {
+      return { ok: false, error: 'venue_tbc is only allowed for private courses' };
+    }
+  } else if (rawPostcode) {
+    if (!UK_POSTCODE_RE.test(rawPostcode) && !UK_OUTCODE_RE.test(rawPostcode)) {
+      return {
+        ok: false,
+        error: 'venue_postcode must be a valid UK postcode or district (e.g. GU1)',
+      };
+    }
+  } else if (!venueTbc) {
+    return {
+      ok: false,
+      error: 'venue_postcode is required unless the venue is marked as to be confirmed',
+    };
   }
   if (typeof b.capacity !== 'number' || !Number.isInteger(b.capacity) || b.capacity < 1) {
     return { ok: false, error: 'capacity must be a positive integer' };
@@ -298,6 +336,25 @@ function validateBody(
         };
       }
     }
+    if (tt.session_label !== null && tt.session_label !== undefined) {
+      if (typeof tt.session_label !== 'string') {
+        return { ok: false, error: `ticket_types[${i}].session_label must be a string or null` };
+      }
+    }
+    if (tt.vat_rate !== null && tt.vat_rate !== undefined) {
+      if (
+        typeof tt.vat_rate !== 'number' ||
+        !Number.isFinite(tt.vat_rate) ||
+        tt.vat_rate < 0 ||
+        tt.vat_rate > 99.99 ||
+        Math.round(tt.vat_rate * 100) !== tt.vat_rate * 100
+      ) {
+        return {
+          ok: false,
+          error: `ticket_types[${i}].vat_rate must be a percentage between 0 and 99.99 (max 2 decimals) or null`,
+        };
+      }
+    }
   }
 
   // private_client_id — optional UUID or null.
@@ -318,7 +375,7 @@ function validateBody(
       end_time: b.end_time as string,
       venue_name: typeof b.venue_name === 'string' ? b.venue_name || null : null,
       venue_address: typeof b.venue_address === 'string' ? b.venue_address || null : null,
-      venue_postcode: (b.venue_postcode as string).trim().toUpperCase(),
+      venue_postcode: rawPostcode ? rawPostcode.toUpperCase() : null,
       visibility: b.visibility as Visibility,
       capacity: b.capacity as number,
       price_pence: b.price_pence as number,
@@ -329,7 +386,47 @@ function validateBody(
         typeof b.private_client_id === 'string' && UUID_RE.test(b.private_client_id as string)
           ? (b.private_client_id as string)
           : null,
+      display_name: typeof b.display_name === 'string' ? b.display_name.trim() || null : null,
+      venue_tbc: venueTbc,
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Outcode geocode (private courses only) — postcodes.io outcode endpoint
+// returns the district centroid directly; postcode_prefix = the outcode.
+// ---------------------------------------------------------------------------
+
+async function geocodeOutcode(
+  outcode: string,
+): Promise<{ ok: true; result: GeocodeResult } | { ok: false; status: number; error: string }> {
+  let response: Response;
+  try {
+    response = await fetch(`https://api.postcodes.io/outcodes/${encodeURIComponent(outcode)}`);
+  } catch (err) {
+    return { ok: false, status: 502, error: `Outcode lookup failed: ${String(err)}` };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status === 404 ? 400 : 502,
+      error:
+        response.status === 404
+          ? `Postcode district not found: ${outcode}`
+          : `Outcode lookup failed (${response.status})`,
+    };
+  }
+  const body = (await response.json()) as {
+    result?: { latitude?: number | null; longitude?: number | null };
+  };
+  const latitude = body.result?.latitude;
+  const longitude = body.result?.longitude;
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+    return { ok: false, status: 502, error: 'Outcode lookup returned no coordinates' };
+  }
+  return {
+    ok: true,
+    result: { lat: latitude, lng: longitude, postcode_prefix: outcode.toUpperCase() },
   };
 }
 
@@ -430,28 +527,64 @@ Deno.serve(async (req: Request) => {
 
   // ----------------------------------------------------------
   // Server-side geocode (ignores any client-supplied lat/lng)
+  //
+  // Three modes (migration 040 / NTH-9):
+  //   full postcode — geocode-postcode function (unchanged).
+  //   outcode only (private) — postcodes.io outcode endpoint directly;
+  //     postcode_prefix = the outcode. Territory resolution + 409 gate as
+  //     normal.
+  //   venue TBC (private) — no coordinates; territory falls back to the
+  //     franchisee's own primary territory, out_of_territory false, no gate.
   // ----------------------------------------------------------
-  const geocodeRes = await geocodePostcode(supabaseUrl, serviceRoleKey, input.venue_postcode);
-  if (!geocodeRes.ok) {
-    return jsonResponse(
-      { error: `Postcode geocode failed: ${geocodeRes.error}` },
-      geocodeRes.status >= 500 ? 502 : 400,
-    );
-  }
-  const { lat, lng, postcode_prefix } = geocodeRes.result;
+  let lat: number | null = null;
+  let lng: number | null = null;
+  let territory: TerritoryResolution;
 
-  // ----------------------------------------------------------
-  // Territory resolution
-  // ----------------------------------------------------------
-  const territory = await resolveTerritory(admin, franchisee.id, postcode_prefix);
+  if (input.venue_postcode) {
+    const isFullPostcode = UK_POSTCODE_RE.test(input.venue_postcode);
+    const geocodeRes = isFullPostcode
+      ? await geocodePostcode(supabaseUrl, serviceRoleKey, input.venue_postcode)
+      : await geocodeOutcode(input.venue_postcode);
+    if (!geocodeRes.ok) {
+      return jsonResponse(
+        { error: `Postcode geocode failed: ${geocodeRes.error}` },
+        geocodeRes.status >= 500 ? 502 : 400,
+      );
+    }
+    lat = geocodeRes.result.lat;
+    lng = geocodeRes.result.lng;
 
-  // ----------------------------------------------------------
-  // Out-of-territory gate — return 409 if confirmation missing
-  // ----------------------------------------------------------
-  if (territory.out_of_territory_warning !== null && !input.out_of_territory_confirmed) {
-    const uiWarning: Exclude<OutOfTerritoryWarning, 'none'> =
-      territory.out_of_territory_warning === 'owned_by_other' ? 'owned_by_other' : 'vacant';
-    return jsonResponse({ error: 'out_of_territory', warning: uiWarning }, 409);
+    // ----------------------------------------------------------
+    // Territory resolution
+    // ----------------------------------------------------------
+    territory = await resolveTerritory(admin, franchisee.id, geocodeRes.result.postcode_prefix);
+
+    // ----------------------------------------------------------
+    // Out-of-territory gate — return 409 if confirmation missing
+    // ----------------------------------------------------------
+    if (territory.out_of_territory_warning !== null && !input.out_of_territory_confirmed) {
+      const uiWarning: Exclude<OutOfTerritoryWarning, 'none'> =
+        territory.out_of_territory_warning === 'owned_by_other' ? 'owned_by_other' : 'vacant';
+      return jsonResponse({ error: 'out_of_territory', warning: uiWarning }, 409);
+    }
+  } else {
+    // Venue TBC — no postcode. Stamp the franchisee's own primary territory
+    // so the instance still rolls up to their reporting; no 409 gate.
+    const ownTerritory = await admin
+      .from('da_territories')
+      .select('id')
+      .eq('franchisee_id', franchisee.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (ownTerritory.error) {
+      console.error('own territory lookup failed', ownTerritory.error);
+    }
+    territory = {
+      territory_id: (ownTerritory.data as { id: string } | null)?.id ?? null,
+      out_of_territory: false,
+      out_of_territory_warning: null,
+    };
   }
 
   // ----------------------------------------------------------
@@ -508,6 +641,9 @@ Deno.serve(async (req: Request) => {
     out_of_territory_warning: territory.out_of_territory_warning,
     // private_client_id is persisted from migration 021; null for public courses.
     private_client_id: input.private_client_id ?? null,
+    // Migration 040: customer-facing name override + venue-TBC flag.
+    display_name: input.display_name ?? null,
+    venue_tbc: input.venue_tbc === true,
   };
 
   const instanceInsert = await admin
@@ -559,6 +695,8 @@ Deno.serve(async (req: Request) => {
     seats_consumed: tt.seats_consumed,
     max_available: tt.max_available ?? null,
     sort_order: tt.sort_order ?? 0,
+    session_label: typeof tt.session_label === 'string' ? tt.session_label.trim() || null : null,
+    vat_rate: typeof tt.vat_rate === 'number' ? tt.vat_rate : null,
   }));
 
   const ticketInsert = await admin.from('da_ticket_types').insert(ticketRows).select('*');
@@ -594,7 +732,7 @@ Deno.serve(async (req: Request) => {
         out_of_territory_warning: uiWarningForActivity,
         private_client_id: input.private_client_id ?? null,
       },
-      description: `Course '${templateRow.name}' scheduled for ${input.event_date} at ${input.venue_postcode}`,
+      description: `Course '${templateRow.name}' scheduled for ${input.event_date} at ${input.venue_postcode ?? 'venue TBC'}`,
     })
     .then((r: { error: unknown }) => {
       // Activity insert failure must not block the response.

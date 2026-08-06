@@ -125,6 +125,8 @@ export function useCourseInstance(id: string | undefined) {
            out_of_territory,
            out_of_territory_warning,
            cancellation_reason,
+           display_name,
+           venue_tbc,
            template:da_course_templates ( id, name, slug )`,
         )
         .eq('id', id)
@@ -155,7 +157,7 @@ export function useCourseTicketTypes(courseInstanceId: string | undefined) {
       const { data, error } = await supabase
         .from('da_ticket_types')
         .select(
-          'id, created_at, course_instance_id, name, price_pence, seats_consumed, max_available, sort_order',
+          'id, created_at, course_instance_id, name, price_pence, seats_consumed, max_available, sort_order, session_label, vat_rate',
         )
         .eq('course_instance_id', courseInstanceId)
         .order('sort_order', { ascending: true, nullsFirst: false });
@@ -179,14 +181,24 @@ export interface CourseInstanceUpdateFields {
   end_time?: string;
   venue_name?: string | null;
   venue_address?: string | null;
-  venue_postcode?: string;
+  /** Null only for private venue-TBC courses (migration 040). */
+  venue_postcode?: string | null;
   capacity?: number;
   price_pence?: number;
+  /** Customer-facing class name override (migration 040). */
+  display_name?: string | null;
+  /** Venue not yet confirmed — private courses only (migration 040). */
+  venue_tbc?: boolean;
 }
 
 interface UpdateCourseInstanceArgs {
   id: string;
   fields: CourseInstanceUpdateFields;
+  /**
+   * NTH-14: when true and any date/time/venue field actually changed, the EF
+   * queues one 'course_updated' email per confirmed booking.
+   */
+  notify_attendees?: boolean;
 }
 
 export function useUpdateCourseInstance(): UseMutationResult<
@@ -196,8 +208,12 @@ export function useUpdateCourseInstance(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, fields }) =>
-      callEdgeFunction<CourseInstance>('update-course-instance', { id, fields }),
+    mutationFn: ({ id, fields, notify_attendees }) =>
+      callEdgeFunction<CourseInstance>('update-course-instance', {
+        id,
+        fields,
+        notify_attendees: notify_attendees ?? false,
+      }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: franchiseeKeys.course(variables.id) });
       void queryClient.invalidateQueries({ queryKey: franchiseeKeys.courses() });

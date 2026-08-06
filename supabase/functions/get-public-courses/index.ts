@@ -77,6 +77,7 @@ function toCard(r: any) {
   return {
     id: r.id,
     booking_token: r.booking_token ?? null,
+    display_name: r.display_name ?? null,
     template_name: r.template_name ?? r.template?.name ?? null,
     template_slug: r.template_slug ?? r.template?.slug ?? null,
     // Class content + suitability, shown before booking (Jenni, M3 feedback §1).
@@ -137,10 +138,10 @@ Deno.serve(async (req: Request) => {
     const single = await admin
       .from('da_course_instances')
       .select(
-        `id, booking_token, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
+        `id, booking_token, display_name, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
          template:da_course_templates ( name, slug, description, age_range ),
          franchisee:da_franchisees ( name ),
-         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed )`,
+         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`,
       )
       .eq('booking_token', bookingToken)
       .maybeSingle();

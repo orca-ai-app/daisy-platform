@@ -2,16 +2,21 @@
  * /franchisee/courses — franchisee's own course instances (Wave 7C).
  *
  * Default view: DataTable (list). Toggle to MonthCalendar via view button.
- * Filters: status, date range (presets + custom). Sort: event_date asc.
- * Calendar view: month navigator + MonthCalendar chip grid.
+ * Filters: status, date range (presets + custom), course type (template).
+ * Sort: event_date asc by default (soonest first) with a direction toggle.
+ *
+ * Filter/sort/view state persists (NTH-3 / FIX-6): the URL search params are
+ * the source of truth (shareable, survives in-history navigation) and are
+ * mirrored to localStorage ('daisy.courses.filters') so the state also
+ * survives plain links back to /franchisee/courses.
  *
  * Reads via anon client + RLS. No client-side franchisee_id filter.
  */
 
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
-import { QrCode } from 'lucide-react';
+import { ArrowDown, ArrowUp, QrCode } from 'lucide-react';
 import { PageHeader, DataTable, StatusPill, EmptyState, MonthCalendar } from '@/components/daisy';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -31,7 +36,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { formatPence } from '@/lib/format';
 import { Link } from 'react-router';
 import { MedicalQr } from '../components/MedicalQr';
 import {
@@ -40,6 +44,8 @@ import {
   type OwnCourseListRow,
   type OwnCoursesFilters,
 } from './courseListQueries';
+import { useCourseTemplates } from './createCourseQueries';
+import { formatPrice } from './money';
 import type { CourseInstanceStatus } from './types';
 import { useOwnProfile } from '../profileQueries';
 
@@ -64,6 +70,30 @@ const DATE_OPTIONS: ReadonlyArray<{ value: DatePreset; label: string }> = [
   { value: 'past', label: 'Past only' },
   { value: 'custom', label: 'Custom range' },
 ];
+
+// ---------------------------------------------------------------------------
+// Filter persistence (NTH-3 / FIX-6)
+//
+// URL search params are the source of truth; localStorage mirrors them so
+// state survives plain (param-less) navigation back to the list.
+// ---------------------------------------------------------------------------
+
+const FILTERS_STORAGE_KEY = 'daisy.courses.filters';
+
+/** Search-param keys with their default values (defaults are omitted from the URL). */
+const FILTER_DEFAULTS: Record<string, string> = {
+  view: 'list',
+  status: 'all',
+  date: 'all',
+  from: '',
+  to: '',
+  template: 'all',
+  sort: 'asc',
+};
+const FILTER_KEYS = Object.keys(FILTER_DEFAULTS);
+
+const STATUS_VALUES = new Set(STATUS_OPTIONS.map((o) => o.value as string));
+const DATE_VALUES = new Set(DATE_OPTIONS.map((o) => o.value as string));
 
 // ---------------------------------------------------------------------------
 // Date helpers — wall-clock, no UTC arithmetic
@@ -201,23 +231,33 @@ function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
     {
       id: 'template',
       header: 'Course',
-      accessorFn: (row) => row.template_name,
+      accessorFn: (row) => row.display_name ?? row.template_name,
       cell: ({ row }) => (
-        <span className="text-daisy-ink font-semibold">{row.original.template_name}</span>
+        <span className="flex flex-col">
+          <span className="text-daisy-ink font-semibold">
+            {row.original.display_name ?? row.original.template_name}
+          </span>
+          {row.original.display_name ? (
+            <span className="text-daisy-muted text-[12px]">{row.original.template_name}</span>
+          ) : null}
+        </span>
       ),
     },
     {
       id: 'venue',
       header: 'Venue',
-      accessorFn: (row) => `${row.venue_name ?? ''} ${row.venue_postcode}`,
-      cell: ({ row }) => (
-        <span className="flex flex-col">
-          <span className="font-semibold">{row.original.venue_name ?? '-'}</span>
-          <span className="text-daisy-muted font-mono text-[12px]">
-            {row.original.venue_postcode}
+      accessorFn: (row) => `${row.venue_name ?? ''} ${row.venue_postcode ?? ''}`,
+      cell: ({ row }) =>
+        row.original.venue_tbc && !row.original.venue_postcode ? (
+          <span className="text-daisy-muted text-[12px] font-semibold">Venue TBC</span>
+        ) : (
+          <span className="flex flex-col">
+            <span className="font-semibold">{row.original.venue_name ?? '-'}</span>
+            <span className="text-daisy-muted font-mono text-[12px]">
+              {row.original.venue_postcode ?? '-'}
+            </span>
           </span>
-        </span>
-      ),
+        ),
     },
     {
       id: 'capacity',
@@ -246,7 +286,11 @@ function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
       accessorKey: 'price_pence',
       header: 'Price',
       cell: ({ row }) => (
-        <span className="font-semibold">{formatPence(row.original.price_pence)}</span>
+        <span className="font-semibold">
+          {row.original.ticket_prices_differ && row.original.ticket_price_from != null
+            ? `From ${formatPrice(row.original.ticket_price_from)}`
+            : formatPrice(row.original.price_pence)}
+        </span>
       ),
     },
     {
@@ -273,9 +317,7 @@ function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
               }}
             >
               <QrCode className="h-4 w-4" aria-hidden />
-              <span className="sr-only">
-                Show my medical form QR
-              </span>
+              <span className="sr-only">Show my medical form QR</span>
             </Button>
           ) : null}
           <Link
@@ -303,18 +345,79 @@ export default function CoursesList() {
   // Own profile — needed for QR franchisee number
   const { data: ownProfile } = useOwnProfile();
 
+  // Course templates — course-type filter options (NTH-3)
+  const { data: templates = [] } = useCourseTemplates();
+
   // QR dialog state — shows THE permanent QR (one-QR model); which row was
   // clicked no longer matters, the code is identical for every class.
   const [qrOpen, setQrOpen] = useState(false);
 
-  // View toggle
-  const [view, setView] = useState<ViewMode>('list');
+  // ------------------------------------------------------------------
+  // Filter / sort / view state — URL params + localStorage mirror
+  // ------------------------------------------------------------------
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // List filters
-  const [status, setStatus] = useState<CourseInstanceStatus | 'all'>('all');
-  const [datePreset, setDatePreset] = useState<DatePreset>('all');
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
+  // One-time restore from localStorage when the URL carries no filter state
+  // (e.g. a plain "Back to courses" link).
+  useEffect(() => {
+    if (FILTER_KEYS.some((k) => searchParams.has(k))) return;
+    try {
+      const raw = localStorage.getItem(FILTERS_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Record<string, string>;
+      const params = new URLSearchParams(searchParams);
+      let restored = false;
+      for (const k of FILTER_KEYS) {
+        const v = saved[k];
+        if (typeof v === 'string' && v && v !== FILTER_DEFAULTS[k]) {
+          params.set(k, v);
+          restored = true;
+        }
+      }
+      if (restored) setSearchParams(params, { replace: true });
+    } catch {
+      // Corrupt storage — ignore and start from defaults.
+    }
+    // Mount-only: subsequent param changes flow through setFilter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Set one filter param (defaults are removed from the URL) + mirror all to localStorage. */
+  const setFilter = useCallback(
+    (key: string, value: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (value === FILTER_DEFAULTS[key] || value === '') next.delete(key);
+          else next.set(key, value);
+          const persisted: Record<string, string> = {};
+          for (const k of FILTER_KEYS) {
+            const v = next.get(k);
+            if (v) persisted[k] = v;
+          }
+          try {
+            localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(persisted));
+          } catch {
+            // Storage unavailable — URL params still work for this session.
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  // Read current values (unknown values fall back to defaults).
+  const rawStatus = searchParams.get('status') ?? 'all';
+  const status = (STATUS_VALUES.has(rawStatus) ? rawStatus : 'all') as CourseInstanceStatus | 'all';
+  const rawDate = searchParams.get('date') ?? 'all';
+  const datePreset = (DATE_VALUES.has(rawDate) ? rawDate : 'all') as DatePreset;
+  const customFrom = searchParams.get('from') ?? '';
+  const customTo = searchParams.get('to') ?? '';
+  const templateFilter = searchParams.get('template') ?? 'all';
+  const sortDir: 'asc' | 'desc' = searchParams.get('sort') === 'desc' ? 'desc' : 'asc';
+  const view: ViewMode = searchParams.get('view') === 'calendar' ? 'calendar' : 'list';
 
   // Calendar navigation — default to current wall-clock month
   const now = new Date();
@@ -328,6 +431,8 @@ export default function CoursesList() {
     status,
     from,
     to,
+    templateId: templateFilter,
+    sortDir,
   };
 
   const { rows, totalCount, isLoading, error } = useOwnCourses(listFilters);
@@ -372,7 +477,7 @@ export default function CoursesList() {
             <div className="border-daisy-line-soft flex overflow-hidden rounded-full border">
               <button
                 type="button"
-                onClick={() => setView('list')}
+                onClick={() => setFilter('view', 'list')}
                 className={
                   view === 'list'
                     ? 'bg-daisy-primary px-4 py-1.5 text-[12px] font-bold text-white'
@@ -384,7 +489,7 @@ export default function CoursesList() {
               </button>
               <button
                 type="button"
-                onClick={() => setView('calendar')}
+                onClick={() => setFilter('view', 'calendar')}
                 className={
                   view === 'calendar'
                     ? 'bg-daisy-primary px-4 py-1.5 text-[12px] font-bold text-white'
@@ -406,10 +511,7 @@ export default function CoursesList() {
         <>
           {/* Filters */}
           <div className="flex flex-wrap items-end gap-3">
-            <Select
-              value={status}
-              onValueChange={(v) => setStatus(v as CourseInstanceStatus | 'all')}
-            >
+            <Select value={status} onValueChange={(v) => setFilter('status', v)}>
               <SelectTrigger className="w-[170px]">
                 <SelectValue />
               </SelectTrigger>
@@ -422,7 +524,7 @@ export default function CoursesList() {
               </SelectContent>
             </Select>
 
-            <Select value={datePreset} onValueChange={(v) => setDatePreset(v as DatePreset)}>
+            <Select value={datePreset} onValueChange={(v) => setFilter('date', v)}>
               <SelectTrigger className="w-[170px]">
                 <SelectValue />
               </SelectTrigger>
@@ -435,6 +537,36 @@ export default function CoursesList() {
               </SelectContent>
             </Select>
 
+            {/* Course type (template) filter — NTH-3 */}
+            <Select value={templateFilter} onValueChange={(v) => setFilter('template', v)}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All course types</SelectItem>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Sort direction toggle — NTH-3 (soonest first is the default) */}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setFilter('sort', sortDir === 'asc' ? 'desc' : 'asc')}
+              title="Toggle sort direction"
+            >
+              {sortDir === 'asc' ? (
+                <ArrowUp className="h-4 w-4" aria-hidden />
+              ) : (
+                <ArrowDown className="h-4 w-4" aria-hidden />
+              )}
+              {sortDir === 'asc' ? 'Soonest first' : 'Latest first'}
+            </Button>
+
             {datePreset === 'custom' ? (
               <>
                 <div className="flex flex-col gap-1">
@@ -444,7 +576,7 @@ export default function CoursesList() {
                   <Input
                     type="date"
                     value={customFrom}
-                    onChange={(e) => setCustomFrom(e.target.value)}
+                    onChange={(e) => setFilter('from', e.target.value)}
                     className="h-10 w-[150px]"
                     aria-label="From date"
                   />
@@ -456,7 +588,7 @@ export default function CoursesList() {
                   <Input
                     type="date"
                     value={customTo}
-                    onChange={(e) => setCustomTo(e.target.value)}
+                    onChange={(e) => setFilter('to', e.target.value)}
                     className="h-10 w-[150px]"
                     aria-label="To date"
                   />

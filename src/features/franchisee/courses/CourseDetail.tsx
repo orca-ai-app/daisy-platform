@@ -19,6 +19,7 @@ import {
   Trash2,
   Edit2,
   Copy,
+  CopyPlus,
   MessageCircle,
   Link2,
   ShoppingBag,
@@ -43,7 +44,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import { formatPence } from '@/lib/format';
+import { formatPrice, formatPriceFrom } from './money';
+import type { DuplicateCourseState } from './CreateCourse';
 import {
   useActivityLog,
   formatActivityDescription,
@@ -172,13 +174,13 @@ export default function CourseDetail() {
           <PageHeader
             title={
               <span>
-                {instance.template?.name ?? 'Course'}
+                {instance.display_name ?? instance.template?.name ?? 'Course'}
                 <span className="text-daisy-muted ml-2 font-mono text-[16px] font-semibold">
                   {formatLondonDate(instance.event_date)}
                 </span>
               </span>
             }
-            subtitle={`${formatTime(instance.start_time)} – ${formatTime(instance.end_time)} · ${instance.venue_postcode}`}
+            subtitle={`${formatTime(instance.start_time)} – ${formatTime(instance.end_time)} · ${instance.venue_postcode ?? (instance.venue_tbc ? 'Venue TBC' : '-')}`}
             actions={
               <>
                 <StatusPill variant={courseInstanceStatusVariant(instance.status)}>
@@ -193,6 +195,40 @@ export default function CourseDetail() {
                 >
                   <Pencil aria-hidden className="h-4 w-4" />
                   Edit course
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Schedule a new course pre-filled from this one"
+                  onClick={() => {
+                    const duplicate: DuplicateCourseState = {
+                      template_id: instance.template_id,
+                      start_time: instance.start_time,
+                      end_time: instance.end_time,
+                      venue_name: instance.venue_name,
+                      venue_address: instance.venue_address,
+                      venue_postcode: instance.venue_postcode,
+                      venue_tbc: instance.venue_tbc,
+                      display_name: instance.display_name,
+                      visibility: instance.visibility,
+                      bespoke_details: instance.bespoke_details,
+                      capacity: instance.capacity,
+                      price_pence: instance.price_pence,
+                      ticket_types: ticketTypes.map((tt) => ({
+                        name: tt.name,
+                        price_pence: tt.price_pence,
+                        seats_consumed: tt.seats_consumed,
+                        max_available: tt.max_available,
+                        sort_order: tt.sort_order,
+                        session_label: tt.session_label,
+                        vat_rate: tt.vat_rate,
+                      })),
+                    };
+                    void navigate('/franchisee/courses/new', { state: { duplicate } });
+                  }}
+                >
+                  <CopyPlus aria-hidden className="h-4 w-4" />
+                  Duplicate
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => setRecordingSale(true)}>
                   <ShoppingBag aria-hidden className="h-4 w-4" />
@@ -236,6 +272,9 @@ export default function CourseDetail() {
                         {instance.status}
                       </StatusPill>
                     </Field>
+                    {instance.display_name ? (
+                      <Field label="Shown to customers as" value={instance.display_name} />
+                    ) : null}
                     <Field label="Event date" value={formatLondonDate(instance.event_date)} />
                     <Field
                       label="Time"
@@ -245,7 +284,13 @@ export default function CourseDetail() {
                       label="Capacity"
                       value={`${instance.capacity - instance.spots_remaining} / ${instance.capacity} sold`}
                     />
-                    <Field label="Base price" value={formatPence(instance.price_pence)} />
+                    <Field
+                      label="Price"
+                      value={formatPriceFrom(
+                        instance.price_pence,
+                        ticketTypes.map((tt) => tt.price_pence),
+                      )}
+                    />
                     <Field label="Visibility" value={instance.visibility} />
                     {instance.out_of_territory ? (
                       <Field
@@ -266,11 +311,17 @@ export default function CourseDetail() {
                   <CardTitle>Venue</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-                    <Field label="Name" value={instance.venue_name ?? '-'} />
-                    <Field label="Postcode" value={instance.venue_postcode} />
-                    <Field label="Address" value={instance.venue_address ?? '-'} full />
-                  </dl>
+                  {instance.venue_tbc && !instance.venue_postcode ? (
+                    <p className="text-daisy-muted text-sm">
+                      Venue to be confirmed. Use the Edit button above to add it once agreed.
+                    </p>
+                  ) : (
+                    <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                      <Field label="Name" value={instance.venue_name ?? '-'} />
+                      <Field label="Postcode" value={instance.venue_postcode ?? '-'} />
+                      <Field label="Address" value={instance.venue_address ?? '-'} full />
+                    </dl>
+                  )}
                 </CardContent>
               </Card>
 
@@ -309,8 +360,15 @@ export default function CourseDetail() {
                         >
                           <div className="flex min-w-0 flex-col gap-0.5">
                             <span className="font-semibold">{tt.name}</span>
+                            {tt.session_label ? (
+                              <span className="text-daisy-ink-soft text-[12px]">
+                                {tt.session_label}
+                              </span>
+                            ) : null}
                             <span className="text-daisy-muted text-[12px]">
-                              {formatPence(tt.price_pence)} · {tt.seats_consumed} seat
+                              {formatPrice(tt.price_pence)}
+                              {tt.vat_rate != null ? ` incl. VAT @ ${tt.vat_rate}%` : ''} ·{' '}
+                              {tt.seats_consumed} seat
                               {tt.seats_consumed === 1 ? '' : 's'}{' '}
                               {tt.max_available != null
                                 ? `· max ${tt.max_available}`
@@ -383,7 +441,7 @@ export default function CourseDetail() {
               {instance.booking_token && !isCancelled ? (
                 <BookingLinkCard
                   bookingToken={instance.booking_token}
-                  courseName={instance.template?.name ?? 'Course'}
+                  courseName={instance.display_name ?? instance.template?.name ?? 'Course'}
                 />
               ) : null}
 
@@ -759,7 +817,7 @@ function DeleteTicketTypeDialog({
         <DialogHeader>
           <DialogTitle>Remove ticket type</DialogTitle>
           <DialogDescription>
-            Remove <strong>{ticketType.name}</strong> ({formatPence(ticketType.price_pence)}) from
+            Remove <strong>{ticketType.name}</strong> ({formatPrice(ticketType.price_pence)}) from
             this course? This cannot be undone.
           </DialogDescription>
         </DialogHeader>

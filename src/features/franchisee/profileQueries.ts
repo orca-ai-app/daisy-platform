@@ -34,13 +34,15 @@ export function useOwnProfile() {
 
 // ---------------------------------------------------------------------------
 // Write: constrained self-update through the update-franchisee-self EF.
-// Only name and phone are mutable from this surface — the server enforces
-// the same whitelist; this type is a UI-layer hint, not the trust boundary.
+// Only name, phone and business_name are mutable from this surface — the
+// server enforces the same whitelist; this type is a UI-layer hint, not the
+// trust boundary.
 // ---------------------------------------------------------------------------
 
 export interface ProfileSelfUpdateFields {
   name?: string;
   phone?: string | null;
+  business_name?: string;
 }
 
 async function callUpdateFranchiseeSelf(fields: ProfileSelfUpdateFields): Promise<Franchisee> {

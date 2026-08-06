@@ -11,6 +11,13 @@ import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { PageHeader, DataTable, StatusPill, EmptyState } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { formatPence } from '@/lib/format';
 import { useOwnDiscountCodes } from './discountQueries';
 import { DiscountDialog } from './DiscountDialog';
@@ -54,6 +61,26 @@ export default function DiscountsList() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
+  const [groupFilter, setGroupFilter] = useState<string>('all');
+
+  // Per-group used/total counts. Batch codes are single-use, so "used" is the
+  // number of codes in the group that have been redeemed at least once.
+  const groups = useMemo(() => {
+    const map = new Map<string, { total: number; used: number }>();
+    for (const c of codes) {
+      if (!c.group_name) continue;
+      const entry = map.get(c.group_name) ?? { total: 0, used: 0 };
+      entry.total += 1;
+      if (c.uses_count > 0) entry.used += 1;
+      map.set(c.group_name, entry);
+    }
+    return map;
+  }, [codes]);
+
+  const filteredCodes = useMemo(
+    () => (groupFilter === 'all' ? codes : codes.filter((c) => c.group_name === groupFilter)),
+    [codes, groupFilter],
+  );
 
   function openCreate() {
     setEditingId(undefined);
@@ -74,6 +101,13 @@ export default function DiscountsList() {
           <span className="font-mono text-[13px] font-bold tracking-wider">
             {row.original.code}
           </span>
+        ),
+      },
+      {
+        accessorKey: 'group_name',
+        header: 'Group',
+        cell: ({ row }) => (
+          <span className="text-daisy-muted text-[13px]">{row.original.group_name ?? '—'}</span>
         ),
       },
       {
@@ -171,9 +205,31 @@ export default function DiscountsList() {
         </div>
       ) : null}
 
+      {/* Group filter — only shown once at least one batch group exists */}
+      {groups.size > 0 ? (
+        <div className="flex items-center gap-3">
+          <span className="text-daisy-muted text-xs font-bold tracking-[0.06em] uppercase">
+            Group
+          </span>
+          <Select value={groupFilter} onValueChange={setGroupFilter}>
+            <SelectTrigger className="w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All codes</SelectItem>
+              {Array.from(groups.entries()).map(([name, counts]) => (
+                <SelectItem key={name} value={name}>
+                  {name} ({counts.used}/{counts.total} used)
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+
       <DataTable<DiscountCode>
         columns={columns}
-        data={codes}
+        data={filteredCodes}
         isLoading={isLoading}
         searchable
         searchPlaceholder="Search by code…"

@@ -40,11 +40,31 @@ const ALLOWED_FIELDS = new Set([
   'venue_postcode',
   'capacity',
   'price_pence',
+  // Migration 040 (NTH-9): customer-facing name override + venue-TBC flag.
+  'display_name',
+  'venue_tbc',
+]);
+
+// Changes to any of these trigger the course_updated email when
+// notify_attendees is set (NTH-14).
+const NOTIFY_FIELDS = new Set([
+  'event_date',
+  'start_time',
+  'end_time',
+  'venue_name',
+  'venue_address',
+  'venue_postcode',
+  'venue_tbc',
 ]);
 
 interface RequestBody {
   id?: string;
   fields?: Record<string, unknown>;
+  /**
+   * When true and any date/time/venue field actually changed, queue one
+   * 'course_updated' email per confirmed booking (NTH-14).
+   */
+  notify_attendees?: boolean;
 }
 
 interface ErrorResponse {
@@ -81,6 +101,8 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // stores HH:MM:SS internally.
 const ISO_TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/;
 const UK_POSTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
+// Outward code only (e.g. 'GU1') — accepted for PRIVATE courses (migration 040).
+const UK_OUTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?$/i;
 
 function summariseChanges(
   changedFields: Record<string, unknown>,
@@ -91,6 +113,28 @@ function summariseChanges(
   const keys = Object.keys(changedFields);
   const list = keys.length === 0 ? 'no changes' : keys.join(', ');
   return `Course at ${venuePostcode} on ${eventDate} updated by ${actorLabel} — ${list}`;
+}
+
+// Outcode geocode (private courses) — postcodes.io outcode endpoint returns
+// the district centroid. Mirrors create-course-instance (migration 040).
+async function geocodeOutcode(outcode: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetch(`https://api.postcodes.io/outcodes/${encodeURIComponent(outcode)}`);
+    if (!res.ok) {
+      console.warn('postcodes.io outcode lookup returned non-200', res.status);
+      return null;
+    }
+    const body = (await res.json()) as {
+      result?: { latitude?: number | null; longitude?: number | null };
+    };
+    const latitude = body.result?.latitude;
+    const longitude = body.result?.longitude;
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') return null;
+    return { lat: latitude, lng: longitude };
+  } catch (err) {
+    console.warn('outcode geocode call failed', err);
+    return null;
+  }
 }
 
 async function geocodeViaEdgeFunction(
@@ -217,9 +261,30 @@ Deno.serve(async (req: Request) => {
     }
   }
   if ('venue_postcode' in updateFields) {
+    // Shape check only here — the public-vs-private rule needs the instance
+    // row (visibility), so it is enforced after the load below.
     const v = updateFields.venue_postcode;
-    if (typeof v !== 'string' || !UK_POSTCODE_RE.test(v)) {
-      return jsonResponse({ error: 'venue_postcode must be a valid UK postcode' }, 400);
+    if (v === null) {
+      // Allowed only for private venue-TBC courses — checked after load.
+    } else if (typeof v !== 'string' || (!UK_POSTCODE_RE.test(v) && !UK_OUTCODE_RE.test(v))) {
+      return jsonResponse(
+        { error: 'venue_postcode must be a valid UK postcode or district (e.g. GU1), or null' },
+        400,
+      );
+    } else {
+      updateFields.venue_postcode = v.trim().toUpperCase();
+    }
+  }
+  if ('venue_tbc' in updateFields && typeof updateFields.venue_tbc !== 'boolean') {
+    return jsonResponse({ error: 'venue_tbc must be a boolean' }, 400);
+  }
+  if ('display_name' in updateFields) {
+    const v = updateFields.display_name;
+    if (v !== null && typeof v !== 'string') {
+      return jsonResponse({ error: 'display_name must be a string or null' }, 400);
+    }
+    if (typeof v === 'string') {
+      updateFields.display_name = v.trim() || null;
     }
   }
   for (const k of ['venue_name', 'venue_address'] as const) {
@@ -269,6 +334,34 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'You do not own this course instance' }, 403);
   }
 
+  // Venue rules (migration 040 / NTH-9), evaluated against the POST-update
+  // effective state so a TBC venue can be completed later:
+  //   public  — full postcode required, venue_tbc not allowed.
+  //   private — full postcode, outcode, or null (null only while venue_tbc).
+  {
+    const visibility = beforeRow.visibility as string;
+    const effectivePostcode = (
+      'venue_postcode' in updateFields ? updateFields.venue_postcode : beforeRow.venue_postcode
+    ) as string | null;
+    const effectiveTbc = (
+      'venue_tbc' in updateFields ? updateFields.venue_tbc : beforeRow.venue_tbc
+    ) as boolean;
+
+    if (visibility === 'public') {
+      if (!effectivePostcode || !UK_POSTCODE_RE.test(effectivePostcode)) {
+        return jsonResponse({ error: 'Public courses require a full venue postcode' }, 400);
+      }
+      if (effectiveTbc) {
+        return jsonResponse({ error: 'venue_tbc is only allowed for private courses' }, 400);
+      }
+    } else if (!effectivePostcode && !effectiveTbc) {
+      return jsonResponse(
+        { error: 'venue_postcode is required unless the venue is marked as to be confirmed' },
+        400,
+      );
+    }
+  }
+
   // Reject capacity that drops below seats already sold (capacity - spots_remaining).
   if ('capacity' in updateFields) {
     const seatsSold = Number(beforeRow.capacity ?? 0) - Number(beforeRow.spots_remaining ?? 0);
@@ -316,14 +409,31 @@ Deno.serve(async (req: Request) => {
   }
 
   if ('venue_postcode' in changedFields) {
-    const newPostcode = changedFields.venue_postcode as string;
-    const coords = await geocodeViaEdgeFunction(supabaseUrl, serviceRoleKey, newPostcode);
-    if (coords) {
-      finalUpdate.lat = coords.lat;
-      finalUpdate.lng = coords.lng;
-      // geom is auto-populated by the 007 trigger from lat/lng.
+    const newPostcode = changedFields.venue_postcode as string | null;
+    if (newPostcode === null) {
+      // Venue TBC — clear the coordinates. geom is left as-is by the 007
+      // trigger (it only writes when lat AND lng are non-null), which is
+      // harmless: the row never surfaces in public search while private.
+      finalUpdate.lat = null;
+      finalUpdate.lng = null;
+    } else if (UK_OUTCODE_RE.test(newPostcode) && !UK_POSTCODE_RE.test(newPostcode)) {
+      // Outcode only (private courses) — postcodes.io district centroid.
+      const coords = await geocodeOutcode(newPostcode);
+      if (coords) {
+        finalUpdate.lat = coords.lat;
+        finalUpdate.lng = coords.lng;
+      } else {
+        geocodeFailed = true;
+      }
     } else {
-      geocodeFailed = true;
+      const coords = await geocodeViaEdgeFunction(supabaseUrl, serviceRoleKey, newPostcode);
+      if (coords) {
+        finalUpdate.lat = coords.lat;
+        finalUpdate.lng = coords.lng;
+        // geom is auto-populated by the 007 trigger from lat/lng.
+      } else {
+        geocodeFailed = true;
+      }
     }
   }
 
@@ -372,6 +482,61 @@ Deno.serve(async (req: Request) => {
 
   if (activityInsert.error) {
     console.error('activity log insert failed', activityInsert.error);
+  }
+
+  // ---------------------------------------------------------------------
+  // NTH-14 — notify booked customers of date/time/venue changes.
+  //
+  // When the caller set notify_attendees and any notify-relevant field
+  // actually changed, queue one 'course_updated' row per CONFIRMED booking
+  // in da_email_sequences (same row shape as _shared/emailSchedule.ts —
+  // the send-emails cron drains them on its next run and renders the
+  // course's CURRENT details, i.e. the new date/time/venue).
+  // Queue failure must not fail the update — money/state has already moved.
+  // ---------------------------------------------------------------------
+  const notifyRelevantChange = Object.keys(changedFields).some((k) => NOTIFY_FIELDS.has(k));
+  if (body.notify_attendees === true && notifyRelevantChange) {
+    const bookings = await admin
+      .from('da_bookings')
+      .select('id, customer_id')
+      .eq('course_instance_id', body.id)
+      .eq('booking_status', 'confirmed');
+
+    if (bookings.error) {
+      console.error('course_updated: confirmed bookings load failed', bookings.error);
+    } else {
+      const nowIso = new Date().toISOString();
+      const rows = ((bookings.data ?? []) as Array<{ id: string; customer_id: string }>).map(
+        (b) => ({
+          customer_id: b.customer_id,
+          booking_id: b.id,
+          template_key: 'course_updated',
+          sequence_day: 0,
+          scheduled_for: nowIso,
+          status: 'pending',
+        }),
+      );
+      if (rows.length > 0) {
+        const queueInsert = await admin.from('da_email_sequences').insert(rows);
+        if (queueInsert.error) {
+          console.error('course_updated: email queue insert failed', queueInsert.error);
+          await admin
+            .from('da_activities')
+            .insert({
+              actor_type: 'system',
+              actor_id: null,
+              entity_type: 'course_instance',
+              entity_id: body.id,
+              action: 'email_queue_failed',
+              metadata: { template_key: 'course_updated', error: queueInsert.error.message },
+              description: `course_updated emails failed to queue for course at ${venuePostcode}`,
+            })
+            .then((r: { error: unknown }) => {
+              if (r.error) console.error('email_queue_failed activity insert failed', r.error);
+            });
+        }
+      }
+    }
   }
 
   return jsonResponse(updated.data, 200);

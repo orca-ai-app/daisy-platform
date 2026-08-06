@@ -72,6 +72,16 @@ const TEMPLATES: Record<string, RawTemplate> = {
       <p>If you haven't completed your medical declaration yet, your instructor will have a QR code at the venue.</p>`,
     text: `Hi {{first_name}},\n\nReminder: your {{template_name}} class is at {{start_time}} on {{event_date}}, at {{venue}}.\n\nYour instructor will have a QR code for your medical declaration at the venue.`,
   },
+  course_updated: {
+    subject: 'Update to your Daisy First Aid booking ({{booking_reference}})',
+    bodyHtml: `<p>Hi {{first_name}},</p>
+      <p>The details of your <strong>{{template_name}}</strong> class have changed. Here are the updated details:</p>
+      <p><strong>When:</strong> {{event_date}} at {{start_time}}<br/>
+      <strong>Where:</strong> {{venue}}<br/>
+      <strong>Reference:</strong> {{booking_reference}}</p>
+      <p>Your place is still confirmed. If the new details don't work for you, just reply to this email and we'll sort it out.</p>`,
+    text: `Hi {{first_name}},\n\nThe details of your {{template_name}} class have changed. Here are the updated details:\n\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nReference: {{booking_reference}}\n\nYour place is still confirmed. If the new details don't work for you, just reply to this email.\n\n{{franchisee_name}} & the Daisy First Aid team`,
+  },
   post_course_welcome: {
     subject: 'Thank you for coming to your Daisy First Aid class',
     bodyHtml: `<p>Hi {{first_name}},</p>

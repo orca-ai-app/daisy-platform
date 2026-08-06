@@ -1,15 +1,23 @@
 // supabase/functions/create-discount-code/index.ts
 //
 // POST {
-//   code:        string   — uppercased, globally unique across da_discount_codes
+//   code?:       string   — uppercased, globally unique across da_discount_codes
+//                           (required when batch_count is 1; optional prefix
+//                           source when batch_count > 1)
 //   type:        'percentage' | 'fixed'
 //   value:       integer  — 0-100 for percentage; pence for fixed (>= 0)
 //   max_uses?:   number | null
 //   valid_from?: string | null  — ISO timestamp
 //   valid_until?: string | null — ISO timestamp
 //   is_active?:  boolean (default true)
+//   group_name?: string | null — batch label (trimmed, <= 60 chars; mig 042)
+//   batch_count?: integer 1-200 (default 1) — when > 1, generates that many
+//                 single-use codes ({PREFIX}-{4 alphanumerics}, prefix from
+//                 `code` or the group name, collision-checked, max_uses=1
+//                 forced, group_name required)
 // }
-// -> inserted da_discount_codes row (201)
+// -> inserted da_discount_codes row (201), or the ARRAY of inserted rows when
+//    batch_count > 1
 //
 // Auth: Bearer JWT required. Resolved to a da_franchisees row via
 //       auth_user_id. The caller must be a provisioned franchisee (not
@@ -66,9 +74,12 @@ interface RawBody {
   valid_from?: unknown;
   valid_until?: unknown;
   is_active?: unknown;
+  group_name?: unknown;
+  batch_count?: unknown;
 }
 
 interface ValidatedInput {
+  /** Empty string in batch mode when no explicit code/prefix was supplied. */
   code: string;
   type: 'percentage' | 'fixed';
   value: number;
@@ -76,6 +87,8 @@ interface ValidatedInput {
   valid_from: string | null;
   valid_until: string | null;
   is_active: boolean;
+  group_name: string | null;
+  batch_count: number;
 }
 
 const CODE_REGEX = /^[A-Z0-9_-]{1,50}$/;
@@ -84,16 +97,47 @@ const ISO_REGEX = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{
 function validate(
   body: RawBody,
 ): { ok: true; value: ValidatedInput } | { ok: false; error: string } {
-  // code
-  if (typeof body.code !== 'string' || body.code.trim().length === 0) {
-    return { ok: false, error: 'code is required' };
+  // batch_count
+  let batchCount = 1;
+  if (body.batch_count !== undefined && body.batch_count !== null) {
+    if (
+      typeof body.batch_count !== 'number' ||
+      !Number.isInteger(body.batch_count) ||
+      body.batch_count < 1 ||
+      body.batch_count > 200
+    ) {
+      return { ok: false, error: 'batch_count must be an integer between 1 and 200' };
+    }
+    batchCount = body.batch_count as number;
   }
-  const code = body.code.trim().toUpperCase();
-  if (!CODE_REGEX.test(code)) {
-    return {
-      ok: false,
-      error: 'code must be 1-50 characters; letters, digits, hyphens and underscores only',
-    };
+
+  // group_name
+  let groupName: string | null = null;
+  if (body.group_name !== undefined && body.group_name !== null) {
+    if (typeof body.group_name !== 'string' || body.group_name.trim().length === 0) {
+      return { ok: false, error: 'group_name must be a non-empty string or null' };
+    }
+    if (body.group_name.trim().length > 60) {
+      return { ok: false, error: 'group_name must be 60 characters or fewer' };
+    }
+    groupName = body.group_name.trim();
+  }
+  if (batchCount > 1 && !groupName) {
+    return { ok: false, error: 'group_name is required when batch_count is greater than 1' };
+  }
+
+  // code — required for a single code; optional prefix source for a batch.
+  let code = '';
+  if (typeof body.code === 'string' && body.code.trim().length > 0) {
+    code = body.code.trim().toUpperCase();
+    if (!CODE_REGEX.test(code)) {
+      return {
+        ok: false,
+        error: 'code must be 1-50 characters; letters, digits, hyphens and underscores only',
+      };
+    }
+  } else if (batchCount === 1) {
+    return { ok: false, error: 'code is required' };
   }
 
   // type
@@ -154,12 +198,44 @@ function validate(
       code,
       type,
       value,
-      max_uses: maxUses,
+      // Batch codes are always single-use, whatever the caller sent.
+      max_uses: batchCount > 1 ? 1 : maxUses,
       valid_from: validFrom,
       valid_until: validUntil,
       is_active: isActive,
+      group_name: groupName,
+      batch_count: batchCount,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Batch code generation
+// ---------------------------------------------------------------------------
+
+// Readable alphabet: no 0/O, 1/I/L ambiguity.
+const SUFFIX_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+function randomSuffix(): string {
+  let out = '';
+  for (let i = 0; i < 4; i++) {
+    out += SUFFIX_ALPHABET[Math.floor(Math.random() * SUFFIX_ALPHABET.length)];
+  }
+  return out;
+}
+
+/** Derive an uppercase CODE_REGEX-safe prefix from the supplied code or the
+ *  group name. Truncated so {PREFIX}-{4 chars} always fits in 50. */
+function derivePrefix(code: string, groupName: string | null): string {
+  const source = code || (groupName ?? '');
+  const cleaned = source
+    .toUpperCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^A-Z0-9_-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 45);
+  return cleaned || 'DAISY';
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +304,90 @@ Deno.serve(async (req: Request) => {
   }
   const input = validated.value;
 
+  // --- Batch mode: generate N single-use codes in one call -----------------
+  if (input.batch_count > 1) {
+    const prefix = derivePrefix(input.code, input.group_name);
+
+    // Build a collision-free set: unique within the batch, then checked
+    // against existing rows. A few regeneration rounds cover the (tiny)
+    // chance of random-suffix clashes.
+    const codes = new Set<string>();
+    for (let attempt = 0; attempt < 10 && codes.size < input.batch_count; attempt++) {
+      while (codes.size < input.batch_count) {
+        codes.add(`${prefix}-${randomSuffix()}`);
+      }
+      const existing = await admin
+        .from('da_discount_codes')
+        .select('code')
+        .in('code', Array.from(codes));
+      if (existing.error) {
+        console.error('batch uniqueness check failed', existing.error);
+        return jsonResponse({ error: 'Failed to check code uniqueness' }, 500);
+      }
+      for (const row of (existing.data ?? []) as any[]) {
+        codes.delete(row.code);
+      }
+    }
+    if (codes.size < input.batch_count) {
+      return jsonResponse(
+        { error: 'Could not generate enough unique codes — try a different prefix' },
+        409,
+      );
+    }
+
+    const rows = Array.from(codes).map((code) => ({
+      franchisee_id: franchiseeId, // never NULL from this surface
+      code,
+      type: input.type,
+      value: input.value,
+      max_uses: 1, // batch codes are always single-use
+      valid_from: input.valid_from,
+      valid_until: input.valid_until,
+      is_active: input.is_active,
+      uses_count: 0,
+      group_name: input.group_name,
+    }));
+
+    const insertedBatch = await admin.from('da_discount_codes').insert(rows).select('*');
+    if (insertedBatch.error || !insertedBatch.data) {
+      console.error('batch discount code insert failed', insertedBatch.error);
+      // 23505 = unique_violation (race between the check above and insert)
+      if ((insertedBatch.error as any)?.code === '23505') {
+        return jsonResponse({ error: 'A generated code collided — please try again' }, 409);
+      }
+      if ((insertedBatch.error as any)?.code === '23514') {
+        return jsonResponse({ error: 'Value is out of range for the selected type' }, 400);
+      }
+      return jsonResponse({ error: 'Failed to create discount codes' }, 500);
+    }
+
+    const batchRows = insertedBatch.data as any[];
+
+    const batchActivity = await admin.from('da_activities').insert({
+      actor_type: 'franchisee',
+      actor_id: franchiseeId,
+      entity_type: 'discount_code',
+      entity_id: batchRows[0].id,
+      action: 'discount_code_created',
+      metadata: {
+        group_name: input.group_name,
+        batch_count: input.batch_count,
+        codes: batchRows.map((r) => r.code),
+        type: input.type,
+        value: input.value,
+        max_uses: 1,
+        is_active: input.is_active,
+      },
+      description: `Franchisee ${franchiseeName} created ${input.batch_count} single-use codes in group ${input.group_name}`,
+    });
+    if (batchActivity.error) {
+      console.error('activity log insert failed', batchActivity.error);
+      // The codes were created successfully; do not fail the request.
+    }
+
+    return jsonResponse(batchRows, 201);
+  }
+
   // --- Global code uniqueness check (case-insensitive via UPPER) -----------
   // The DB column has UPPER(code) unique index enforcing this at the DB layer
   // too, but we check here first to produce a friendly 409 message rather
@@ -260,6 +420,7 @@ Deno.serve(async (req: Request) => {
     valid_until: input.valid_until,
     is_active: input.is_active,
     uses_count: 0,
+    group_name: input.group_name,
   };
 
   const inserted = await admin.from('da_discount_codes').insert(insertPayload).select('*').single();

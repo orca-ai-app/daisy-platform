@@ -10,7 +10,13 @@
  *  - Add note: append-only. Opens a textarea dialog. Calls add-booking-note EF.
  *  - Cancel booking: sets booking_status='cancelled'. Opens a form asking for
  *    a reason and an optional refund amount (pence, record-only — no Stripe
- *    action). Calls cancel-booking EF.
+ *    action). Calls cancel-booking EF. Stripe-paid bookings get a "Process
+ *    refund in Stripe" deep link (payment intent when stored, else a
+ *    dashboard search on the booking reference).
+ *  - Move to another course: transfers the booking to another of the
+ *    franchisee's upcoming scheduled courses. Calls transfer-booking EF.
+ *  - Edit customer details: name/phone/email on the customer record. Calls
+ *    update-customer EF.
  */
 
 import { useState } from 'react';
@@ -32,6 +38,8 @@ import {
 } from '@/components/ui/dialog';
 import { formatPence } from '@/lib/format';
 import { BookingEmailsCard } from '@/features/bookings/BookingEmailsCard';
+import TransferBookingDialog from './TransferBookingDialog';
+import EditCustomerDialog from './EditCustomerDialog';
 import type { ActivityRow, BookingStatus, PaymentStatus } from '@/types/franchisee';
 import type { StatusVariant } from '@/components/daisy/StatusPill';
 import {
@@ -109,6 +117,39 @@ function Field({
       <dt className="text-daisy-muted text-[11px] font-bold tracking-wider uppercase">{label}</dt>
       <dd className="text-daisy-ink mt-1 text-sm">{value}</dd>
     </div>
+  );
+}
+
+/**
+ * Deep link to the Stripe dashboard for processing a refund (NTH-16).
+ * Prefers the payment intent when stored; falls back to a dashboard search on
+ * the booking reference (still useful for older rows without an intent id).
+ * Returns null for bookings with no Stripe payment at all.
+ */
+function stripeRefundHref(booking: {
+  stripe_payment_intent_id: string | null;
+  stripe_checkout_session_id: string | null;
+  booking_reference: string;
+}): string | null {
+  if (booking.stripe_payment_intent_id) {
+    return `https://dashboard.stripe.com/payments/${booking.stripe_payment_intent_id}`;
+  }
+  if (booking.stripe_checkout_session_id) {
+    return `https://dashboard.stripe.com/search?query=${encodeURIComponent(booking.booking_reference)}`;
+  }
+  return null;
+}
+
+function StripeRefundLink({ href }: { href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-daisy-primary text-sm font-semibold hover:underline"
+    >
+      Process refund in Stripe ↗
+    </a>
   );
 }
 
@@ -361,11 +402,13 @@ function CancelBookingDialog({
   open,
   bookingId,
   totalPricePence,
+  refundHref,
   onClose,
 }: {
   open: boolean;
   bookingId: string;
   totalPricePence: number;
+  refundHref: string | null;
   onClose: () => void;
 }) {
   const [reason, setReason] = useState('');
@@ -465,6 +508,7 @@ function CancelBookingDialog({
               Leave blank if no refund is owed. This amount is stored for reconciliation only — no
               automatic Stripe refund is triggered.
             </p>
+            {refundHref ? <StripeRefundLink href={refundHref} /> : null}
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button
@@ -501,12 +545,16 @@ export default function BookingDetail() {
   const [markPaidOpen, setMarkPaidOpen] = useState(false);
   const [addNoteOpen, setAddNoteOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [editCustomerOpen, setEditCustomerOpen] = useState(false);
 
   const { data: booking, isLoading, error } = useBookingDetail(id);
   const { data: activity = [], isLoading: activityLoading } = useBookingActivity(id);
 
   const isCancelled = booking?.booking_status === 'cancelled';
   const isPending = booking?.payment_status === 'pending';
+  const refundHref = booking ? stripeRefundHref(booking) : null;
+  const seatsNeeded = booking ? booking.quantity * (booking.ticket_type?.seats_consumed ?? 1) : 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -582,6 +630,15 @@ export default function BookingDetail() {
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => setAddNoteOpen(true)}>
                   Add note
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTransferOpen(true)}
+                  disabled={isCancelled}
+                  title={isCancelled ? 'Cancelled bookings cannot be moved' : undefined}
+                >
+                  Move to another course
                 </Button>
                 <Button
                   variant="destructive"
@@ -663,7 +720,14 @@ export default function BookingDetail() {
               {/* Customer */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Customer</CardTitle>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle>Customer</CardTitle>
+                    {booking.customer ? (
+                      <Button variant="outline" size="sm" onClick={() => setEditCustomerOpen(true)}>
+                        Edit details
+                      </Button>
+                    ) : null}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {booking.customer ? (
@@ -701,6 +765,9 @@ export default function BookingDetail() {
                       }
                     />
                     <Field label="Total" value={formatPence(booking.total_price_pence)} />
+                    {refundHref ? (
+                      <Field label="Refund" value={<StripeRefundLink href={refundHref} />} />
+                    ) : null}
                   </dl>
                 </CardContent>
               </Card>
@@ -827,8 +894,24 @@ export default function BookingDetail() {
             open={cancelOpen}
             bookingId={booking.id}
             totalPricePence={booking.total_price_pence}
+            refundHref={refundHref}
             onClose={() => setCancelOpen(false)}
           />
+          <TransferBookingDialog
+            open={transferOpen}
+            bookingId={booking.id}
+            currentInstanceId={booking.course_instance?.id}
+            seatsNeeded={seatsNeeded}
+            onClose={() => setTransferOpen(false)}
+          />
+          {booking.customer ? (
+            <EditCustomerDialog
+              open={editCustomerOpen}
+              bookingId={booking.id}
+              customer={booking.customer}
+              onClose={() => setEditCustomerOpen(false)}
+            />
+          ) : null}
         </>
       )}
     </div>

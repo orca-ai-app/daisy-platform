@@ -1,15 +1,17 @@
 // supabase/functions/update-franchisee-self/index.ts
 //
-// POST { fields: { name?: string, phone?: string | null } } -> updated franchisee row
+// POST { fields: { name?: string, phone?: string | null, business_name?: string } }
+//   -> updated franchisee row
 //
 // Franchisee self-service profile update. Constrained counterpart to
 // update-franchisee (HQ). Key differences:
 //
 //  - The target row is resolved from the caller's own JWT sub (auth_user_id),
 //    not from a request-body `id`. A franchisee can ONLY update their own row.
-//  - Only `name` and `phone` are mutable. Any attempt to pass email, fee_tier,
-//    status, is_hq, billing_date, stripe_account_id, stripe_connected,
-//    gocardless_mandate_id, number, auth_user_id, or any other field returns 400.
+//  - Only `name`, `phone` and `business_name` are mutable. Any attempt to pass
+//    email, fee_tier, status, is_hq, billing_date, stripe_account_id,
+//    stripe_connected, gocardless_mandate_id, number, auth_user_id, or any
+//    other field returns 400.
 //  - Inserts a da_activities row with actor_type='franchisee', action='profile_updated',
 //    and metadata={ changed_fields, before, after }.
 //  - Uses service_role client for all DB writes (anon key has no write access).
@@ -31,7 +33,7 @@ const CORS_HEADERS = {
 // Whitelist: the ONLY fields a franchisee may change on their own row.
 // Any other key in the request body is rejected with 400.
 // ---------------------------------------------------------------------------
-const ALLOWED_SELF_FIELDS = new Set(['name', 'phone']);
+const ALLOWED_SELF_FIELDS = new Set(['name', 'phone', 'business_name']);
 
 // ---------------------------------------------------------------------------
 // Explicitly-blocked fields to produce a clearer error message than the
@@ -53,7 +55,6 @@ const IMMUTABLE_FIELDS = new Set([
   'created_at',
   'updated_at',
   'vat_registered',
-  'business_name',
   'notes',
 ]);
 
@@ -192,6 +193,13 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'phone must be a string or null' }, 400);
   }
 
+  if ('business_name' in requestedFields) {
+    const bn = requestedFields.business_name;
+    if (typeof bn !== 'string' || bn.trim().length < 2 || bn.trim().length > 80) {
+      return jsonResponse({ error: 'business_name must be a string of 2-80 characters' }, 400);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Normalise text fields.
   // ---------------------------------------------------------------------------
@@ -208,6 +216,10 @@ Deno.serve(async (req: Request) => {
       const trimmed = (requestedFields.phone as string).trim();
       updateFields.phone = trimmed.length === 0 ? null : trimmed;
     }
+  }
+
+  if ('business_name' in requestedFields) {
+    updateFields.business_name = (requestedFields.business_name as string).trim();
   }
 
   // ---------------------------------------------------------------------------

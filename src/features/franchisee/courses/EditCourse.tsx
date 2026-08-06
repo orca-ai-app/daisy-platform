@@ -8,14 +8,23 @@
  *
  * Editable fields (matching the Edge Function's ALLOWED_FIELDS set):
  *   event_date, start_time, end_time, venue_name, venue_address,
- *   venue_postcode, capacity, price_pence.
+ *   venue_postcode, capacity, price_pence, display_name, venue_tbc.
  *
- * Money is handled as pounds (float) in the form and converted to integer
- * pence before sending.  Dates are 'YYYY-MM-DD' wall-clock strings; time
- * inputs produce 'HH:MM' which the EF accepts.
+ * Private courses (NTH-9): the postcode may be a full postcode, an outcode
+ * (e.g. GU1), or empty while "Venue to be confirmed" is ticked — so a TBC
+ * venue can be completed later. Public courses still require a full postcode.
+ *
+ * Notifications (NTH-14): a "Notify booked customers" checkbox queues one
+ * course_updated email per confirmed booking when date/time/venue changed.
+ * It defaults ON when such a change is pending and confirmed bookings exist.
+ *
+ * Money is handled as pounds (max 2 decimals) in the form and converted to
+ * integer pence before sending.  Dates are 'YYYY-MM-DD' wall-clock strings;
+ * time inputs produce 'HH:MM' which the EF accepts.
  *
  * Wave 7B.
  */
+import { useEffect, useRef } from 'react';
 import { useNavigate, useParams, Link } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -29,43 +38,77 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 
-import { useCourseInstance, useUpdateCourseInstance } from './courseDetailQueries';
+import {
+  useCourseInstance,
+  useUpdateCourseInstance,
+  useCourseBookingsCount,
+} from './courseDetailQueries';
+import { poundsSchema } from './money';
+import type { Visibility } from './types';
 
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
 
 const UK_POSTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
+const UK_OUTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?$/i;
 
-const editSchema = z.object({
-  event_date: z
-    .string()
-    .min(1, 'Event date is required')
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'),
-  start_time: z
-    .string()
-    .min(1, 'Start time is required')
-    .regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM'),
-  end_time: z
-    .string()
-    .min(1, 'End time is required')
-    .regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM'),
-  venue_name: z.string().optional(),
-  venue_address: z.string().optional(),
-  venue_postcode: z
-    .string()
-    .min(1, 'Postcode is required')
-    .regex(UK_POSTCODE_RE, 'Enter a valid UK postcode'),
-  capacity: z
-    .number({ invalid_type_error: 'Capacity must be a number' })
-    .int('Must be a whole number')
-    .positive('Must be greater than zero'),
-  price_pounds: z
-    .number({ invalid_type_error: 'Price must be a number' })
-    .nonnegative('Price cannot be negative'),
-});
+function buildEditSchema(visibility: Visibility) {
+  return z
+    .object({
+      event_date: z
+        .string()
+        .min(1, 'Event date is required')
+        .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'),
+      start_time: z
+        .string()
+        .min(1, 'Start time is required')
+        .regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM'),
+      end_time: z
+        .string()
+        .min(1, 'End time is required')
+        .regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Use HH:MM'),
+      venue_name: z.string().optional(),
+      venue_address: z.string().optional(),
+      venue_postcode: z.string(),
+      venue_tbc: z.boolean(),
+      display_name: z.string(),
+      capacity: z
+        .number({ invalid_type_error: 'Capacity must be a number' })
+        .int('Must be a whole number')
+        .positive('Must be greater than zero'),
+      price_pounds: poundsSchema,
+      notify_attendees: z.boolean(),
+    })
+    .superRefine((vals, ctx) => {
+      const pc = vals.venue_postcode.trim();
+      if (visibility === 'public') {
+        if (!UK_POSTCODE_RE.test(pc)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['venue_postcode'],
+            message: 'Enter a valid UK postcode',
+          });
+        }
+      } else if (pc) {
+        if (!UK_POSTCODE_RE.test(pc) && !UK_OUTCODE_RE.test(pc)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['venue_postcode'],
+            message: 'Enter a valid UK postcode or district (e.g. GU1)',
+          });
+        }
+      } else if (!vals.venue_tbc) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['venue_postcode'],
+          message: 'Enter a postcode or district, or tick "Venue to be confirmed"',
+        });
+      }
+    });
+}
 
-type EditFormValues = z.infer<typeof editSchema>;
+type EditFormValues = z.infer<ReturnType<typeof buildEditSchema>>;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -77,6 +120,7 @@ export default function EditCourse() {
 
   const { data: instance, isLoading, error } = useCourseInstance(id);
   const updateInstance = useUpdateCourseInstance();
+  const bookingsCount = useCourseBookingsCount(id);
 
   // Show loading skeleton while instance is fetching.
   if (isLoading) {
@@ -147,6 +191,7 @@ export default function EditCourse() {
     <EditCourseForm
       instanceId={instance.id}
       instance={instance}
+      bookingsCount={bookingsCount.data ?? 0}
       navigate={navigate}
       updateInstance={updateInstance}
     />
@@ -161,6 +206,7 @@ export default function EditCourse() {
 function EditCourseForm({
   instanceId,
   instance,
+  bookingsCount,
   navigate,
   updateInstance,
 }: {
@@ -172,33 +218,70 @@ function EditCourseForm({
     end_time: string;
     venue_name: string | null;
     venue_address: string | null;
-    venue_postcode: string;
+    venue_postcode: string | null;
+    venue_tbc: boolean;
+    display_name: string | null;
+    visibility: Visibility;
     capacity: number;
     price_pence: number;
     template?: { name: string } | null;
   };
+  bookingsCount: number;
   navigate: ReturnType<typeof useNavigate>;
   updateInstance: ReturnType<typeof useUpdateCourseInstance>;
 }) {
+  const isPrivate = instance.visibility === 'private';
+
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting, isDirty },
+    watch,
+    setValue,
+    formState: { errors, isSubmitting, isDirty, dirtyFields },
   } = useForm<EditFormValues>({
-    resolver: zodResolver(editSchema),
+    resolver: zodResolver(buildEditSchema(instance.visibility)),
     defaultValues: {
       event_date: instance.event_date,
       start_time: instance.start_time.slice(0, 5),
       end_time: instance.end_time.slice(0, 5),
       venue_name: instance.venue_name ?? '',
       venue_address: instance.venue_address ?? '',
-      venue_postcode: instance.venue_postcode,
+      venue_postcode: instance.venue_postcode ?? '',
+      venue_tbc: instance.venue_tbc,
+      display_name: instance.display_name ?? '',
       capacity: instance.capacity,
       price_pounds: instance.price_pence / 100,
+      notify_attendees: false,
     },
   });
 
+  const venueTbc = watch('venue_tbc');
+  const notifyAttendees = watch('notify_attendees');
+
+  // Notify checkbox (NTH-14): default ON the first time a date/time/venue
+  // field becomes dirty while confirmed bookings exist. The franchisee can
+  // still untick it before saving.
+  const notifyAutoSet = useRef(false);
+  const scheduleChanged = Boolean(
+    dirtyFields.event_date ||
+    dirtyFields.start_time ||
+    dirtyFields.end_time ||
+    dirtyFields.venue_name ||
+    dirtyFields.venue_address ||
+    dirtyFields.venue_postcode ||
+    dirtyFields.venue_tbc,
+  );
+  useEffect(() => {
+    if (scheduleChanged && bookingsCount > 0 && !notifyAutoSet.current) {
+      notifyAutoSet.current = true;
+      setValue('notify_attendees', true);
+    }
+  }, [scheduleChanged, bookingsCount, setValue]);
+
   const onSubmit = async (values: EditFormValues) => {
+    const tbc = isPrivate && values.venue_tbc;
+    const postcode = values.venue_postcode.trim().toUpperCase();
+
     const fields: Record<string, unknown> = {
       event_date: values.event_date,
       // Normalise to HH:MM:SS so the Edge Function regex accepts it.
@@ -206,13 +289,21 @@ function EditCourseForm({
       end_time: values.end_time.length === 5 ? `${values.end_time}:00` : values.end_time,
       venue_name: values.venue_name?.trim() || null,
       venue_address: values.venue_address?.trim() || null,
-      venue_postcode: values.venue_postcode.trim().toUpperCase(),
+      venue_postcode: tbc && !postcode ? null : postcode,
       capacity: values.capacity,
       price_pence: Math.round(values.price_pounds * 100),
     };
+    if (isPrivate) {
+      fields.venue_tbc = tbc;
+      fields.display_name = values.display_name.trim() || null;
+    }
 
     try {
-      await updateInstance.mutateAsync({ id: instanceId, fields });
+      await updateInstance.mutateAsync({
+        id: instanceId,
+        fields,
+        notify_attendees: values.notify_attendees,
+      });
       toast.success('Course updated');
       void navigate(`/franchisee/courses/${instanceId}`);
     } catch (err) {
@@ -267,12 +358,46 @@ function EditCourseForm({
               </div>
             </div>
 
+            {/* Private-only: customer-facing name + venue TBC (NTH-9) */}
+            {isPrivate ? (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="ec-display-name">
+                    Class name shown to customers{' '}
+                    <span className="text-daisy-muted font-normal">(optional)</span>
+                  </Label>
+                  <Input
+                    id="ec-display-name"
+                    placeholder="e.g. BOOKED – Private 2hr Class for Anne S"
+                    {...register('display_name')}
+                  />
+                </div>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={venueTbc}
+                    onChange={(e) =>
+                      setValue('venue_tbc', e.target.checked, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    className="accent-daisy-primary h-4 w-4"
+                  />
+                  <span className="text-daisy-ink font-semibold">Venue to be confirmed</span>
+                  <span className="text-daisy-muted">— you can add the venue later</span>
+                </label>
+              </>
+            ) : null}
+
             {/* Venue */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ec-venue-name">Venue name</Label>
               <Input
                 id="ec-venue-name"
                 placeholder="e.g. Riverside Community Centre"
+                disabled={venueTbc}
                 {...register('venue_name')}
               />
               {errors.venue_name ? (
@@ -285,6 +410,7 @@ function EditCourseForm({
               <Input
                 id="ec-venue-address"
                 placeholder="e.g. 12 High Street, Townville"
+                disabled={venueTbc}
                 {...register('venue_address')}
               />
               {errors.venue_address ? (
@@ -295,8 +421,12 @@ function EditCourseForm({
             {/* Postcode + capacity + price */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="ec-postcode">Postcode</Label>
-                <Input id="ec-postcode" {...register('venue_postcode')} />
+                <Label htmlFor="ec-postcode">
+                  {isPrivate
+                    ? 'Postcode or district (e.g. GU1) — optional if venue TBC'
+                    : 'Postcode'}
+                </Label>
+                <Input id="ec-postcode" disabled={venueTbc} {...register('venue_postcode')} />
                 {errors.venue_postcode ? (
                   <p className="text-daisy-orange text-xs">{errors.venue_postcode.message}</p>
                 ) : null}
@@ -328,6 +458,26 @@ function EditCourseForm({
                 ) : null}
               </div>
             </div>
+
+            {/* Notify booked customers (NTH-14) */}
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={notifyAttendees}
+                onChange={(e) => setValue('notify_attendees', e.target.checked)}
+                className="accent-daisy-primary mt-0.5 h-4 w-4"
+              />
+              <span>
+                <span className="text-daisy-ink font-semibold">
+                  Notify booked customers of this change
+                </span>
+                <span className="text-daisy-muted block text-xs">
+                  {bookingsCount > 0
+                    ? `Emails the new date, time and venue to ${bookingsCount} booking${bookingsCount === 1 ? '' : 's'} when the date, time or venue changed.`
+                    : 'No bookings on this course yet — nothing will be sent.'}
+                </span>
+              </span>
+            </label>
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <Button
