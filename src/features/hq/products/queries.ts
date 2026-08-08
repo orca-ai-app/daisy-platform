@@ -12,6 +12,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
+/**
+ * Catalogue item kind. `elearning` items are fulfilled by sending the buyer
+ * to `fulfilment_url` after payment; `physical` items are handed over or
+ * posted by the franchisee.
+ */
+export type ProductKind = 'physical' | 'elearning';
+
 export interface Product {
   id: string;
   name: string;
@@ -19,6 +26,10 @@ export interface Product {
   rrp_pence: number | null;
   active: boolean;
   sort_order: number;
+  /** Nullable while the catalogue migration is still rolling out. */
+  kind: ProductKind | null;
+  fulfilment_url: string | null;
+  fulfilment_notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -29,6 +40,10 @@ export interface CreateProductPayload {
   rrp_pence: number;
   active?: boolean;
   sort_order?: number;
+  kind?: ProductKind;
+  /** Where an e-learning buyer is sent after paying. */
+  fulfilment_url?: string | null;
+  fulfilment_notes?: string | null;
 }
 
 export interface UpdateProductPayload {
@@ -38,6 +53,9 @@ export interface UpdateProductPayload {
   rrp_pence?: number;
   active?: boolean;
   sort_order?: number;
+  kind?: ProductKind;
+  fulfilment_url?: string | null;
+  fulfilment_notes?: string | null;
 }
 
 export const HQ_PRODUCTS_QUERY_KEY = ['hq', 'products'] as const;

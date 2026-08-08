@@ -13,7 +13,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Plus, ShoppingBag } from 'lucide-react';
+import { Plus, ShoppingBag, GraduationCap, BookOpen } from 'lucide-react';
 import { PageHeader, DataTable, EmptyState, StatusPill } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,25 +25,67 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { formatPence } from '@/lib/format';
 import { extractRequestId } from '@/lib/logger';
-import { useAllProducts, useCreateProduct, useUpdateProduct, type Product } from './queries';
+import {
+  useAllProducts,
+  useCreateProduct,
+  useUpdateProduct,
+  type Product,
+  type ProductKind,
+} from './queries';
 
 // ---------------------------------------------------------------------------
 // Zod schema — RRP collected in pounds, converted to pence on submit
 // ---------------------------------------------------------------------------
 
-const productSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required'),
-  description: z.string().trim().optional(),
-  rrp_pounds: z
-    .number({ invalid_type_error: 'RRP must be a number' })
-    .nonnegative('RRP cannot be negative'),
-  active: z.boolean(),
-  sort_order: z
-    .number({ invalid_type_error: 'Sort order must be a number' })
-    .int('Sort order must be a whole number'),
-});
+const productSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Name is required'),
+    description: z.string().trim().optional(),
+    rrp_pounds: z
+      .number({ invalid_type_error: 'RRP must be a number' })
+      .nonnegative('RRP cannot be negative'),
+    active: z.boolean(),
+    sort_order: z
+      .number({ invalid_type_error: 'Sort order must be a number' })
+      .int('Sort order must be a whole number'),
+    kind: z.enum(['physical', 'elearning'] as const),
+    fulfilment_url: z.string().trim().optional(),
+    fulfilment_notes: z.string().trim().optional(),
+  })
+  .superRefine((data, ctx) => {
+    // The course link only applies to e-learning, and must be a real https
+    // URL — buyers are redirected straight to it after paying.
+    if (data.kind !== 'elearning') return;
+    const url = data.fulfilment_url?.trim() ?? '';
+    if (url.length === 0) return;
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['fulfilment_url'],
+        message: 'Enter a full URL, e.g. https://learn.example.com/course',
+      });
+      return;
+    }
+    if (parsed.protocol !== 'https:') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['fulfilment_url'],
+        message: 'The course link must start with https://',
+      });
+    }
+  });
 
 type ProductFormValues = z.infer<typeof productSchema>;
 
@@ -83,6 +125,23 @@ export default function ProductsPage() {
             </span>
           ) : (
             <span className="text-daisy-muted text-[13px]">—</span>
+          ),
+      },
+      {
+        id: 'kind',
+        header: 'Type',
+        accessorFn: (row) => (row.kind === 'elearning' ? 'E-learning' : 'Book'),
+        cell: ({ row }) =>
+          row.original.kind === 'elearning' ? (
+            <span className="bg-daisy-primary-soft text-daisy-primary-deep inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide uppercase">
+              <GraduationCap className="h-3 w-3" aria-hidden />
+              E-learning
+            </span>
+          ) : (
+            <span className="bg-daisy-line-soft text-daisy-ink-soft inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide uppercase">
+              <BookOpen className="h-3 w-3" aria-hidden />
+              Book
+            </span>
           ),
       },
       {
@@ -179,6 +238,9 @@ function ProductDialog({ mode, open, onClose }: ProductDialogProps) {
         rrp_pounds: 0,
         active: true,
         sort_order: 0,
+        kind: 'physical',
+        fulfilment_url: '',
+        fulfilment_notes: '',
       }
     : {
         name: mode.product.name,
@@ -186,6 +248,10 @@ function ProductDialog({ mode, open, onClose }: ProductDialogProps) {
         rrp_pounds: (mode.product.rrp_pence ?? 0) / 100,
         active: mode.product.active,
         sort_order: mode.product.sort_order,
+        // Pre-migration rows have no kind; they are all physical stock.
+        kind: mode.product.kind === 'elearning' ? 'elearning' : 'physical',
+        fulfilment_url: mode.product.fulfilment_url ?? '',
+        fulfilment_notes: mode.product.fulfilment_notes ?? '',
       };
 
   const {
@@ -200,10 +266,19 @@ function ProductDialog({ mode, open, onClose }: ProductDialogProps) {
   });
 
   const isActive = watch('active');
+  const kind = watch('kind');
+  const isElearning = kind === 'elearning';
 
   const onSubmit = async (values: ProductFormValues) => {
     const description = values.description?.trim() ?? '';
     const rrpPence = Math.round(values.rrp_pounds * 100);
+
+    // Fulfilment details only apply to e-learning; clear them on a physical
+    // item so a kind change doesn't leave a stale course link behind.
+    const fulfilmentUrl =
+      values.kind === 'elearning' ? values.fulfilment_url?.trim() || null : null;
+    const fulfilmentNotes =
+      values.kind === 'elearning' ? values.fulfilment_notes?.trim() || null : null;
 
     try {
       if (mode.type === 'create') {
@@ -213,6 +288,9 @@ function ProductDialog({ mode, open, onClose }: ProductDialogProps) {
           rrp_pence: rrpPence,
           active: values.active,
           sort_order: values.sort_order,
+          kind: values.kind,
+          fulfilment_url: fulfilmentUrl,
+          fulfilment_notes: fulfilmentNotes,
         });
         toast.success(`${values.name.trim()} created`);
       } else {
@@ -223,6 +301,9 @@ function ProductDialog({ mode, open, onClose }: ProductDialogProps) {
           rrp_pence: rrpPence,
           active: values.active,
           sort_order: values.sort_order,
+          kind: values.kind,
+          fulfilment_url: fulfilmentUrl,
+          fulfilment_notes: fulfilmentNotes,
         });
         toast.success(`${values.name.trim()} saved`);
       }
@@ -262,6 +343,29 @@ function ProductDialog({ mode, open, onClose }: ProductDialogProps) {
             {errors.name ? (
               <p className="text-daisy-orange text-xs">{errors.name.message}</p>
             ) : null}
+          </div>
+
+          {/* Type */}
+          <div className="flex flex-col gap-1.5">
+            <Label>Type</Label>
+            <Select
+              value={kind}
+              onValueChange={(v) =>
+                setValue('kind', v as ProductKind, { shouldDirty: true, shouldValidate: true })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="physical">Book or physical item</SelectItem>
+                <SelectItem value="elearning">E-learning course</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-daisy-muted text-xs">
+              E-learning buyers are sent straight to the course link after paying; physical items
+              are handed over or posted by the franchisee.
+            </p>
           </div>
 
           {/* Description */}
@@ -307,6 +411,44 @@ function ProductDialog({ mode, open, onClose }: ProductDialogProps) {
               ) : null}
             </div>
           </div>
+
+          {/* Fulfilment — e-learning only */}
+          {isElearning ? (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="prod-fulfilment-url">Course link</Label>
+                <Input
+                  id="prod-fulfilment-url"
+                  type="url"
+                  placeholder="https://learn.example.com/course"
+                  {...register('fulfilment_url')}
+                />
+                <p className="text-daisy-muted text-xs">
+                  Where the buyer is sent after paying. Must start with https://
+                </p>
+                {errors.fulfilment_url ? (
+                  <p className="text-daisy-orange text-xs">{errors.fulfilment_url.message}</p>
+                ) : null}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="prod-fulfilment-notes">Fulfilment notes</Label>
+                <textarea
+                  id="prod-fulfilment-notes"
+                  rows={2}
+                  className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+                  placeholder="e.g. Access lasts 12 months from purchase"
+                  {...register('fulfilment_notes')}
+                />
+                <p className="text-daisy-muted text-xs">
+                  Shown to franchisees when they list this item.
+                </p>
+                {errors.fulfilment_notes ? (
+                  <p className="text-daisy-orange text-xs">{errors.fulfilment_notes.message}</p>
+                ) : null}
+              </div>
+            </>
+          ) : null}
 
           {/* Active toggle */}
           <label className="border-daisy-line bg-daisy-paper-soft flex items-start gap-3 rounded-[8px] border-2 p-3">

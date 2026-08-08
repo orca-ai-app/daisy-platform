@@ -1,5 +1,5 @@
 // Email templates for the send-emails cron. One entry per da_email_sequences
-// template_key (migration 028). Variables are filled with simple {{mustache}}
+// template_key (migration 044). Variables are filled with simple {{mustache}}
 // substitution. PLACEHOLDER COPY: the structure, subjects and variables are
 // final; the body wording is sensible-default and is replaced verbatim with
 // Jenni's real Kartra copy when provided (docs/M3-email-journey.md).
@@ -15,6 +15,13 @@ export interface TemplateContext {
   franchisee_email: string;
   booking_reference: string;
   unsubscribe_url: string;
+  // Sellable items (migration 044) — set only for product_purchase_confirmation,
+  // which resolves via da_product_sales rather than a booking.
+  product_name?: string;
+  product_quantity?: string;
+  /** E-learning access link. Empty string for physical products. */
+  fulfilment_url?: string;
+  fulfilment_notes?: string;
 }
 
 function fill(s: string, ctx: TemplateContext): string {
@@ -23,7 +30,7 @@ function fill(s: string, ctx: TemplateContext): string {
 
 const DAISY_BLUE = '#006FAC';
 
-function wrap(title: string, bodyHtml: string, ctx: TemplateContext): string {
+function wrap(title: string, bodyHtml: string, ctx: TemplateContext, reason?: string): string {
   return `<!doctype html><html><body style="margin:0;background:#f5f9fb;font-family:Poppins,Arial,sans-serif;color:#1a4359">
   <div style="max-width:560px;margin:0 auto;padding:24px">
     <div style="background:#fff;border-radius:14px;padding:28px">
@@ -32,7 +39,7 @@ function wrap(title: string, bodyHtml: string, ctx: TemplateContext): string {
       <p style="color:#5a7a8f;font-size:13px;margin-top:24px">With love,<br/>${ctx.franchisee_name} &amp; the Daisy First Aid team</p>
     </div>
     <p style="color:#9bb0bd;font-size:11px;text-align:center;margin-top:16px">
-      You're receiving this because you booked a Daisy First Aid class.
+      ${reason ?? "You're receiving this because you booked a Daisy First Aid class."}
       <a href="${ctx.unsubscribe_url}" style="color:#9bb0bd">Unsubscribe</a>.
     </p>
   </div></body></html>`;
@@ -122,10 +129,66 @@ const RECAP_TOPICS: Record<string, { subject: string; topic: string }> = {
   },
 };
 
+// Sellable items (migration 044). Built here rather than in TEMPLATES because
+// the body branches: an e-learning buyer needs the access link front and centre
+// ("here's how to start"), whereas a physical buyer needs to know it's coming
+// from their instructor. Never assume fulfilment_url is present — a physical
+// product has none, and a missing link must never render an empty button.
+const PRODUCT_PURCHASE_SUBJECT = 'Your Daisy First Aid order is confirmed';
+
+function renderProductPurchase(ctx: TemplateContext): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const productName = ctx.product_name || ctx.template_name || 'your order';
+  const quantity = ctx.product_quantity && ctx.product_quantity !== '1' ? ctx.product_quantity : '';
+  const line = quantity ? `${quantity} × ${productName}` : productName;
+  const url = ctx.fulfilment_url ?? '';
+  const notes = ctx.fulfilment_notes ?? '';
+
+  const accessHtml = url
+    ? `<p>You can start straight away:</p>
+      <p style="margin:20px 0"><a href="${url}" style="background:${DAISY_BLUE};color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;display:inline-block">Start your course</a></p>
+      <p style="font-size:13px;color:#5a7a8f">If the button doesn't work, copy this link into your browser:<br/><a href="${url}" style="color:${DAISY_BLUE}">${url}</a></p>`
+    : `<p>Your instructor will be in touch about getting this to you.</p>`;
+  const notesHtml = notes ? `<p>${notes}</p>` : '';
+
+  const bodyHtml = `<p>Hi {{first_name}},</p>
+      <p>Thank you for your order. Here's what you bought:</p>
+      <p><strong>${line}</strong></p>
+      ${accessHtml}
+      ${notesHtml}
+      <p>If you need anything at all, just reply to this email.</p>`;
+
+  const accessText = url
+    ? `You can start straight away here:\n${url}`
+    : 'Your instructor will be in touch about getting this to you.';
+  const text = `Hi {{first_name}},\n\nThank you for your order. Here's what you bought:\n\n${line}\n\n${accessText}${
+    notes ? `\n\n${notes}` : ''
+  }\n\nIf you need anything at all, just reply to this email.\n\n{{franchisee_name}} & the Daisy First Aid team`;
+
+  return {
+    subject: fill(PRODUCT_PURCHASE_SUBJECT, ctx),
+    html: fill(
+      wrap(
+        PRODUCT_PURCHASE_SUBJECT,
+        bodyHtml,
+        ctx,
+        "You're receiving this because you bought this from Daisy First Aid.",
+      ),
+      ctx,
+    ),
+    text: fill(text, ctx),
+  };
+}
+
 export function renderTemplate(
   key: string,
   ctx: TemplateContext,
 ): { subject: string; html: string; text: string } | null {
+  if (key === 'product_purchase_confirmation') return renderProductPurchase(ctx);
+
   const recap = RECAP_TOPICS[key];
   if (recap) {
     const bodyHtml = `<p>Hi {{first_name}},</p>

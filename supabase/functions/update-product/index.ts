@@ -5,7 +5,17 @@
 // sales (unit_price_pence is copied onto each da_product_sales row at sale
 // time), so history is never rewritten.
 //
-// POST { product_id, name?, description?, rrp_pence?, active?, sort_order? } -> 200 row
+// Migration 044 adds the SELLABLE ITEM fields, which are editable here too —
+// without them HQ could never change an e-learning access link once the product
+// existed. Validation mirrors create-product: fulfilment_url must be https and
+// is required whenever the product ends up as kind='elearning'.
+//
+// POST {
+//   product_id, name?, description?, rrp_pence?, active?, sort_order?,
+//   kind?: 'physical' | 'elearning',
+//   fulfilment_url?: string | null,    // https, REQUIRED when kind='elearning'
+//   fulfilment_notes?: string | null
+// } -> 200 row
 // Errors: { error, request_id } — 400/401/403/404/500.
 
 // deno-lint-ignore-file no-explicit-any
@@ -36,6 +46,16 @@ function decodeJwtSub(jwt: string): string | null {
     return typeof claims.sub === 'string' ? claims.sub : null;
   } catch {
     return null;
+  }
+}
+
+// An access link must be a real https URL — http would be delivered over a
+// broken padlock, and anything else is a typo.
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
   }
 }
 
@@ -120,6 +140,82 @@ Deno.serve(async (req: Request) => {
     }
     patch.sort_order = body.sort_order;
   }
+
+  // --- Sellable-item fields (migration 044) -----------------------------------
+  // These three interact, so they are validated together against the resulting
+  // state of the row rather than field by field. A partial update ("just change
+  // the link") must be judged against the kind the product ALREADY has, so read
+  // the current row whenever any of them is present.
+  const touchesFulfilment =
+    body?.kind !== undefined ||
+    body?.fulfilment_url !== undefined ||
+    body?.fulfilment_notes !== undefined;
+  if (touchesFulfilment) {
+    const existing = await admin
+      .from('da_products')
+      .select('kind, fulfilment_url')
+      .eq('id', productId)
+      .maybeSingle();
+    if (existing.error) {
+      await logSystem(admin, {
+        level: 'error',
+        source: 'update-product',
+        requestId,
+        message: `product lookup failed: ${existing.error.message}`,
+      });
+      return jsonResponse({ error: 'Could not load the product', request_id: requestId }, 500);
+    }
+    if (!existing.data) {
+      return jsonResponse({ error: 'Product not found', request_id: requestId }, 404);
+    }
+    const current = existing.data as any;
+
+    if (body?.kind !== undefined) {
+      if (body.kind !== 'physical' && body.kind !== 'elearning') {
+        return jsonResponse(
+          { error: "kind must be 'physical' or 'elearning'", request_id: requestId },
+          400,
+        );
+      }
+      patch.kind = body.kind;
+    }
+    if (body?.fulfilment_url !== undefined) {
+      const url =
+        typeof body.fulfilment_url === 'string' && body.fulfilment_url.trim()
+          ? body.fulfilment_url.trim()
+          : null;
+      if (url && (!isHttpsUrl(url) || url.length > 2000)) {
+        return jsonResponse(
+          { error: 'fulfilment_url must be a valid https:// link', request_id: requestId },
+          400,
+        );
+      }
+      patch.fulfilment_url = url;
+    }
+    if (body?.fulfilment_notes !== undefined) {
+      patch.fulfilment_notes =
+        typeof body.fulfilment_notes === 'string' && body.fulfilment_notes.trim()
+          ? body.fulfilment_notes.trim().slice(0, 1000)
+          : null;
+    }
+
+    // The link is required against the kind the row will END UP as — whether
+    // that is a kind being set now or the one already on the row — so an
+    // e-learning item can never be left with nothing to deliver.
+    const resultingKind = patch.kind !== undefined ? patch.kind : current.kind;
+    const resultingUrl =
+      patch.fulfilment_url !== undefined ? patch.fulfilment_url : current.fulfilment_url;
+    if (resultingKind === 'elearning' && !resultingUrl) {
+      return jsonResponse(
+        {
+          error: 'fulfilment_url is required for an e-learning course (where buyers get access)',
+          request_id: requestId,
+        },
+        400,
+      );
+    }
+  }
+
   if (Object.keys(patch).length === 0) {
     return jsonResponse({ error: 'Nothing to update', request_id: requestId }, 400);
   }

@@ -30,6 +30,13 @@ function isTableMissing(code: string | null | undefined): boolean {
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * Catalogue item kind. `elearning` items are fulfilled by sending the buyer
+ * to `fulfilment_url` after payment; `physical` items are handed over or
+ * posted by the franchisee.
+ */
+export type ProductKind = 'physical' | 'elearning';
+
 export interface Product {
   id: string;
   name: string;
@@ -37,11 +44,23 @@ export interface Product {
   rrp_pence: number | null;
   active: boolean;
   sort_order: number;
+  /** Nullable while the catalogue migration is still rolling out. */
+  kind: ProductKind | null;
+  fulfilment_url: string | null;
+  fulfilment_notes: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type ProductSalePaymentMethod = 'cash' | 'card' | 'other';
+
+/**
+ * How a sale reached the franchisee: `in_person` rows are keyed in by hand
+ * on this page, `online` rows arrive from a Stripe checkout on the public
+ * booking page. Nullable for rows written before the column existed — treat
+ * a missing value as `in_person` (see `saleChannel`).
+ */
+export type ProductSaleChannel = 'in_person' | 'online';
 
 export interface ProductSale {
   id: string;
@@ -55,7 +74,14 @@ export interface ProductSale {
   sold_at: string;
   course_instance_id: string | null;
   note: string | null;
+  /** Null on rows written before the channel column shipped. */
+  channel: ProductSaleChannel | null;
   created_at: string;
+}
+
+/** A sale's channel, defaulting pre-migration rows to the manual ledger. */
+export function saleChannel(sale: Pick<ProductSale, 'channel'>): ProductSaleChannel {
+  return sale.channel === 'online' ? 'online' : 'in_person';
 }
 
 /** A sale row joined to its product name and (optional) linked class. */
@@ -83,6 +109,35 @@ export interface SaleCourseOption {
   event_date: string;
   venue_name: string | null;
   template_name: string | null;
+}
+
+/**
+ * One franchisee's own listing of a catalogue product: their price, whether
+ * it shows on their public booking page, and the VAT rate they charge.
+ */
+export interface FranchiseeProduct {
+  id: string;
+  franchisee_id: string;
+  product_id: string;
+  price_pence: number;
+  is_online: boolean;
+  /** Percentage (0 / 5 / 20), or null for "no VAT applied". */
+  vat_rate: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertFranchiseeProductPayload {
+  product_id: string;
+  price_pence: number;
+  is_online: boolean;
+  vat_rate?: number | null;
+}
+
+/** A catalogue product paired with this franchisee's listing, if any. */
+export interface ShopItem {
+  product: Product;
+  listing: FranchiseeProduct | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +269,50 @@ export function useSaleCourseOptions() {
   });
 }
 
+/**
+ * The signed-in franchisee's own da_franchisee_products rows. RLS is
+ * franchisee-scoped exactly like da_product_sales, so no client-side
+ * franchisee_id filter is needed.
+ */
+export function useOwnFranchiseeProducts() {
+  return useQuery<FranchiseeProduct[]>({
+    queryKey: franchiseeKeys.merchandiseShop(),
+    staleTime: STALE_TIME,
+    retry: 1,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('da_franchisee_products').select('*');
+
+      if (error) {
+        if (isTableMissing(error.code)) return [];
+        throw error;
+      }
+      return (data ?? []) as FranchiseeProduct[];
+    },
+  });
+}
+
+/**
+ * Every active catalogue product paired with this franchisee's own listing.
+ * Products the franchisee has never priced come through with `listing: null`
+ * so the shop table can still offer them a row to fill in.
+ */
+export function useShopItems() {
+  const products = useProducts();
+  const listings = useOwnFranchiseeProducts();
+
+  const byProductId = new Map((listings.data ?? []).map((l) => [l.product_id, l]));
+  const items: ShopItem[] = (products.data ?? []).map((product) => ({
+    product,
+    listing: byProductId.get(product.id) ?? null,
+  }));
+
+  return {
+    items,
+    isLoading: products.isLoading || listings.isLoading,
+    error: products.error ?? listings.error ?? null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Write helpers
 // ---------------------------------------------------------------------------
@@ -281,6 +380,26 @@ export function useDeleteProductSale() {
   const queryClient = useQueryClient();
   return useMutation<{ ok: boolean }, Error, { sale_id: string }>({
     mutationFn: (payload) => callEdgeFunction<{ ok: boolean }>('delete-product-sale', payload),
+    onSuccess: () => {
+      invalidateMerchandise(queryClient);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Shop listing upsert
+// ---------------------------------------------------------------------------
+
+/**
+ * Create or update this franchisee's listing for a catalogue product. The
+ * Edge Function derives franchisee_id from the JWT and upserts on
+ * (franchisee_id, product_id), so the client never sends an id.
+ */
+export function useUpsertFranchiseeProduct() {
+  const queryClient = useQueryClient();
+  return useMutation<FranchiseeProduct, Error, UpsertFranchiseeProductPayload>({
+    mutationFn: (payload) =>
+      callEdgeFunction<FranchiseeProduct>('upsert-franchisee-product', payload),
     onSuccess: () => {
       invalidateMerchandise(queryClient);
     },

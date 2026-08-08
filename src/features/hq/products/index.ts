@@ -8,4 +8,4 @@ export {
   useUpdateProduct,
   HQ_PRODUCTS_QUERY_KEY,
 } from './queries';
-export type { Product, CreateProductPayload, UpdateProductPayload } from './queries';
+export type { Product, ProductKind, CreateProductPayload, UpdateProductPayload } from './queries';

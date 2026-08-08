@@ -17,6 +17,8 @@
 //
 // Events handled:
 //   checkout.session.completed       — create booking, decrement spots, queue email sequences
+//                                      (or, when metadata.kind='product', record
+//                                      an online item sale — migration 044)
 //   account.updated                  — sync da_franchisees.stripe_connected from charges_enabled
 //   account.application.deauthorized — franchisee revoked OAuth access; clear the link
 //
@@ -440,6 +442,13 @@ async function handleCheckoutSessionCompleted(
 ): Promise<void> {
   const session = event.data.object as Stripe.Checkout.Session;
 
+  // Sellable items (migration 044): an undated product purchase, not a booking.
+  // Different table, different email — handled entirely separately.
+  if ((session.metadata ?? {}).kind === 'product') {
+    await recordProductSale(admin, session);
+    return;
+  }
+
   // M3 public/standalone flow: a pending booking was pre-created and its id is
   // in metadata. Finalise it and return (skips the M2 legacy create path below).
   const m3BookingId = (session.metadata ?? {}).booking_id ?? null;
@@ -743,6 +752,190 @@ async function handleCheckoutSessionCompleted(
   console.log(
     `stripe-webhook: booking created ref="${bookingReference}" id="${bookingId}" ` +
       `customer="${customerEmail}" session="${session.id}" overbook=${isOverbook}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sellable items (migration 044) — an online product purchase from
+// create-checkout-session's item path. Metadata carries
+// { kind: 'product', franchisee_product_id, quantity, customer_id }.
+//
+// The sale lands in da_product_sales alongside the franchisee's manual
+// in-person ledger (channel distinguishes them), so their sales reporting and
+// HQ's monthly billing run pick it up with no further change.
+//
+// Idempotent on Stripe retries the same way the booking path is: the checkout
+// session id is the key, checked before insert AND enforced by a unique index
+// so two concurrent deliveries cannot both write.
+// ---------------------------------------------------------------------------
+async function recordProductSale(
+  admin: ReturnType<typeof createClient>,
+  session: Stripe.Checkout.Session,
+): Promise<void> {
+  const meta = session.metadata ?? {};
+  const franchiseeProductId = meta.franchisee_product_id ?? null;
+  if (!franchiseeProductId) {
+    console.error(
+      `stripe-webhook: product session missing franchisee_product_id. session="${session.id}"`,
+    );
+    return;
+  }
+
+  const quantity = parseInt(meta.quantity ?? '1', 10);
+  if (!Number.isFinite(quantity) || quantity < 1) {
+    console.error(
+      `stripe-webhook: invalid product quantity="${meta.quantity}". session="${session.id}"`,
+    );
+    return;
+  }
+
+  // Idempotency — a re-delivery finds the sale already recorded and acks.
+  const existing = await admin
+    .from('da_product_sales')
+    .select('id')
+    .eq('stripe_checkout_session_id', session.id)
+    .maybeSingle();
+  if (existing.error) {
+    throw new Error(`product sale idempotency check failed: ${existing.error.message}`);
+  }
+  if (existing.data) {
+    console.log(
+      `stripe-webhook: product sale already exists for session="${session.id}" — skipping (idempotent replay)`,
+    );
+    return;
+  }
+
+  const fpRes = await admin
+    .from('da_franchisee_products')
+    .select('id, franchisee_id, product_id, price_pence, product:da_products ( name )')
+    .eq('id', franchiseeProductId)
+    .maybeSingle();
+  if (fpRes.error) throw new Error(`franchisee product lookup failed: ${fpRes.error.message}`);
+  if (!fpRes.data) {
+    throw new Error(
+      `franchisee product not found: id="${franchiseeProductId}" session="${session.id}"`,
+    );
+  }
+  const listing = fpRes.data as any;
+
+  // Trust the money Stripe actually took. amount_total is the whole order in
+  // integer pence; divide by quantity for the unit price (falling back to the
+  // listed price if Stripe returns null, e.g. a zero-value session).
+  const totalPence =
+    typeof session.amount_total === 'number'
+      ? session.amount_total
+      : listing.price_pence * quantity;
+  const unitPricePence = Math.round(totalPence / quantity);
+
+  // The buyer: create-checkout-session upserted them and put the id in
+  // metadata; fall back to the email on the session if that is ever missing.
+  let customerId: string | null = meta.customer_id ?? null;
+  if (!customerId && session.customer_details?.email) {
+    const byEmail = await admin
+      .from('da_customers')
+      .select('id')
+      .eq('email', session.customer_details.email.trim().toLowerCase())
+      .maybeSingle();
+    customerId = (byEmail.data as any)?.id ?? null;
+  }
+
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : null;
+
+  // sold_at is a DATE — today in Europe/London, so a late-evening BST purchase
+  // is not filed to yesterday (billing periods are calendar months).
+  const soldAt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
+
+  const saleRes = await admin
+    .from('da_product_sales')
+    .insert({
+      franchisee_id: listing.franchisee_id,
+      product_id: listing.product_id,
+      quantity,
+      unit_price_pence: unitPricePence,
+      total_pence: totalPence,
+      // 'card' is the existing manual-ledger value for a card payment (038's
+      // CHECK is cash/card/other) — a Stripe Checkout payment IS one. channel
+      // is what separates online from in-person.
+      payment_method: 'card',
+      channel: 'online',
+      sold_at: soldAt,
+      customer_id: customerId,
+      franchisee_product_id: listing.id,
+      stripe_checkout_session_id: session.id,
+      stripe_payment_intent_id: paymentIntentId,
+    })
+    .select('id')
+    .single();
+  if (saleRes.error || !saleRes.data) {
+    throw new Error(`da_product_sales insert failed: ${saleRes.error?.message}`);
+  }
+  const saleId = (saleRes.data as { id: string }).id;
+
+  // One confirmation email, queued for immediate send by the send-emails cron.
+  // Same row shape as the booking journey (_shared/emailSchedule.ts) but
+  // anchored to the sale rather than a booking — booking_id is NULL here
+  // (migration 044 made it nullable and added product_sale_id).
+  if (customerId) {
+    const emailRes = await admin.from('da_email_sequences').insert({
+      customer_id: customerId,
+      booking_id: null,
+      product_sale_id: saleId,
+      template_key: 'product_purchase_confirmation',
+      sequence_day: 0,
+      scheduled_for: new Date().toISOString(),
+      status: 'pending',
+    });
+    if (emailRes.error) {
+      // The sale is paid but the buyer gets no access link — make that loudly
+      // visible; HQ resends from the portal.
+      console.error('stripe-webhook: product confirmation queue failed', emailRes.error);
+      await logSystem(admin, {
+        level: 'error',
+        source: 'stripe-webhook',
+        entityType: 'product_sale',
+        entityId: saleId,
+        message:
+          'product_purchase_confirmation FAILED to queue — buyer gets no confirmation or access link',
+        context: { error: emailRes.error.message, session_id: session.id },
+      });
+    }
+  } else {
+    await logSystem(admin, {
+      level: 'warn',
+      source: 'stripe-webhook',
+      entityType: 'product_sale',
+      entityId: saleId,
+      message: 'product sale recorded with no customer — no confirmation email could be queued',
+      context: { session_id: session.id },
+    });
+  }
+
+  await admin
+    .from('da_activities')
+    .insert({
+      actor_type: 'system',
+      actor_id: null,
+      entity_type: 'product_sale',
+      entity_id: saleId,
+      action: 'product_sale_recorded',
+      metadata: {
+        product: listing.product?.name ?? null,
+        quantity,
+        total_pence: totalPence,
+        payment_method: 'card',
+        channel: 'online',
+        franchisee_id: listing.franchisee_id,
+        stripe_checkout_session_id: session.id,
+      },
+      description: `Online sale: ${quantity} × ${listing.product?.name ?? 'item'}`,
+    })
+    .then((r: { error: unknown }) => {
+      if (r.error) console.error('stripe-webhook: product_sale activity insert failed', r.error);
+    });
+
+  console.log(
+    `stripe-webhook: product sale recorded id="${saleId}" qty=${quantity} total=${totalPence} session="${session.id}"`,
   );
 }
 

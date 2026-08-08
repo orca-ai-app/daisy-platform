@@ -4,7 +4,17 @@
 // 038). Franchisees record sales against catalogue rows; they cannot create
 // products themselves (brand + pricing control stays with HQ).
 //
-// POST { name, description?, rrp_pence, active?, sort_order? } -> 201 row
+// Migration 044 adds SELLABLE ITEMS: kind distinguishes physical stock from
+// e-learning courses, which are delivered by sending the buyer to
+// fulfilment_url after payment (required for kind='elearning' — an e-learning
+// item with no access link would take money and deliver nothing).
+//
+// POST {
+//   name, description?, rrp_pence, active?, sort_order?,
+//   kind?: 'physical' | 'elearning',   // default 'physical'
+//   fulfilment_url?: string,           // https, REQUIRED when kind='elearning'
+//   fulfilment_notes?: string
+// } -> 201 row
 // Errors: { error, request_id } — 400/401/403/500.
 
 // deno-lint-ignore-file no-explicit-any
@@ -35,6 +45,16 @@ function decodeJwtSub(jwt: string): string | null {
     return typeof claims.sub === 'string' ? claims.sub : null;
   } catch {
     return null;
+  }
+}
+
+// An access link must be a real https URL — http would be delivered over a
+// broken padlock, and anything else is a typo.
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
   }
 }
 
@@ -96,9 +116,50 @@ Deno.serve(async (req: Request) => {
   const sortOrder =
     typeof body?.sort_order === 'number' && Number.isInteger(body.sort_order) ? body.sort_order : 0;
 
+  // --- Sellable-item fields (migration 044) -----------------------------------
+  const kind = body?.kind === undefined ? 'physical' : body.kind;
+  if (kind !== 'physical' && kind !== 'elearning') {
+    return jsonResponse(
+      { error: "kind must be 'physical' or 'elearning'", request_id: requestId },
+      400,
+    );
+  }
+  const fulfilmentUrl =
+    typeof body?.fulfilment_url === 'string' && body.fulfilment_url.trim()
+      ? body.fulfilment_url.trim()
+      : null;
+  if (fulfilmentUrl && (!isHttpsUrl(fulfilmentUrl) || fulfilmentUrl.length > 2000)) {
+    return jsonResponse(
+      { error: 'fulfilment_url must be a valid https:// link', request_id: requestId },
+      400,
+    );
+  }
+  if (kind === 'elearning' && !fulfilmentUrl) {
+    return jsonResponse(
+      {
+        error: 'fulfilment_url is required for an e-learning course (where buyers get access)',
+        request_id: requestId,
+      },
+      400,
+    );
+  }
+  const fulfilmentNotes =
+    typeof body?.fulfilment_notes === 'string' && body.fulfilment_notes.trim()
+      ? body.fulfilment_notes.trim().slice(0, 1000)
+      : null;
+
   const ins = await admin
     .from('da_products')
-    .insert({ name, description, rrp_pence: rrp, active, sort_order: sortOrder })
+    .insert({
+      name,
+      description,
+      rrp_pence: rrp,
+      active,
+      sort_order: sortOrder,
+      kind,
+      fulfilment_url: fulfilmentUrl,
+      fulfilment_notes: fulfilmentNotes,
+    })
     .select('*')
     .single();
   if (ins.error || !ins.data) {
@@ -119,7 +180,7 @@ Deno.serve(async (req: Request) => {
       entity_type: 'product',
       entity_id: (ins.data as any).id,
       action: 'product_created',
-      metadata: { name, rrp_pence: rrp, active },
+      metadata: { name, rrp_pence: rrp, active, kind },
       description: `Product added to catalogue: ${name}`,
     })
     .then((r: { error: unknown }) => {

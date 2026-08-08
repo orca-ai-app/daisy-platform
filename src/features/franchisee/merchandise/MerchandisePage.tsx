@@ -1,18 +1,23 @@
 /**
- * /franchisee/merchandise — the franchisee's own book sales.
+ * /franchisee/merchandise — the franchisee's own book sales, plus "My shop":
+ * the online listings customers can buy from the booking page at any time.
  *
  * Reads via anon client + RLS (da_product_sales, policy `franchisee_own`).
  * No client-side franchisee_id filter: RLS scopes the rows automatically.
  * Creates flow through the create-product-sale Edge Function (sonner toasts
  * fired inside RecordSaleDialog); deletes through delete-product-sale, which
  * returns 409 with a "contact HQ" message once the period is billed.
+ *
+ * Online sales (channel = 'online') arrive from Stripe checkouts rather than
+ * being keyed in here, so the delete action is withheld for them — see
+ * `canDeleteSale` below.
  */
 
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { ShoppingBag, Trash2 } from 'lucide-react';
-import { PageHeader, DataTable, StatCard, EmptyState } from '@/components/daisy';
+import { ShoppingBag, Trash2, Globe, Store } from 'lucide-react';
+import { PageHeader, DataTable, StatCard, EmptyState, StatusPill } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -21,15 +26,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatPence } from '@/lib/format';
 import { extractRequestId } from '@/lib/logger';
 import {
   useOwnProductSales,
   useDeleteProductSale,
+  saleChannel,
   todayLondon,
   type ProductSaleRow,
 } from './merchandiseQueries';
 import { RecordSaleDialog } from './RecordSaleDialog';
+import { ShopPanel } from './ShopPanel';
 
 // ---------------------------------------------------------------------------
 // Date formatting
@@ -64,6 +72,19 @@ function paymentMethodLabel(method: ProductSaleRow['payment_method']): string {
 
 function truncate(text: string, max = 40): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function channelLabel(sale: ProductSaleRow): string {
+  return saleChannel(sale) === 'online' ? 'Online' : 'In person';
+}
+
+/**
+ * Manual ledger rows can be deleted; online rows are backed by a Stripe
+ * payment and `delete-product-sale` does NOT guard on channel, so deleting
+ * one would drop the record while the payment stands. Withhold the action.
+ */
+function canDeleteSale(sale: ProductSaleRow): boolean {
+  return saleChannel(sale) !== 'online';
 }
 
 /** Sum of total_pence for sales dated within the current calendar month. */
@@ -130,6 +151,23 @@ export default function MerchandisePage() {
         ),
       },
       {
+        id: 'channel',
+        header: 'Source',
+        accessorFn: (row) => channelLabel(row),
+        cell: ({ row }) =>
+          saleChannel(row.original) === 'online' ? (
+            <StatusPill variant="connected" className="gap-1.5">
+              <Globe className="h-3 w-3" aria-hidden />
+              Online
+            </StatusPill>
+          ) : (
+            <StatusPill variant="not-connected" className="gap-1.5">
+              <Store className="h-3 w-3" aria-hidden />
+              In person
+            </StatusPill>
+          ),
+      },
+      {
         id: 'payment_method',
         header: 'Payment',
         accessorFn: (row) => paymentMethodLabel(row.payment_method),
@@ -173,20 +211,28 @@ export default function MerchandisePage() {
         id: 'actions',
         header: '',
         enableSorting: false,
-        cell: ({ row }) => (
-          <Button
-            size="icon"
-            variant="ghost"
-            title="Delete sale"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleting(row.original);
-            }}
-          >
-            <Trash2 className="h-4 w-4 text-[#8A2A2A]" aria-hidden />
-            <span className="sr-only">Delete sale of {row.original.product_name}</span>
-          </Button>
-        ),
+        cell: ({ row }) =>
+          canDeleteSale(row.original) ? (
+            <Button
+              size="icon"
+              variant="ghost"
+              title="Delete sale"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleting(row.original);
+              }}
+            >
+              <Trash2 className="h-4 w-4 text-[#8A2A2A]" aria-hidden />
+              <span className="sr-only">Delete sale of {row.original.product_name}</span>
+            </Button>
+          ) : (
+            <span
+              className="text-daisy-muted text-xs"
+              title="Online sales are paid for through the website — contact HQ to adjust one"
+            >
+              Paid online
+            </span>
+          ),
       },
     ],
     [],
@@ -196,7 +242,7 @@ export default function MerchandisePage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Merchandise"
-        subtitle="Record book sales and keep track of your merchandise revenue."
+        subtitle="Record book sales, sell online, and keep track of your merchandise revenue."
         actions={<Button onClick={() => setRecordOpen(true)}>+ Record sale</Button>}
       />
 
@@ -210,27 +256,40 @@ export default function MerchandisePage() {
         />
       </section>
 
-      {error ? (
-        <div className="mb-4 rounded-[8px] border border-[#FDEAE5] bg-[#FDEAE5]/40 p-4 text-sm text-[#8A2A2A]">
-          Could not load sales: {error instanceof Error ? error.message : 'Unknown error'}
-        </div>
-      ) : null}
+      <Tabs defaultValue="sales" className="w-full">
+        <TabsList>
+          <TabsTrigger value="sales">Sales</TabsTrigger>
+          <TabsTrigger value="shop">My shop</TabsTrigger>
+        </TabsList>
 
-      <DataTable<ProductSaleRow>
-        columns={columns}
-        data={sales}
-        isLoading={isLoading}
-        searchable
-        searchPlaceholder="Search by product…"
-        emptyState={
-          <EmptyState
-            icon={<ShoppingBag />}
-            title="No merchandise sales yet"
-            body="Record your first book sale to see it here. Sales count towards your monthly revenue."
-            cta={{ label: 'Record your first book sale', onClick: () => setRecordOpen(true) }}
+        <TabsContent value="sales" className="mt-4 flex flex-col gap-4">
+          {error ? (
+            <div className="rounded-[8px] border border-[#FDEAE5] bg-[#FDEAE5]/40 p-4 text-sm text-[#8A2A2A]">
+              Could not load sales: {error instanceof Error ? error.message : 'Unknown error'}
+            </div>
+          ) : null}
+
+          <DataTable<ProductSaleRow>
+            columns={columns}
+            data={sales}
+            isLoading={isLoading}
+            searchable
+            searchPlaceholder="Search by product…"
+            emptyState={
+              <EmptyState
+                icon={<ShoppingBag />}
+                title="No merchandise sales yet"
+                body="Record your first book sale to see it here, or put an item on your booking page from My shop so customers can buy it themselves. Sales count towards your monthly revenue."
+                cta={{ label: 'Record your first book sale', onClick: () => setRecordOpen(true) }}
+              />
+            }
           />
-        }
-      />
+        </TabsContent>
+
+        <TabsContent value="shop" className="mt-4">
+          <ShopPanel />
+        </TabsContent>
+      </Tabs>
 
       <RecordSaleDialog open={recordOpen} onOpenChange={setRecordOpen} />
 

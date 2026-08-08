@@ -6,6 +6,11 @@
 //
 // POST {} (Bearer CRON_SECRET) -> { processed, sent, failed }
 //
+// Most rows belong to a booking. Rows carrying product_sale_id instead
+// (sellable items, migration 044 — product_purchase_confirmation) resolve via
+// da_product_sales → product + franchisee + customer, and render the code
+// template with the e-learning access link.
+//
 // For each pending row due now: load booking + customer + course + franchisee,
 // render the template — da_email_templates row (HQ-editable blocks, migrations
 // 030/031) when one exists, else the code fallback in templates.ts — and POST
@@ -157,7 +162,7 @@ Deno.serve(async (req: Request) => {
   for (let page = 0; page < MAX_PAGES; page++) {
     const due = await admin
       .from('da_email_sequences')
-      .select('id, template_key, customer_id, booking_id')
+      .select('id, template_key, customer_id, booking_id, product_sale_id')
       .eq('status', 'pending')
       .lte('scheduled_for', new Date().toISOString())
       .order('scheduled_for', { ascending: true })
@@ -179,6 +184,75 @@ Deno.serve(async (req: Request) => {
 
     for (const row of rows) {
       try {
+        // --- Product-sale rows (migration 044) -----------------------------
+        // A sellable-item purchase has no booking, so it resolves via
+        // da_product_sales → product + franchisee + customer instead. Handled
+        // first and separately; the booking join below would find nothing.
+        if (row.product_sale_id) {
+          const sale = await admin
+            .from('da_product_sales')
+            .select(
+              `id, quantity, total_pence,
+               product:da_products ( name, kind, fulfilment_url, fulfilment_notes ),
+               franchisee:da_franchisees ( name, email ),
+               customer:da_customers ( first_name, last_name, email )`,
+            )
+            .eq('id', row.product_sale_id)
+            .maybeSingle();
+          if (sale.error || !sale.data) throw new Error('product sale load failed');
+          const s = sale.data as any;
+
+          const recipient = s.customer?.email;
+          if (!recipient) throw new Error('no recipient email');
+
+          // Purchase confirmations are transactional — never suppressed, and
+          // never sent on the broadcasts stream.
+          const saleCtx: TemplateContext = {
+            first_name: s.customer?.first_name ?? 'there',
+            customer_name: `${s.customer?.first_name ?? ''} ${s.customer?.last_name ?? ''}`.trim(),
+            template_name: s.product?.name ?? 'your order',
+            event_date: '',
+            start_time: '',
+            venue: '',
+            franchisee_name: s.franchisee?.name ?? 'Daisy First Aid',
+            franchisee_email: s.franchisee?.email ?? '',
+            booking_reference: '',
+            unsubscribe_url: await buildUnsubscribeUrl(row.customer_id),
+            product_name: s.product?.name ?? 'your order',
+            product_quantity: String(s.quantity ?? 1),
+            fulfilment_url: s.product?.fulfilment_url ?? '',
+            fulfilment_notes: s.product?.fulfilment_notes ?? '',
+          };
+
+          const saleTmpl = renderTemplate(row.template_key, saleCtx);
+          if (!saleTmpl) throw new Error(`no template for key ${row.template_key}`);
+
+          const saleResult = await sendViaPostmark(
+            postmarkToken,
+            fromEmail,
+            recipient,
+            s.franchisee?.email ?? null,
+            saleTmpl.subject,
+            saleTmpl.html,
+            saleTmpl.text,
+            { sequence_id: row.id, template_key: row.template_key },
+            saleCtx.unsubscribe_url,
+            'outbound',
+          );
+          if (!saleResult.ok) throw new Error(saleResult.error ?? 'Postmark send failed');
+
+          await admin
+            .from('da_email_sequences')
+            .update({
+              status: 'sent',
+              sent_at: new Date().toISOString(),
+              provider_message_id: saleResult.messageId ?? null,
+            })
+            .eq('id', row.id);
+          sent++;
+          continue;
+        }
+
         // Load booking → customer, course instance + template, franchisee.
         const booking = await admin
           .from('da_bookings')

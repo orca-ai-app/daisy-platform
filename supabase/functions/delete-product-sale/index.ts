@@ -7,6 +7,13 @@
 //
 // Blocked (409) when a da_billing_runs row exists whose period covers the
 // sale's sold_at date — the figure has already been billed; HQ must adjust.
+//
+// Also blocked (409) for ONLINE sales (migration 044 channel='online', or any
+// row carrying a Stripe session id): the customer actually paid, so deleting
+// the row would orphan the payment and silently lose the buyer's record. The
+// portal hides the button for those, but that is trivially bypassable — this is
+// the real guard. Refunds/corrections go through HQ.
+//
 // Every delete writes a da_activities row containing the sale snapshot.
 // Errors: { error, request_id }.
 
@@ -90,7 +97,7 @@ Deno.serve(async (req: Request) => {
   const sale = await admin
     .from('da_product_sales')
     .select(
-      'id, franchisee_id, product_id, quantity, unit_price_pence, total_pence, payment_method, sold_at, note',
+      'id, franchisee_id, product_id, quantity, unit_price_pence, total_pence, payment_method, sold_at, note, channel, stripe_checkout_session_id',
     )
     .eq('id', saleId)
     .maybeSingle();
@@ -107,6 +114,22 @@ Deno.serve(async (req: Request) => {
   const s = sale.data as any;
   if (s.franchisee_id !== franchiseeId) {
     return jsonResponse({ error: 'That sale is not yours', request_id: requestId }, 403);
+  }
+
+  // Online lock: a Stripe-backed sale represents money the customer has really
+  // paid. Deleting it here would leave the payment with no record on our side,
+  // so it is HQ's call (refund, or correct the row) rather than a self-serve
+  // tidy-up. Belt and braces on channel — an older online row predating
+  // migration 044 still carries its checkout session id.
+  if (s.channel === 'online' || s.stripe_checkout_session_id) {
+    return jsonResponse(
+      {
+        error:
+          'This sale was paid online through Stripe and cannot be deleted here — contact HQ to refund or correct it',
+        request_id: requestId,
+      },
+      409,
+    );
   }
 
   // Billing lock: once a run FOR THIS FRANCHISEE covers the sale date, the

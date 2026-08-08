@@ -65,4 +65,6 @@ export const franchiseeKeys = {
   merchandiseSales: () => [...franchiseeKeys.merchandise(), 'sales'] as const,
   /** Course-instance options for linking a sale to a class. */
   merchandiseCourseOptions: () => [...franchiseeKeys.merchandise(), 'course-options'] as const,
+  /** The signed-in franchisee's own da_franchisee_products rows (their shop). */
+  merchandiseShop: () => [...franchiseeKeys.merchandise(), 'shop'] as const,
 } as const;

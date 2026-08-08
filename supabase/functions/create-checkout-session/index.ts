@@ -2,8 +2,9 @@
 //
 // PUBLIC (no auth) — creates a Stripe Checkout Session for a public widget
 // booking OR a private /book/:token booking. PRD §5.3. Serves BOTH surfaces.
+// Since migration 044 it ALSO sells undated ITEMS (books, kits, e-learning).
 //
-// POST {
+// COURSE path — POST {
 //   course_instance_id?: string,   // public widget passes this
 //   booking_token?: string,        // /book/:token page passes this instead
 //   ticket_type_id: string,
@@ -13,6 +14,19 @@
 //   origin?: string                // caller's site origin, for success/cancel URLs
 // }
 // -> 201 { checkout_url, session_id, booking_reference }
+//
+// ITEM path — POST {
+//   franchisee_product_id: string, // da_franchisee_products.id from get-public-items
+//   quantity?: number,             // default 1, max 20
+//   customer: { first_name, last_name, email, phone?, postcode? },
+//   origin?: string
+// }
+// -> 201 { checkout_url, session_id }
+//
+// The two paths are MUTUALLY EXCLUSIVE — sending course fields alongside
+// franchisee_product_id is a 400, not a guess. Items reserve nothing (no
+// seats), create no booking, and take no discount code; the sale row is written
+// by stripe-webhook on payment, keyed on the session id for idempotency.
 //
 // Flow: resolve course (by id or token) → verify scheduled + enough spaces →
 // franchisee Stripe-connected → price the ticket → apply+store discount →
@@ -90,7 +104,34 @@ interface RequestBody {
   customer?: CustomerInput;
   discount_code?: unknown;
   origin?: unknown;
+  franchisee_product_id?: unknown;
 }
+
+// Shared by both paths: name/email are mandatory, phone/postcode optional.
+interface ParsedCustomer {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  postcode: string | null;
+}
+
+function parseCustomer(c: CustomerInput): ParsedCustomer | string {
+  const firstName = reqStr(c.first_name);
+  const lastName = reqStr(c.last_name);
+  const emailRaw = reqStr(c.email);
+  if (!firstName || !lastName) return 'customer first_name and last_name are required';
+  if (!emailRaw || !EMAIL_RE.test(emailRaw)) return 'a valid customer email is required';
+  return {
+    firstName,
+    lastName,
+    email: emailRaw.toLowerCase(),
+    phone: reqStr(c.phone),
+    postcode: reqStr(c.postcode),
+  };
+}
+
+const MAX_ITEM_QUANTITY = 20;
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -116,6 +157,21 @@ Deno.serve(async (req: Request) => {
   const courseInstanceId = reqStr(body.course_instance_id);
   const bookingToken = reqStr(body.booking_token);
   const ticketTypeId = reqStr(body.ticket_type_id);
+
+  // --- ITEM path (migration 044) --------------------------------------------
+  // Undated products — books, kits, e-learning. No course, no seats, no
+  // booking row: stripe-webhook writes the da_product_sales row on payment.
+  const franchiseeProductId = reqStr(body.franchisee_product_id);
+  if (franchiseeProductId) {
+    if (courseInstanceId || bookingToken || ticketTypeId) {
+      return jsonResponse(
+        { error: 'franchisee_product_id cannot be combined with a course booking' },
+        400,
+      );
+    }
+    return await createItemSession(admin, body, franchiseeProductId, stripeSecretKey);
+  }
+
   if (!courseInstanceId && !bookingToken) {
     return jsonResponse({ error: 'course_instance_id or booking_token is required' }, 400);
   }
@@ -126,19 +182,9 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'quantity must be a positive integer' }, 400);
   }
 
-  const c = body.customer ?? {};
-  const firstName = reqStr(c.first_name);
-  const lastName = reqStr(c.last_name);
-  const emailRaw = reqStr(c.email);
-  if (!firstName || !lastName) {
-    return jsonResponse({ error: 'customer first_name and last_name are required' }, 400);
-  }
-  if (!emailRaw || !EMAIL_RE.test(emailRaw)) {
-    return jsonResponse({ error: 'a valid customer email is required' }, 400);
-  }
-  const email = emailRaw.toLowerCase();
-  const phone = reqStr(c.phone);
-  const postcode = reqStr(c.postcode);
+  const parsed = parseCustomer(body.customer ?? {});
+  if (typeof parsed === 'string') return jsonResponse({ error: parsed }, 400);
+  const { firstName, lastName, email, phone, postcode } = parsed;
 
   // --- Resolve course instance (by id or token) -----------------------------
   let q = admin
@@ -450,3 +496,150 @@ Deno.serve(async (req: Request) => {
     201,
   );
 });
+
+// ---------------------------------------------------------------------------
+// ITEM path (migration 044) — undated products: books, kits, e-learning.
+//
+// Deliberately simpler than the course path: nothing to reserve (an item never
+// runs out of places), no booking row, no discount codes. The ONLY record
+// written here is the customer; stripe-webhook creates the da_product_sales row
+// when payment lands, so an abandoned checkout leaves nothing to sweep up.
+//
+// Routed to the franchisee's connected account exactly as the course path is,
+// and with no application fee (removed pre-launch — HQ bills monthly instead).
+// ---------------------------------------------------------------------------
+async function createItemSession(
+  admin: ReturnType<typeof createClient>,
+  body: RequestBody,
+  franchiseeProductId: string,
+  stripeSecretKey: string,
+): Promise<Response> {
+  const quantityRaw = body.quantity;
+  const quantity = quantityRaw === undefined || quantityRaw === null ? 1 : quantityRaw;
+  if (
+    typeof quantity !== 'number' ||
+    !Number.isInteger(quantity) ||
+    quantity < 1 ||
+    quantity > MAX_ITEM_QUANTITY
+  ) {
+    return jsonResponse(
+      { error: `quantity must be a whole number between 1 and ${MAX_ITEM_QUANTITY}` },
+      400,
+    );
+  }
+
+  const parsed = parseCustomer(body.customer ?? {});
+  if (typeof parsed === 'string') return jsonResponse({ error: parsed }, 400);
+  const { firstName, lastName, email, phone, postcode } = parsed;
+
+  // --- Resolve the listing (must be online, product must be active) ---------
+  const fpRes = await admin
+    .from('da_franchisee_products')
+    .select(
+      `id, franchisee_id, product_id, price_pence, is_online,
+       product:da_products ( name, description, active, kind )`,
+    )
+    .eq('id', franchiseeProductId)
+    .maybeSingle();
+  if (fpRes.error) {
+    console.error('franchisee product lookup failed', fpRes.error);
+    return jsonResponse({ error: 'Could not load that item' }, 500);
+  }
+  if (!fpRes.data) return jsonResponse({ error: 'Item not found' }, 404);
+  const listing = fpRes.data as any;
+  if (!listing.is_online || !listing.product?.active) {
+    return jsonResponse({ error: 'That item is not currently on sale' }, 409);
+  }
+
+  // --- Franchisee Stripe connection -----------------------------------------
+  const frRes = await admin
+    .from('da_franchisees')
+    .select('id, number, name, email, stripe_account_id, stripe_connected')
+    .eq('id', listing.franchisee_id)
+    .single();
+  if (frRes.error || !frRes.data) {
+    console.error('franchisee lookup failed', frRes.error);
+    return jsonResponse({ error: 'Could not resolve the item owner' }, 500);
+  }
+  const franchisee = frRes.data as any;
+  if (!franchisee.stripe_connected || !franchisee.stripe_account_id) {
+    return jsonResponse({ error: 'Online payment is not set up for this item yet' }, 400);
+  }
+
+  // --- Upsert customer ------------------------------------------------------
+  const custRes = await admin
+    .from('da_customers')
+    .upsert(
+      { email, first_name: firstName, last_name: lastName, phone, postcode },
+      { onConflict: 'email', ignoreDuplicates: false },
+    )
+    .select('id')
+    .single();
+  if (custRes.error || !custRes.data) {
+    console.error('customer upsert failed', custRes.error);
+    return jsonResponse({ error: 'Could not save your details' }, 500);
+  }
+  const customerId = (custRes.data as any).id;
+
+  // --- Stripe Checkout Session (direct charge on connected account) ---------
+  // Stripe multiplies unit_amount by line-item quantity, so the buyer sees
+  // "Book × 3" priced per unit rather than one opaque total.
+  const origin = safeOrigin(reqStr(body.origin));
+  const stripe = new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' });
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        payment_method_types: ['card'],
+        customer_email: email,
+        line_items: [
+          {
+            price_data: {
+              currency: 'gbp',
+              unit_amount: listing.price_pence,
+              product_data: {
+                name: listing.product?.name ?? 'Daisy First Aid item',
+                ...(listing.product?.description
+                  ? { description: String(listing.product.description).slice(0, 500) }
+                  : {}),
+              },
+            },
+            quantity,
+          },
+        ],
+        success_url: `${origin}/shop/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}/shop/cancelled`,
+        metadata: {
+          kind: 'product',
+          franchisee_product_id: listing.id,
+          quantity: String(quantity),
+          customer_id: customerId,
+        },
+      },
+      { stripeAccount: franchisee.stripe_account_id },
+    );
+  } catch (err: any) {
+    // Nothing to roll back — no booking, no hold. The customer row is a plain
+    // contact record and stays regardless.
+    const requestId = newRequestId();
+    await logSystem(admin, {
+      level: 'error',
+      source: 'create-checkout-session',
+      requestId,
+      entityType: 'franchisee_product',
+      entityId: listing.id,
+      message: `Stripe item checkout.sessions.create failed: ${typeof err?.message === 'string' ? err.message : String(err)}`,
+      context: { franchisee_id: listing.franchisee_id, quantity },
+    });
+    return jsonResponse(
+      {
+        error: `Could not start payment: ${typeof err?.message === 'string' ? err.message : 'Stripe error'}`,
+        request_id: requestId,
+      },
+      502,
+    );
+  }
+
+  return jsonResponse({ checkout_url: session.url, session_id: session.id }, 201);
+}
