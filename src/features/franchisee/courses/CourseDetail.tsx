@@ -66,6 +66,7 @@ import {
 import type { TicketType } from './types';
 import { useOwnProfile } from '../profileQueries';
 import { MedicalQr } from '../components/MedicalQr';
+import { bookingUrl } from '@/lib/publicUrls';
 import { RecordSaleDialog } from '../merchandise/RecordSaleDialog';
 
 // ---------------------------------------------------------------------------
@@ -853,27 +854,24 @@ function DeleteTicketTypeDialog({
 // the URL is derived purely from the booking_token already on the instance.
 // ---------------------------------------------------------------------------
 
-/** Base URL for the public booking micro-site. */
-const BOOKING_BASE = 'https://booking.daisyfirstaid.com';
-
 interface BookingLinkCardProps {
   bookingToken: string;
   courseName: string;
 }
 
 function BookingLinkCard({ bookingToken, courseName }: BookingLinkCardProps) {
-  const bookingUrl = `${BOOKING_BASE}/book/${bookingToken}`;
+  const url = bookingUrl(bookingToken);
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(bookingUrl);
+      await navigator.clipboard.writeText(url);
       toast.success('Booking link copied to clipboard');
     } catch {
       toast.error('Could not copy to clipboard');
     }
   };
 
-  const whatsAppHref = encodeURIComponent(`Book your place on ${courseName}: ${bookingUrl}`);
+  const whatsAppHref = encodeURIComponent(`Book your place on ${courseName}: ${url}`);
 
   return (
     <Card>
@@ -892,12 +890,12 @@ function BookingLinkCard({ bookingToken, courseName }: BookingLinkCardProps) {
             Booking URL
           </p>
           <a
-            href={bookingUrl}
+            href={url}
             target="_blank"
             rel="noopener noreferrer"
             className="text-daisy-primary text-sm font-medium break-all underline underline-offset-2"
           >
-            {bookingUrl}
+            {url}
           </a>
         </div>
 

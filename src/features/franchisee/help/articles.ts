@@ -5,6 +5,8 @@
  * no emojis. Button/label text matches the actual UI exactly.
  */
 
+import { MEDICAL_HOST } from '@/lib/publicUrls';
+
 export interface HelpSection {
   heading?: string;
   body?: string[];
@@ -304,7 +306,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'How it works',
         body: [
           'When an attendee scans the QR at your class, the medical form opens and automatically finds which of your classes is running that day. If you run two classes on the same day, the attendee sees a short list and picks the right one.',
-          'Attendees who do not have a camera can type your instructor number directly at medical.daisyfirstaid.com instead.',
+          `Attendees who do not have a camera can type your instructor number directly at ${MEDICAL_HOST} instead.`,
         ],
       },
       {

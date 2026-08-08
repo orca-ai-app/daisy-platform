@@ -16,13 +16,9 @@ import QRCode from 'qrcode';
 import { Download, QrCode } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { MEDICAL_HOST, medicalFormUrl } from '@/lib/publicUrls';
 
-const MEDICAL_BASE = 'https://medical.daisyfirstaid.com/';
-
-/** The permanent medical-form URL for an instructor. Nothing else goes in it. */
-export function medicalFormUrl(franchiseeNumber: string): string {
-  return `${MEDICAL_BASE}?instructor=${encodeURIComponent(franchiseeNumber)}`;
-}
+export { medicalFormUrl };
 
 interface MedicalQrProps {
   franchiseeNumber: string;
@@ -152,7 +148,7 @@ export function MedicalQr({ franchiseeNumber, compact = false, title, blurb }: M
 
         <p className="text-daisy-muted text-[11px]">
           Attendees without a camera can type your instructor number{' '}
-          <strong>{franchiseeNumber}</strong> at medical.daisyfirstaid.com instead.
+          <strong>{franchiseeNumber}</strong> at {MEDICAL_HOST} instead.
         </p>
       </CardContent>
     </Card>
