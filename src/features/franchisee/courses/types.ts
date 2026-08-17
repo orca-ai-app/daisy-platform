@@ -127,6 +127,11 @@ export interface CourseInstance {
   display_name: string | null;
   /** Venue not yet confirmed (private courses only, migration 040). */
   venue_tbc: boolean;
+  /**
+   * Optional franchisee-written class description shown to customers
+   * (migration 045). NULL falls back to da_course_templates.description.
+   */
+  description_override: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +295,16 @@ export interface CreateCourseInstanceRequest {
   display_name?: string | null;
   /** Venue not yet confirmed (private courses only, migration 040). */
   venue_tbc?: boolean;
+  /**
+   * Optional franchisee-written class description shown to customers
+   * (migration 045 / G1). Null falls back to the template description.
+   */
+  description_override?: string | null;
+  /**
+   * Explicit confirmation that a £0.00 price is intentional (F6). The function
+   * rejects a zero price on the instance or any ticket type unless this is true.
+   */
+  allow_free?: boolean;
 }
 
 /** 2xx success body for create-course-instance. */

@@ -14,6 +14,8 @@ export { PageHeader } from './PageHeader';
 export { DataTable } from './DataTable';
 export { EmptyState } from './EmptyState';
 export { TopBar } from './TopBar';
+export { MobileNav } from './MobileNav';
+export type { MobileNavItem } from './MobileNav';
 export { TerritoryMap, useTerritoryMapSelection } from './TerritoryMap';
 export type { TerritoryMapItem } from './TerritoryMap';
 export { RouteLoadingSkeleton } from './RouteLoadingSkeleton';

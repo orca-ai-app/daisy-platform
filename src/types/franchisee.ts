@@ -19,6 +19,12 @@ export interface Franchisee {
   status: FranchiseeStatus;
   is_hq: boolean;
   notes: string | null;
+  /**
+   * The franchisee's own message, added to the confirmation emails their
+   * customers receive (migration 046). NULL = nothing extra is added.
+   * Optional because the column is absent until the migration has run.
+   */
+  booking_email_message?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,19 +1,26 @@
 // supabase/functions/update-product/index.ts
 //
-// HQ-ONLY — edits a merchandise catalogue row (migration 038): name,
-// description, RRP, active flag, sort order. Price changes only affect future
-// sales (unit_price_pence is copied onto each da_product_sales row at sale
-// time), so history is never rewritten.
+// Edits a merchandise catalogue row (migration 038): name, description, RRP,
+// active flag, sort order. Price changes only affect future sales
+// (unit_price_pence is copied onto each da_product_sales row at sale time), so
+// history is never rewritten.
 //
 // Migration 044 adds the SELLABLE ITEM fields, which are editable here too —
 // without them HQ could never change an e-learning access link once the product
 // existed. Validation mirrors create-product: fulfilment_url must be https and
 // is required whenever the product ends up as kind='elearning'.
 //
+// Migration 046 opens this up to franchisees for THEIR OWN items only
+// (da_products.franchisee_id = the caller). Feola could not rename anything
+// while the catalogue was HQ-only. A franchisee editing an HQ network item, or
+// anyone else's item, gets 403 — their price / VAT / visibility on an HQ item
+// lives on da_franchisee_products via upsert-franchisee-product instead. RRP,
+// sort_order and fulfilment_url stay HQ-only on every row.
+//
 // POST {
 //   product_id, name?, description?, rrp_pence?, active?, sort_order?,
 //   kind?: 'physical' | 'elearning',
-//   fulfilment_url?: string | null,    // https, REQUIRED when kind='elearning'
+//   fulfilment_url?: string | null,    // HQ only; https, REQUIRED when kind='elearning'
 //   fulfilment_notes?: string | null
 // } -> 200 row
 // Errors: { error, request_id } — 400/401/403/404/500.
@@ -83,12 +90,17 @@ Deno.serve(async (req: Request) => {
 
   const caller = await admin
     .from('da_franchisees')
-    .select('id, is_hq')
+    .select('id, name, is_hq')
     .eq('auth_user_id', authUserId)
     .maybeSingle();
-  if (caller.error || !caller.data || !(caller.data as any).is_hq) {
-    return jsonResponse({ error: 'HQ access required', request_id: requestId }, 403);
+  if (caller.error || !caller.data) {
+    return jsonResponse(
+      { error: 'No franchisee account for this login', request_id: requestId },
+      403,
+    );
   }
+  const isHq = Boolean((caller.data as any).is_hq);
+  const callerId = (caller.data as any).id as string;
 
   let body: any;
   try {
@@ -99,6 +111,45 @@ Deno.serve(async (req: Request) => {
   const productId = typeof body?.product_id === 'string' ? body.product_id : '';
   if (!UUID_RE.test(productId)) {
     return jsonResponse({ error: 'product_id is required', request_id: requestId }, 400);
+  }
+
+  // --- Ownership (migration 046) ---------------------------------------------
+  // Load the row up front: it decides who may edit it, and the fulfilment rules
+  // below need its current kind anyway.
+  const existing = await admin
+    .from('da_products')
+    .select('id, franchisee_id, kind, fulfilment_url')
+    .eq('id', productId)
+    .maybeSingle();
+  if (existing.error) {
+    await logSystem(admin, {
+      level: 'error',
+      source: 'update-product',
+      requestId,
+      message: `product lookup failed: ${existing.error.message}`,
+    });
+    return jsonResponse({ error: 'Could not load the product', request_id: requestId }, 500);
+  }
+  if (!existing.data) {
+    return jsonResponse({ error: 'Product not found', request_id: requestId }, 404);
+  }
+  const current = existing.data as any;
+  const ownerId = (current.franchisee_id ?? null) as string | null;
+
+  // HQ edits anything. A franchisee edits only rows they own — an HQ network
+  // item is read-only to them (their price/visibility lives on their
+  // da_franchisee_products listing instead).
+  if (!isHq && ownerId !== callerId) {
+    return jsonResponse(
+      {
+        error:
+          ownerId === null
+            ? 'This is a network item managed by HQ. You can still set your own price and visibility for it in My shop.'
+            : 'You can only edit your own items',
+        request_id: requestId,
+      },
+      403,
+    );
   }
 
   const patch: Record<string, unknown> = {};
@@ -115,7 +166,9 @@ Deno.serve(async (req: Request) => {
         ? body.description.trim().slice(0, 500)
         : null;
   }
-  if (body?.rrp_pence !== undefined) {
+  // The network RRP is HQ guidance, so only HQ sets it. A franchisee's own
+  // selling price lives on their da_franchisee_products listing.
+  if (body?.rrp_pence !== undefined && isHq) {
     const rrp = body.rrp_pence;
     if (typeof rrp !== 'number' || !Number.isInteger(rrp) || rrp < 0 || rrp > 100_000_00) {
       return jsonResponse(
@@ -131,7 +184,8 @@ Deno.serve(async (req: Request) => {
     }
     patch.active = body.active;
   }
-  if (body?.sort_order !== undefined) {
+  // sort_order orders the network catalogue, so only HQ sets it.
+  if (body?.sort_order !== undefined && isHq) {
     if (typeof body.sort_order !== 'number' || !Number.isInteger(body.sort_order)) {
       return jsonResponse(
         { error: 'sort_order must be a whole number', request_id: requestId },
@@ -151,25 +205,6 @@ Deno.serve(async (req: Request) => {
     body?.fulfilment_url !== undefined ||
     body?.fulfilment_notes !== undefined;
   if (touchesFulfilment) {
-    const existing = await admin
-      .from('da_products')
-      .select('kind, fulfilment_url')
-      .eq('id', productId)
-      .maybeSingle();
-    if (existing.error) {
-      await logSystem(admin, {
-        level: 'error',
-        source: 'update-product',
-        requestId,
-        message: `product lookup failed: ${existing.error.message}`,
-      });
-      return jsonResponse({ error: 'Could not load the product', request_id: requestId }, 500);
-    }
-    if (!existing.data) {
-      return jsonResponse({ error: 'Product not found', request_id: requestId }, 404);
-    }
-    const current = existing.data as any;
-
     if (body?.kind !== undefined) {
       if (body.kind !== 'physical' && body.kind !== 'elearning') {
         return jsonResponse(
@@ -179,7 +214,10 @@ Deno.serve(async (req: Request) => {
       }
       patch.kind = body.kind;
     }
-    if (body?.fulfilment_url !== undefined) {
+    // Access links are HQ's to set; a franchisee's own e-learning is fulfilled
+    // by hand, so the field is silently ignored for them rather than erroring
+    // on a form that never showed it.
+    if (body?.fulfilment_url !== undefined && isHq) {
       const url =
         typeof body.fulfilment_url === 'string' && body.fulfilment_url.trim()
           ? body.fulfilment_url.trim()
@@ -200,12 +238,14 @@ Deno.serve(async (req: Request) => {
     }
 
     // The link is required against the kind the row will END UP as — whether
-    // that is a kind being set now or the one already on the row — so an
-    // e-learning item can never be left with nothing to deliver.
+    // that is a kind being set now or the one already on the row — so an HQ
+    // e-learning item can never be left with nothing to deliver. This does NOT
+    // apply to a franchisee's own item: theirs is fulfilled by hand and the
+    // confirmation email says access follows separately, so no link is right.
     const resultingKind = patch.kind !== undefined ? patch.kind : current.kind;
     const resultingUrl =
       patch.fulfilment_url !== undefined ? patch.fulfilment_url : current.fulfilment_url;
-    if (resultingKind === 'elearning' && !resultingUrl) {
+    if (isHq && resultingKind === 'elearning' && !resultingUrl) {
       return jsonResponse(
         {
           error: 'fulfilment_url is required for an e-learning course (where buyers get access)',
@@ -220,12 +260,12 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Nothing to update', request_id: requestId }, 400);
   }
 
-  const upd = await admin
-    .from('da_products')
-    .update(patch)
-    .eq('id', productId)
-    .select('*')
-    .maybeSingle();
+  // Belt and braces: a non-HQ caller's UPDATE is additionally scoped to rows
+  // they own, so the ownership check above can never be the only thing standing
+  // between a franchisee and an HQ network item.
+  let updQuery = admin.from('da_products').update(patch).eq('id', productId);
+  if (!isHq) updQuery = updQuery.eq('franchisee_id', callerId);
+  const upd = await updQuery.select('*').maybeSingle();
   if (upd.error) {
     await logSystem(admin, {
       level: 'error',
@@ -240,13 +280,15 @@ Deno.serve(async (req: Request) => {
   await admin
     .from('da_activities')
     .insert({
-      actor_type: 'hq',
-      actor_id: (caller.data as any).id,
+      actor_type: isHq ? 'hq' : 'franchisee',
+      actor_id: callerId,
       entity_type: 'product',
       entity_id: productId,
       action: 'product_updated',
-      metadata: { changes: patch },
-      description: `Product updated: ${(upd.data as any).name}`,
+      metadata: { changes: patch, franchisee_id: ownerId },
+      description: isHq
+        ? `Product updated: ${(upd.data as any).name}`
+        : `${(caller.data as any).name} updated their own item: ${(upd.data as any).name}`,
     })
     .then((r: { error: unknown }) => {
       if (r.error) console.error('product_updated activity insert failed', r.error);

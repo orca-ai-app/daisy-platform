@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { LogOut } from 'lucide-react';
 import { ErrorBoundary } from 'react-error-boundary';
-import { TopBar } from '@/components/daisy';
+import { TopBar, MobileNav } from '@/components/daisy';
 import { ErrorFallback } from '@/components/error-boundary/ErrorFallback';
 import { useRole } from '@/features/auth/RoleContext';
 import { getInitials } from '@/utils/initials';
@@ -48,7 +48,8 @@ export function HQLayout() {
     <div className="bg-daisy-bg min-h-screen">
       <TopBar
         nav={
-          <ul className="flex items-center gap-1">
+          // Below md the twelve HQ links move into the drawer; hide them here.
+          <ul className="hidden items-center gap-1 md:flex">
             {HQ_NAV.map((item) => (
               <li key={item.to}>
                 <NavLink
@@ -70,16 +71,37 @@ export function HQLayout() {
           </ul>
         }
         actions={
-          <UserMenu
-            initials={initials}
-            name={franchisee?.name ?? user?.email ?? 'Signed in'}
-            email={user?.email ?? ''}
-            onSignOut={() => void signOut()}
-          />
+          <>
+            <UserMenu
+              initials={initials}
+              name={franchisee?.name ?? user?.email ?? 'Signed in'}
+              email={user?.email ?? ''}
+              onSignOut={() => void signOut()}
+            />
+            <MobileNav
+              items={HQ_NAV.map((item) => ({
+                label: item.label,
+                path: item.to,
+                matchPrefix: item.matchPrefix,
+              }))}
+              accountName={franchisee?.name ?? user?.email ?? 'Signed in'}
+              accountEmail={user?.email ?? ''}
+              footer={
+                <button
+                  type="button"
+                  onClick={() => void signOut()}
+                  className="text-daisy-ink hover:bg-daisy-line-soft flex min-h-11 w-full items-center gap-2 rounded-[8px] px-4 py-3 text-left text-sm font-semibold"
+                >
+                  <LogOut aria-hidden className="h-4 w-4" />
+                  Sign out
+                </button>
+              }
+            />
+          </>
         }
       />
 
-      <main className="mx-auto max-w-[1240px] px-10 pt-14 pb-24">
+      <main className="mx-auto max-w-[1240px] px-4 pt-8 pb-16 sm:px-6 md:px-10 md:pt-14 md:pb-24">
         <ErrorBoundary
           FallbackComponent={ErrorFallback}
           resetKeys={[location.pathname]}

@@ -83,7 +83,7 @@ async function callEdgeFunction<T>(
 // ---------------------------------------------------------------------------
 
 export interface CourseInstanceWithTemplate extends CourseInstance {
-  template: { id: string; name: string; slug: string } | null;
+  template: { id: string; name: string; slug: string; description: string | null } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +127,8 @@ export function useCourseInstance(id: string | undefined) {
            cancellation_reason,
            display_name,
            venue_tbc,
-           template:da_course_templates ( id, name, slug )`,
+           description_override,
+           template:da_course_templates ( id, name, slug, description )`,
         )
         .eq('id', id)
         .maybeSingle();
@@ -189,6 +190,11 @@ export interface CourseInstanceUpdateFields {
   display_name?: string | null;
   /** Venue not yet confirmed — private courses only (migration 040). */
   venue_tbc?: boolean;
+  /**
+   * Customer-facing class description (migration 045 / G1). Null falls back to
+   * the template description.
+   */
+  description_override?: string | null;
 }
 
 interface UpdateCourseInstanceArgs {
@@ -291,11 +297,18 @@ export interface TicketTypeInput {
 interface CreateTicketTypeArgs {
   course_instance_id: string;
   ticket_type: TicketTypeInput;
+  /**
+   * F6: the Edge Function rejects a £0.00 ticket unless this is explicitly
+   * true, so an accidental free ticket cannot reach the booking page.
+   */
+  allow_free?: boolean;
 }
 
 interface UpdateTicketTypeArgs {
   id: string;
   fields: Partial<TicketTypeInput>;
+  /** F6: explicit confirmation that a £0.00 price is intentional. */
+  allow_free?: boolean;
 }
 
 interface DeleteTicketTypeArgs {
@@ -305,8 +318,12 @@ interface DeleteTicketTypeArgs {
 export function useCreateTicketType(): UseMutationResult<TicketType, Error, CreateTicketTypeArgs> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ course_instance_id, ticket_type }) =>
-      callEdgeFunction<TicketType>('create-ticket-type', { course_instance_id, ticket_type }),
+    mutationFn: ({ course_instance_id, ticket_type, allow_free }) =>
+      callEdgeFunction<TicketType>('create-ticket-type', {
+        course_instance_id,
+        ticket_type,
+        allow_free: allow_free === true,
+      }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
         queryKey: franchiseeKeys.courseTicketTypes(variables.course_instance_id),
@@ -318,8 +335,12 @@ export function useCreateTicketType(): UseMutationResult<TicketType, Error, Crea
 export function useUpdateTicketType(): UseMutationResult<TicketType, Error, UpdateTicketTypeArgs> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, fields }) =>
-      callEdgeFunction<TicketType>('update-ticket-type', { id, fields }),
+    mutationFn: ({ id, fields, allow_free }) =>
+      callEdgeFunction<TicketType>('update-ticket-type', {
+        id,
+        fields,
+        allow_free: allow_free === true,
+      }),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({
         queryKey: franchiseeKeys.courseTicketTypes(data.course_instance_id),

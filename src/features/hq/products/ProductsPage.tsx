@@ -38,7 +38,7 @@ import {
   useAllProducts,
   useCreateProduct,
   useUpdateProduct,
-  type Product,
+  type ProductRow,
   type ProductKind,
 } from './queries';
 
@@ -89,7 +89,7 @@ const productSchema = z
 
 type ProductFormValues = z.infer<typeof productSchema>;
 
-type DialogMode = { type: 'edit'; product: Product } | { type: 'create' };
+type DialogMode = { type: 'edit'; product: ProductRow } | { type: 'create' };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -107,7 +107,7 @@ export default function ProductsPage() {
   const products = useAllProducts();
   const [mode, setMode] = useState<DialogMode | null>(null);
 
-  const columns = useMemo<ColumnDef<Product>[]>(
+  const columns = useMemo<ColumnDef<ProductRow>[]>(
     () => [
       {
         accessorKey: 'name',
@@ -145,6 +145,19 @@ export default function ProductsPage() {
           ),
       },
       {
+        id: 'owner',
+        header: 'Owner',
+        accessorFn: (row) => row.owner_name ?? 'Network',
+        cell: ({ row }) =>
+          row.original.owner_name ? (
+            <span className="text-daisy-muted text-[13px]" title={row.original.owner_name}>
+              {row.original.owner_name}
+            </span>
+          ) : (
+            <span className="text-daisy-ink text-[13px] font-semibold">Network</span>
+          ),
+      },
+      {
         id: 'rrp',
         header: 'RRP',
         accessorFn: (row) => row.rrp_pence ?? -1,
@@ -179,7 +192,7 @@ export default function ProductsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Products"
-        subtitle="The merchandise catalogue is network-wide: every franchisee sells from this list. Items stay hidden from franchisees until they are priced and active."
+        subtitle="Network items are sold by every franchisee and stay hidden until they are priced and active. Items owned by a single franchisee are their own, added from their shop, and visible only to them."
         actions={
           <Button size="sm" onClick={() => setMode({ type: 'create' })}>
             <Plus className="h-4 w-4" />
@@ -194,7 +207,7 @@ export default function ProductsPage() {
         </div>
       ) : null}
 
-      <DataTable<Product>
+      <DataTable<ProductRow>
         columns={columns}
         data={products.data ?? []}
         isLoading={products.isLoading}
@@ -268,6 +281,8 @@ function ProductDialog({ mode, open, onClose }: ProductDialogProps) {
   const isActive = watch('active');
   const kind = watch('kind');
   const isElearning = kind === 'elearning';
+  /** Set when this row is one franchisee's own item (migration 046). */
+  const ownerName = mode.type === 'edit' ? mode.product.owner_name : null;
 
   const onSubmit = async (values: ProductFormValues) => {
     const description = values.description?.trim() ?? '';
@@ -318,11 +333,15 @@ function ProductDialog({ mode, open, onClose }: ProductDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : null)}>
-      <DialogContent className="max-w-lg">
+      {/* Capped at 90vh with an internally scrolling body so the action
+          buttons stay reachable on a short screen (F2). */}
+      <DialogContent className="flex max-h-[90vh] max-w-lg flex-col">
         <DialogHeader>
           <DialogTitle>{isCreate ? 'Add product' : 'Edit product'}</DialogTitle>
           <DialogDescription>
-            The catalogue is network-wide, so changes apply to every franchisee.
+            {ownerName
+              ? `This item belongs to ${ownerName}. Only they can sell it, and it does not appear in anyone else's shop.`
+              : 'Network items are sold by every franchisee, so changes apply across the whole network.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -330,144 +349,146 @@ function ProductDialog({ mode, open, onClose }: ProductDialogProps) {
           onSubmit={(e) => {
             void handleSubmit(onSubmit)(e);
           }}
-          className="mt-4 flex flex-col gap-4"
+          className="mt-4 flex min-h-0 flex-1 flex-col"
         >
-          {/* Name */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="prod-name">Name</Label>
-            <Input
-              id="prod-name"
-              placeholder="e.g. Paediatric First Aid book"
-              {...register('name')}
-            />
-            {errors.name ? (
-              <p className="text-daisy-orange text-xs">{errors.name.message}</p>
-            ) : null}
-          </div>
-
-          {/* Type */}
-          <div className="flex flex-col gap-1.5">
-            <Label>Type</Label>
-            <Select
-              value={kind}
-              onValueChange={(v) =>
-                setValue('kind', v as ProductKind, { shouldDirty: true, shouldValidate: true })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="physical">Book or physical item</SelectItem>
-                <SelectItem value="elearning">E-learning course</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-daisy-muted text-xs">
-              E-learning buyers are sent straight to the course link after paying; physical items
-              are handed over or posted by the franchisee.
-            </p>
-          </div>
-
-          {/* Description */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="prod-description">Description</Label>
-            <textarea
-              id="prod-description"
-              rows={3}
-              className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
-              {...register('description')}
-            />
-            {errors.description ? (
-              <p className="text-daisy-orange text-xs">{errors.description.message}</p>
-            ) : null}
-          </div>
-
-          {/* RRP + Sort order */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            {/* Name */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="prod-rrp">RRP (£)</Label>
+              <Label htmlFor="prod-name">Name</Label>
               <Input
-                id="prod-rrp"
-                type="number"
-                step="0.01"
-                min="0"
-                {...register('rrp_pounds', { valueAsNumber: true })}
+                id="prod-name"
+                placeholder="e.g. Paediatric First Aid book"
+                {...register('name')}
               />
-              {errors.rrp_pounds ? (
-                <p className="text-daisy-orange text-xs">{errors.rrp_pounds.message}</p>
+              {errors.name ? (
+                <p className="text-daisy-orange text-xs">{errors.name.message}</p>
               ) : null}
             </div>
 
+            {/* Type */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="prod-sort-order">Sort order</Label>
-              <Input
-                id="prod-sort-order"
-                type="number"
-                step="1"
-                {...register('sort_order', { valueAsNumber: true })}
+              <Label>Type</Label>
+              <Select
+                value={kind}
+                onValueChange={(v) =>
+                  setValue('kind', v as ProductKind, { shouldDirty: true, shouldValidate: true })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="physical">Book or physical item</SelectItem>
+                  <SelectItem value="elearning">E-learning course</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-daisy-muted text-xs">
+                E-learning buyers are sent straight to the course link after paying; physical items
+                are handed over or posted by the franchisee.
+              </p>
+            </div>
+
+            {/* Description */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="prod-description">Description</Label>
+              <textarea
+                id="prod-description"
+                rows={3}
+                className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+                {...register('description')}
               />
-              {errors.sort_order ? (
-                <p className="text-daisy-orange text-xs">{errors.sort_order.message}</p>
+              {errors.description ? (
+                <p className="text-daisy-orange text-xs">{errors.description.message}</p>
               ) : null}
             </div>
-          </div>
 
-          {/* Fulfilment — e-learning only */}
-          {isElearning ? (
-            <>
+            {/* RRP + Sort order */}
+            <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="prod-fulfilment-url">Course link</Label>
+                <Label htmlFor="prod-rrp">RRP (£)</Label>
                 <Input
-                  id="prod-fulfilment-url"
-                  type="url"
-                  placeholder="https://learn.example.com/course"
-                  {...register('fulfilment_url')}
+                  id="prod-rrp"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  {...register('rrp_pounds', { valueAsNumber: true })}
                 />
-                <p className="text-daisy-muted text-xs">
-                  Where the buyer is sent after paying. Must start with https://
-                </p>
-                {errors.fulfilment_url ? (
-                  <p className="text-daisy-orange text-xs">{errors.fulfilment_url.message}</p>
+                {errors.rrp_pounds ? (
+                  <p className="text-daisy-orange text-xs">{errors.rrp_pounds.message}</p>
                 ) : null}
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="prod-fulfilment-notes">Fulfilment notes</Label>
-                <textarea
-                  id="prod-fulfilment-notes"
-                  rows={2}
-                  className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
-                  placeholder="e.g. Access lasts 12 months from purchase"
-                  {...register('fulfilment_notes')}
+                <Label htmlFor="prod-sort-order">Sort order</Label>
+                <Input
+                  id="prod-sort-order"
+                  type="number"
+                  step="1"
+                  {...register('sort_order', { valueAsNumber: true })}
                 />
-                <p className="text-daisy-muted text-xs">
-                  Shown to franchisees when they list this item.
-                </p>
-                {errors.fulfilment_notes ? (
-                  <p className="text-daisy-orange text-xs">{errors.fulfilment_notes.message}</p>
+                {errors.sort_order ? (
+                  <p className="text-daisy-orange text-xs">{errors.sort_order.message}</p>
                 ) : null}
               </div>
-            </>
-          ) : null}
+            </div>
 
-          {/* Active toggle */}
-          <label className="border-daisy-line bg-daisy-paper-soft flex items-start gap-3 rounded-[8px] border-2 p-3">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setValue('active', e.target.checked, { shouldDirty: true })}
-              className="mt-0.5 h-4 w-4"
-            />
-            <span className="flex flex-col">
-              <span className="text-sm font-bold">Active</span>
-              <span className="text-daisy-muted text-xs">
-                Inactive products are hidden from franchisees when they record a sale.
+            {/* Fulfilment — e-learning only */}
+            {isElearning ? (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="prod-fulfilment-url">Course link</Label>
+                  <Input
+                    id="prod-fulfilment-url"
+                    type="url"
+                    placeholder="https://learn.example.com/course"
+                    {...register('fulfilment_url')}
+                  />
+                  <p className="text-daisy-muted text-xs">
+                    Where the buyer is sent after paying. Must start with https://
+                  </p>
+                  {errors.fulfilment_url ? (
+                    <p className="text-daisy-orange text-xs">{errors.fulfilment_url.message}</p>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="prod-fulfilment-notes">Fulfilment notes</Label>
+                  <textarea
+                    id="prod-fulfilment-notes"
+                    rows={2}
+                    className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+                    placeholder="e.g. Access lasts 12 months from purchase"
+                    {...register('fulfilment_notes')}
+                  />
+                  <p className="text-daisy-muted text-xs">
+                    Shown to franchisees when they list this item.
+                  </p>
+                  {errors.fulfilment_notes ? (
+                    <p className="text-daisy-orange text-xs">{errors.fulfilment_notes.message}</p>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+
+            {/* Active toggle */}
+            <label className="border-daisy-line bg-daisy-paper-soft flex items-start gap-3 rounded-[8px] border-2 p-3">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setValue('active', e.target.checked, { shouldDirty: true })}
+                className="mt-0.5 h-4 w-4"
+              />
+              <span className="flex flex-col">
+                <span className="text-sm font-bold">Active</span>
+                <span className="text-daisy-muted text-xs">
+                  Inactive products are hidden from franchisees when they record a sale.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-2">
+          {/* Actions — pinned below the scrolling body */}
+          <div className="border-daisy-line-soft mt-4 flex shrink-0 justify-end gap-2 border-t pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>

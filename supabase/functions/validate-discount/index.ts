@@ -100,7 +100,7 @@ Deno.serve(async (req: Request) => {
   const row = await admin
     .from('da_discount_codes')
     .select(
-      'id, code, franchisee_id, type, value, max_uses, uses_count, valid_from, valid_until, is_active',
+      'id, code, franchisee_id, type, value, max_uses, uses_count, valid_from, valid_until, is_active, template_ids',
     )
     .eq('code', code)
     .maybeSingle();
@@ -124,17 +124,28 @@ Deno.serve(async (req: Request) => {
     return invalid('That code has reached its usage limit.');
   }
 
-  // Per-franchisee codes only apply to that franchisee's courses.
+  // Per-franchisee codes only apply to that franchisee's courses, and a code
+  // restricted to certain course types (G10, migration 046) only applies to
+  // those. NULL or empty template_ids means it works on everything.
   const courseInstanceId =
     typeof body.course_instance_id === 'string' ? body.course_instance_id : null;
-  if (d.franchisee_id && courseInstanceId) {
+  const restrictedTemplates: string[] = Array.isArray(d.template_ids) ? d.template_ids : [];
+  if ((d.franchisee_id || restrictedTemplates.length > 0) && courseInstanceId) {
     const inst = await admin
       .from('da_course_instances')
-      .select('franchisee_id')
+      .select('franchisee_id, template_id')
       .eq('id', courseInstanceId)
       .maybeSingle();
-    if (inst.data && (inst.data as any).franchisee_id !== d.franchisee_id) {
+    const instance = inst.data as any;
+    if (instance && d.franchisee_id && instance.franchisee_id !== d.franchisee_id) {
       return invalid('That code cannot be used for this course.');
+    }
+    if (
+      instance &&
+      restrictedTemplates.length > 0 &&
+      !restrictedTemplates.includes(instance.template_id)
+    ) {
+      return invalid('That code cannot be used on this type of class.');
     }
   }
 

@@ -2,8 +2,11 @@
  * /franchisee/courses — franchisee's own course instances (Wave 7C).
  *
  * Default view: DataTable (list). Toggle to MonthCalendar via view button.
- * Filters: status, date range (presets + custom), course type (template).
- * Sort: event_date asc by default (soonest first) with a direction toggle.
+ * Filters: status, date range (presets + custom), course type (grouped).
+ * Sort: event_date desc by default (latest first, F5) with a direction toggle.
+ *
+ * Course type (G7): the filter offers five franchisee-facing groupings rather
+ * than the 12 raw template names; see courseTypeGroups.ts for the mapping.
  *
  * Filter/sort/view state persists (NTH-3 / FIX-6): the URL search params are
  * the source of truth (shareable, survives in-history navigation) and are
@@ -45,6 +48,7 @@ import {
   type OwnCoursesFilters,
 } from './courseListQueries';
 import { useCourseTemplates } from './createCourseQueries';
+import { buildCourseTypeGroups } from './courseTypeGroups';
 import { formatPrice } from './money';
 import type { CourseInstanceStatus } from './types';
 import { useOwnProfile } from '../profileQueries';
@@ -88,7 +92,10 @@ const FILTER_DEFAULTS: Record<string, string> = {
   from: '',
   to: '',
   template: 'all',
-  sort: 'asc',
+  // F5: latest first is now the default, so 'desc' is the value omitted from
+  // the URL. An explicit 'asc' choice is still written to the URL + storage,
+  // so a franchisee's saved preference survives exactly as before.
+  sort: 'desc',
 };
 const FILTER_KEYS = Object.keys(FILTER_DEFAULTS);
 
@@ -416,7 +423,8 @@ export default function CoursesList() {
   const customFrom = searchParams.get('from') ?? '';
   const customTo = searchParams.get('to') ?? '';
   const templateFilter = searchParams.get('template') ?? 'all';
-  const sortDir: 'asc' | 'desc' = searchParams.get('sort') === 'desc' ? 'desc' : 'asc';
+  // F5: latest first unless the franchisee explicitly chose soonest first.
+  const sortDir: 'asc' | 'desc' = searchParams.get('sort') === 'asc' ? 'asc' : 'desc';
   const view: ViewMode = searchParams.get('view') === 'calendar' ? 'calendar' : 'list';
 
   // Calendar navigation — default to current wall-clock month
@@ -427,11 +435,18 @@ export default function CoursesList() {
   // Resolve date bounds for the list query
   const { from, to } = resolvePreset(datePreset, customFrom || undefined, customTo || undefined);
 
+  // Course-type groupings (G7) — resolved from the live templates so a name
+  // that does not match any rule still appears under "Other course types".
+  const courseTypeGroups = useMemo(() => buildCourseTypeGroups(templates), [templates]);
+  const selectedGroup = courseTypeGroups.find((g) => g.id === templateFilter);
+
   const listFilters: OwnCoursesFilters = {
     status,
     from,
     to,
-    templateId: templateFilter,
+    // A group selection resolves to its template ids; 'all' clears the filter.
+    templateId: selectedGroup ? 'all' : templateFilter,
+    templateIds: selectedGroup?.templateIds,
     sortDir,
   };
 
@@ -468,7 +483,10 @@ export default function CoursesList() {
         title="My courses"
         subtitle="Your scheduled, completed, and cancelled course instances."
         actions={
-          <div className="flex items-center gap-2">
+          // Wraps rather than overflowing: the badge, the schedule button and
+          // the view toggle together are wider than a 375px viewport on one
+          // line, which pushed the whole page ~16px horizontally.
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant="primary">{totalCount} total</Badge>
             <Button asChild variant="default" size="sm">
               <Link to="/franchisee/courses/new">Schedule a course</Link>
@@ -480,8 +498,8 @@ export default function CoursesList() {
                 onClick={() => setFilter('view', 'list')}
                 className={
                   view === 'list'
-                    ? 'bg-daisy-primary px-4 py-1.5 text-[12px] font-bold text-white'
-                    : 'text-daisy-muted hover:text-daisy-ink px-4 py-1.5 text-[12px] font-bold'
+                    ? 'bg-daisy-primary px-3 py-1.5 text-[12px] font-bold text-white sm:px-4'
+                    : 'text-daisy-muted hover:text-daisy-ink px-3 py-1.5 text-[12px] font-bold sm:px-4'
                 }
                 aria-pressed={view === 'list'}
               >
@@ -492,8 +510,8 @@ export default function CoursesList() {
                 onClick={() => setFilter('view', 'calendar')}
                 className={
                   view === 'calendar'
-                    ? 'bg-daisy-primary px-4 py-1.5 text-[12px] font-bold text-white'
-                    : 'text-daisy-muted hover:text-daisy-ink px-4 py-1.5 text-[12px] font-bold'
+                    ? 'bg-daisy-primary px-3 py-1.5 text-[12px] font-bold text-white sm:px-4'
+                    : 'text-daisy-muted hover:text-daisy-ink px-3 py-1.5 text-[12px] font-bold sm:px-4'
                 }
                 aria-pressed={view === 'calendar'}
               >
@@ -537,22 +555,25 @@ export default function CoursesList() {
               </SelectContent>
             </Select>
 
-            {/* Course type (template) filter — NTH-3 */}
+            {/* Course type filter — grouped (G7), truncated so long labels
+                cannot spill outside the trigger (F3). */}
             <Select value={templateFilter} onValueChange={(v) => setFilter('template', v)}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue />
+              <SelectTrigger className="w-[260px] max-w-full">
+                <span className="block min-w-0 flex-1 truncate text-left">
+                  <SelectValue />
+                </span>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-w-[min(24rem,calc(100vw-2rem))]">
                 <SelectItem value="all">All course types</SelectItem>
-                {templates.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
+                {courseTypeGroups.map((g) => (
+                  <SelectItem key={g.id} value={g.id} className="whitespace-normal">
+                    {g.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
-            {/* Sort direction toggle — NTH-3 (soonest first is the default) */}
+            {/* Sort direction toggle — NTH-3 (latest first is the default, F5) */}
             <Button
               type="button"
               variant="outline"

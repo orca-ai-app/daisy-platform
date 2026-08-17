@@ -78,9 +78,28 @@ function buildEditSchema(visibility: Visibility) {
         .int('Must be a whole number')
         .positive('Must be greater than zero'),
       price_pounds: poundsSchema,
+      /** Optional customer-facing class description (G1 / migration 045). */
+      description_override: z.string(),
+      /** Explicit confirmation that a £0.00 class is intentional (F6). */
+      allow_free: z.boolean(),
       notify_attendees: z.boolean(),
     })
     .superRefine((vals, ctx) => {
+      // F6: block an accidental £0.00 class unless explicitly confirmed.
+      if (vals.price_pounds === 0 && !vals.allow_free) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['price_pounds'],
+          message: 'Enter a price, or tick "This class really is free" below.',
+        });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['allow_free'],
+          message:
+            'This class is priced at £0.00. Enter a price, or tick "This class really is free" to confirm.',
+        });
+      }
+
       const pc = vals.venue_postcode.trim();
       if (visibility === 'public') {
         if (!UK_POSTCODE_RE.test(pc)) {
@@ -224,7 +243,9 @@ function EditCourseForm({
     visibility: Visibility;
     capacity: number;
     price_pence: number;
-    template?: { name: string } | null;
+    /** Customer-facing description override (migration 045). */
+    description_override?: string | null;
+    template?: { name: string; description?: string | null } | null;
   };
   bookingsCount: number;
   navigate: ReturnType<typeof useNavigate>;
@@ -251,12 +272,20 @@ function EditCourseForm({
       display_name: instance.display_name ?? '',
       capacity: instance.capacity,
       price_pounds: instance.price_pence / 100,
+      // G1: pre-fill from the saved override, falling back to the template's
+      // description so the box shows the wording customers currently see.
+      description_override: instance.description_override ?? instance.template?.description ?? '',
+      // Pre-tick for a class that is already saved as free, so editing an
+      // unrelated field on an existing free class is not blocked.
+      allow_free: instance.price_pence === 0,
       notify_attendees: false,
     },
   });
 
   const venueTbc = watch('venue_tbc');
   const notifyAttendees = watch('notify_attendees');
+  const allowFree = watch('allow_free');
+  const pricePounds = watch('price_pounds');
 
   // Notify checkbox (NTH-14): default ON the first time a date/time/venue
   // field becomes dirty while confirmed bookings exist. The franchisee can
@@ -292,6 +321,8 @@ function EditCourseForm({
       venue_postcode: tbc && !postcode ? null : postcode,
       capacity: values.capacity,
       price_pence: Math.round(values.price_pounds * 100),
+      // G1 (migration 045): null falls back to the template description.
+      description_override: values.description_override.trim() || null,
     };
     if (isPrivate) {
       fields.venue_tbc = tbc;
@@ -445,7 +476,7 @@ function EditCourseForm({
                 ) : null}
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="ec-price">Base price (£)</Label>
+                <Label htmlFor="ec-price">Standard price (£)</Label>
                 <Input
                   id="ec-price"
                   type="number"
@@ -453,10 +484,62 @@ function EditCourseForm({
                   min="0"
                   {...register('price_pounds', { valueAsNumber: true })}
                 />
+                <p className="text-daisy-muted text-xs">
+                  The price used unless a ticket type sets its own. When ticket prices differ,
+                  customers see "From £X".
+                </p>
                 {errors.price_pounds ? (
                   <p className="text-daisy-orange text-xs">{errors.price_pounds.message}</p>
                 ) : null}
               </div>
+            </div>
+
+            {/* Free-class confirmation (F6) */}
+            {pricePounds === 0 ? (
+              <div className="border-daisy-line rounded-[8px] border-2 bg-white p-3">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={allowFree}
+                    onChange={(e) =>
+                      setValue('allow_free', e.target.checked, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    className="accent-daisy-primary mt-0.5 h-4 w-4"
+                  />
+                  <span>
+                    <span className="text-daisy-ink font-semibold">This class really is free</span>
+                    <span className="text-daisy-muted block text-xs">
+                      This class is priced at £0.00. Tick this only if customers should pay nothing,
+                      otherwise enter a price above.
+                    </span>
+                  </span>
+                </label>
+                {errors.allow_free ? (
+                  <p className="text-daisy-orange mt-2 text-xs">{errors.allow_free.message}</p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Customer-facing description (G1 / migration 045) */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ec-description">
+                Description shown to customers{' '}
+                <span className="text-daisy-muted font-normal">(optional)</span>
+              </Label>
+              <textarea
+                id="ec-description"
+                rows={4}
+                placeholder="Describe what this class covers and who it suits..."
+                className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+                {...register('description_override')}
+              />
+              <p className="text-daisy-muted text-xs">
+                Starts from the standard description for this course type. Edit it to describe this
+                particular class, or clear it to use the standard wording.
+              </p>
             </div>
 
             {/* Notify booked customers (NTH-14) */}

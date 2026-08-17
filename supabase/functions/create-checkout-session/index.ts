@@ -9,7 +9,7 @@
 //   booking_token?: string,        // /book/:token page passes this instead
 //   ticket_type_id: string,
 //   quantity: number,
-//   customer: { first_name, last_name, email, phone?, postcode? },
+//   customer: { first_name, last_name, email, phone, postcode },
 //   discount_code?: string,
 //   origin?: string                // caller's site origin, for success/cancel URLs
 // }
@@ -18,9 +18,12 @@
 // ITEM path — POST {
 //   franchisee_product_id: string, // da_franchisee_products.id from get-public-items
 //   quantity?: number,             // default 1, max 20
-//   customer: { first_name, last_name, email, phone?, postcode? },
+//   customer: { first_name, last_name, email, phone, postcode },
 //   origin?: string
 // }
+//
+// EVERY customer field above is required (round 2, G3: phone and postcode were
+// optional and franchisees could not chase a no-show without them).
 // -> 201 { checkout_url, session_id }
 //
 // The two paths are MUTUALLY EXCLUSIVE — sending course fields alongside
@@ -107,27 +110,34 @@ interface RequestBody {
   franchisee_product_id?: unknown;
 }
 
-// Shared by both paths: name/email are mandatory, phone/postcode optional.
+// Shared by both paths. Round 2 (G3): phone and postcode are now COMPULSORY,
+// not optional. Franchisees could not chase a no-show or work out which class a
+// customer meant without them, so both surfaces mark the fields required and
+// this is the server-side backstop.
 interface ParsedCustomer {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string | null;
-  postcode: string | null;
+  phone: string;
+  postcode: string;
 }
 
 function parseCustomer(c: CustomerInput): ParsedCustomer | string {
   const firstName = reqStr(c.first_name);
   const lastName = reqStr(c.last_name);
   const emailRaw = reqStr(c.email);
+  const phone = reqStr(c.phone);
+  const postcode = reqStr(c.postcode);
   if (!firstName || !lastName) return 'customer first_name and last_name are required';
   if (!emailRaw || !EMAIL_RE.test(emailRaw)) return 'a valid customer email is required';
+  if (!phone) return 'a contact phone number is required';
+  if (!postcode) return 'a postcode is required';
   return {
     firstName,
     lastName,
     email: emailRaw.toLowerCase(),
-    phone: reqStr(c.phone),
-    postcode: reqStr(c.postcode),
+    phone,
+    postcode,
   };
 }
 
@@ -190,7 +200,7 @@ Deno.serve(async (req: Request) => {
   let q = admin
     .from('da_course_instances')
     .select(
-      'id, franchisee_id, event_date, private_client_id, status, visibility, spots_remaining',
+      'id, franchisee_id, template_id, event_date, private_client_id, status, visibility, spots_remaining',
     );
   q = courseInstanceId ? q.eq('id', courseInstanceId) : q.eq('booking_token', bookingToken!);
   const instRes = await q.maybeSingle();
@@ -249,7 +259,7 @@ Deno.serve(async (req: Request) => {
     const dRes = await admin
       .from('da_discount_codes')
       .select(
-        'code, franchisee_id, type, value, max_uses, uses_count, valid_from, valid_until, is_active',
+        'code, franchisee_id, type, value, max_uses, uses_count, valid_from, valid_until, is_active, template_ids',
       )
       .eq('code', code)
       .maybeSingle();
@@ -261,7 +271,12 @@ Deno.serve(async (req: Request) => {
       (!d.valid_from || new Date(d.valid_from).getTime() <= now) &&
       (!d.valid_until || new Date(d.valid_until).getTime() >= now) &&
       (d.max_uses == null || d.uses_count < d.max_uses) &&
-      (!d.franchisee_id || d.franchisee_id === instance.franchisee_id);
+      (!d.franchisee_id || d.franchisee_id === instance.franchisee_id) &&
+      // Round 2 (G10, migration 046): NULL or empty template_ids means the code
+      // works on any course type; otherwise this course's type must be listed.
+      (!Array.isArray(d.template_ids) ||
+        d.template_ids.length === 0 ||
+        d.template_ids.includes(instance.template_id));
     if (usable) {
       discountCode = d.code;
       discountOffPence = discountOff(d.type, d.value, grossPence);

@@ -15,6 +15,11 @@
 //                 single-use codes ({PREFIX}-{4 alphanumerics}, prefix from
 //                 `code` or the group name, collision-checked, max_uses=1
 //                 forced, group_name required)
+//   template_ids?: string[] | null — da_course_templates ids the code is
+//                 restricted to (migration 046). Omitted, null or empty = valid
+//                 on every course type. Every id is checked against
+//                 da_course_templates; an unknown id is a 400 (there is no FK
+//                 on an array element, so this function is the only guard).
 // }
 // -> inserted da_discount_codes row (201), or the ARRAY of inserted rows when
 //    batch_count > 1
@@ -76,6 +81,7 @@ interface RawBody {
   is_active?: unknown;
   group_name?: unknown;
   batch_count?: unknown;
+  template_ids?: unknown;
 }
 
 interface ValidatedInput {
@@ -89,10 +95,15 @@ interface ValidatedInput {
   is_active: boolean;
   group_name: string | null;
   batch_count: number;
+  /** NULL = valid on every course type; otherwise da_course_templates ids. */
+  template_ids: string[] | null;
 }
 
 const CODE_REGEX = /^[A-Z0-9_-]{1,50}$/;
 const ISO_REGEX = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A code restricted to more course types than the network has is a mistake. */
+const MAX_TEMPLATE_IDS = 50;
 
 function validate(
   body: RawBody,
@@ -192,6 +203,29 @@ function validate(
   // is_active
   const isActive = body.is_active !== false; // default true
 
+  // template_ids — course-type restriction (migration 046). Existence of each
+  // id is checked against da_course_templates in the handler; here we only
+  // enforce the shape. An empty array normalises to NULL so the stored value
+  // matches every pre-046 row's "valid on everything".
+  let templateIds: string[] | null = null;
+  if (body.template_ids !== undefined && body.template_ids !== null) {
+    if (!Array.isArray(body.template_ids)) {
+      return { ok: false, error: 'template_ids must be an array of course type ids or null' };
+    }
+    const ids = body.template_ids as unknown[];
+    if (ids.length > MAX_TEMPLATE_IDS) {
+      return { ok: false, error: `template_ids must contain ${MAX_TEMPLATE_IDS} ids or fewer` };
+    }
+    for (const id of ids) {
+      if (typeof id !== 'string' || !UUID_REGEX.test(id)) {
+        return { ok: false, error: 'template_ids must contain course type ids only' };
+      }
+    }
+    // De-duplicate: the picker cannot produce duplicates, but a direct caller can.
+    const unique = Array.from(new Set(ids as string[]));
+    templateIds = unique.length > 0 ? unique : null;
+  }
+
   return {
     ok: true,
     value: {
@@ -205,6 +239,7 @@ function validate(
       is_active: isActive,
       group_name: groupName,
       batch_count: batchCount,
+      template_ids: templateIds,
     },
   };
 }
@@ -304,6 +339,29 @@ Deno.serve(async (req: Request) => {
   }
   const input = validated.value;
 
+  // --- Course-type restriction: every id must be a real template ----------
+  // Postgres cannot foreign-key an array element, so this is the only place a
+  // bogus id gets caught. A code silently restricted to a course type that
+  // does not exist would never be redeemable.
+  if (input.template_ids) {
+    const templates = await admin
+      .from('da_course_templates')
+      .select('id')
+      .in('id', input.template_ids);
+    if (templates.error) {
+      console.error('template validation failed', templates.error);
+      return jsonResponse({ error: 'Failed to check the selected course types' }, 500);
+    }
+    const found = new Set(((templates.data ?? []) as any[]).map((t) => t.id as string));
+    const unknown = input.template_ids.filter((id) => !found.has(id));
+    if (unknown.length > 0) {
+      return jsonResponse(
+        { error: 'One or more of the selected course types no longer exists' },
+        400,
+      );
+    }
+  }
+
   // --- Batch mode: generate N single-use codes in one call -----------------
   if (input.batch_count > 1) {
     const prefix = derivePrefix(input.code, input.group_name);
@@ -346,6 +404,7 @@ Deno.serve(async (req: Request) => {
       is_active: input.is_active,
       uses_count: 0,
       group_name: input.group_name,
+      template_ids: input.template_ids,
     }));
 
     const insertedBatch = await admin.from('da_discount_codes').insert(rows).select('*');
@@ -377,6 +436,7 @@ Deno.serve(async (req: Request) => {
         value: input.value,
         max_uses: 1,
         is_active: input.is_active,
+        template_ids: input.template_ids,
       },
       description: `Franchisee ${franchiseeName} created ${input.batch_count} single-use codes in group ${input.group_name}`,
     });
@@ -421,6 +481,7 @@ Deno.serve(async (req: Request) => {
     is_active: input.is_active,
     uses_count: 0,
     group_name: input.group_name,
+    template_ids: input.template_ids,
   };
 
   const inserted = await admin.from('da_discount_codes').insert(insertPayload).select('*').single();
@@ -456,6 +517,7 @@ Deno.serve(async (req: Request) => {
       value: input.value,
       max_uses: input.max_uses,
       is_active: input.is_active,
+      template_ids: input.template_ids,
     },
     description: `Franchisee ${franchiseeName} created discount code ${input.code}`,
   });

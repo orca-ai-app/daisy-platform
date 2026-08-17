@@ -215,7 +215,9 @@ export function RecordSaleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      {/* Capped at 90vh with an internally scrolling body so the action
+          buttons stay reachable on a short screen (F2). */}
+      <DialogContent className="flex max-h-[90vh] max-w-lg flex-col">
         <DialogHeader>
           <DialogTitle>Record sale</DialogTitle>
           <DialogDescription>
@@ -227,134 +229,142 @@ export function RecordSaleDialog({
           onSubmit={(e) => {
             void handleSubmit(onSubmit)(e);
           }}
-          className="mt-4 flex flex-col gap-4"
+          className="mt-4 flex min-h-0 flex-1 flex-col"
         >
-          {/* Product */}
-          <div className="flex flex-col gap-1.5">
-            <Label>Product</Label>
-            <Select value={productId} onValueChange={handleProductChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Choose a product" />
-              </SelectTrigger>
-              <SelectContent>
-                {products.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                    {p.rrp_pence != null ? ` — RRP ${formatPence(p.rrp_pence)}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.product_id ? (
-              <p className="text-daisy-orange text-xs">{errors.product_id.message}</p>
-            ) : null}
-          </div>
-
-          {/* Quantity + Unit price */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            {/* Product */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ms-quantity">Quantity</Label>
-              <Input id="ms-quantity" type="number" min="1" step="1" {...register('quantityRaw')} />
-              {errors.quantityRaw ? (
-                <p className="text-daisy-orange text-xs">{errors.quantityRaw.message}</p>
+              <Label>Product</Label>
+              <Select value={productId} onValueChange={handleProductChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a product" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                      {p.rrp_pence != null ? ` — RRP ${formatPence(p.rrp_pence)}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.product_id ? (
+                <p className="text-daisy-orange text-xs">{errors.product_id.message}</p>
               ) : null}
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ms-unit-price">Unit price (£)</Label>
-              <Input
-                id="ms-unit-price"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="5.00"
-                {...register('unitPriceRaw')}
-              />
-              <p className="text-daisy-muted text-xs">Adjust for postage or discounts</p>
-              {errors.unitPriceRaw ? (
-                <p className="text-daisy-orange text-xs">{errors.unitPriceRaw.message}</p>
-              ) : null}
-            </div>
-          </div>
+            {/* Quantity + Unit price */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="ms-quantity">Quantity</Label>
+                <Input
+                  id="ms-quantity"
+                  type="number"
+                  min="1"
+                  step="1"
+                  {...register('quantityRaw')}
+                />
+                {errors.quantityRaw ? (
+                  <p className="text-daisy-orange text-xs">{errors.quantityRaw.message}</p>
+                ) : null}
+              </div>
 
-          {/* Payment method + Date sold */}
-          <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="ms-unit-price">Unit price (£)</Label>
+                <Input
+                  id="ms-unit-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="5.00"
+                  {...register('unitPriceRaw')}
+                />
+                <p className="text-daisy-muted text-xs">Adjust for postage or discounts</p>
+                {errors.unitPriceRaw ? (
+                  <p className="text-daisy-orange text-xs">{errors.unitPriceRaw.message}</p>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Payment method + Date sold */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>Payment method</Label>
+                <Select
+                  value={paymentMethod}
+                  onValueChange={(v) =>
+                    setValue('payment_method', v as ProductSalePaymentMethod, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="card">Card</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="ms-sold-at">Date sold</Label>
+                <Input id="ms-sold-at" type="date" max={todayLondon()} {...register('sold_at')} />
+                {errors.sold_at ? (
+                  <p className="text-daisy-orange text-xs">{errors.sold_at.message}</p>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Class (optional) */}
             <div className="flex flex-col gap-1.5">
-              <Label>Payment method</Label>
+              <Label>Class (optional)</Label>
               <Select
-                value={paymentMethod}
+                value={courseInstanceId}
                 onValueChange={(v) =>
-                  setValue('payment_method', v as ProductSalePaymentMethod, {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  })
+                  setValue('course_instance_id', v, { shouldDirty: true, shouldValidate: true })
                 }
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="card">Card</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  <SelectItem value={NO_CLASS}>Not linked to a class</SelectItem>
+                  {courseOptions.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {formatOptionDate(c.event_date)}
+                      {c.venue_name ? ` · ${c.venue_name}` : ''}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-daisy-muted text-xs">
+                Link the sale to the class it was sold at, if any.
+              </p>
             </div>
 
+            {/* Note (optional) */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ms-sold-at">Date sold</Label>
-              <Input id="ms-sold-at" type="date" max={todayLondon()} {...register('sold_at')} />
-              {errors.sold_at ? (
-                <p className="text-daisy-orange text-xs">{errors.sold_at.message}</p>
-              ) : null}
+              <Label htmlFor="ms-note">Note (optional)</Label>
+              <Input id="ms-note" placeholder="e.g. Posted to customer" {...register('note')} />
+            </div>
+
+            {/* Total preview */}
+            <div className="border-daisy-line bg-daisy-paper-soft flex items-center justify-between rounded-[8px] border-2 p-3">
+              <span className="text-daisy-muted text-xs font-bold tracking-wider uppercase">
+                Total
+              </span>
+              <span className="text-daisy-ink text-sm font-extrabold tabular-nums">
+                {totalPence !== null ? formatPence(totalPence) : '—'}
+              </span>
             </div>
           </div>
 
-          {/* Class (optional) */}
-          <div className="flex flex-col gap-1.5">
-            <Label>Class (optional)</Label>
-            <Select
-              value={courseInstanceId}
-              onValueChange={(v) =>
-                setValue('course_instance_id', v, { shouldDirty: true, shouldValidate: true })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_CLASS}>Not linked to a class</SelectItem>
-                {courseOptions.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {formatOptionDate(c.event_date)}
-                    {c.venue_name ? ` · ${c.venue_name}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-daisy-muted text-xs">
-              Link the sale to the class it was sold at, if any.
-            </p>
-          </div>
-
-          {/* Note (optional) */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ms-note">Note (optional)</Label>
-            <Input id="ms-note" placeholder="e.g. Posted to customer" {...register('note')} />
-          </div>
-
-          {/* Total preview */}
-          <div className="border-daisy-line bg-daisy-paper-soft flex items-center justify-between rounded-[8px] border-2 p-3">
-            <span className="text-daisy-muted text-xs font-bold tracking-wider uppercase">
-              Total
-            </span>
-            <span className="text-daisy-ink text-sm font-extrabold tabular-nums">
-              {totalPence !== null ? formatPence(totalPence) : '—'}
-            </span>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-2">
+          {/* Actions — pinned below the scrolling body */}
+          <div className="border-daisy-line-soft mt-4 flex shrink-0 justify-end gap-2 border-t pt-4">
             <Button
               type="button"
               variant="outline"

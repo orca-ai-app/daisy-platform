@@ -66,6 +66,79 @@ export function useCourseTemplates(): UseQueryResult<CourseTemplateOption[]> {
 }
 
 // ---------------------------------------------------------------------------
+// useRecentVenues (G6)
+//
+// The franchisee's own previously used venues, most recently scheduled first,
+// so they can refill all three venue fields in one go instead of retyping a
+// venue they run at every week. Read via the anon client + RLS — RLS already
+// scopes da_course_instances to the caller, so there is no client-side
+// franchisee_id filter.
+// ---------------------------------------------------------------------------
+
+export interface RecentVenue {
+  venue_name: string;
+  venue_address: string;
+  venue_postcode: string;
+}
+
+/** Max distinct venues offered in the picker. */
+const RECENT_VENUE_LIMIT = 10;
+
+/**
+ * Cache key, derived from the frozen franchiseeKeys.courses() root so it
+ * invalidates with the rest of the course cache after a create.
+ */
+const recentVenuesKey = () => [...franchiseeKeys.courses(), 'recent-venues'] as const;
+
+async function fetchRecentVenues(): Promise<RecentVenue[]> {
+  // Over-fetch rows because we de-duplicate client-side (Postgrest has no
+  // DISTINCT ON), then cap the distinct list.
+  const { data, error } = await supabase
+    .from('da_course_instances')
+    .select('venue_name, venue_address, venue_postcode, event_date, created_at')
+    .not('venue_name', 'is', null)
+    .not('venue_postcode', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (error) {
+    // A missing table or a blocked read must not break the wizard — the
+    // franchisee can still type the venue in by hand.
+    console.error('recent venue lookup failed', error);
+    return [];
+  }
+
+  type Row = {
+    venue_name: string | null;
+    venue_address: string | null;
+    venue_postcode: string | null;
+  };
+
+  const seen = new Set<string>();
+  const venues: RecentVenue[] = [];
+  for (const row of (data ?? []) as Row[]) {
+    const name = (row.venue_name ?? '').trim();
+    const postcode = (row.venue_postcode ?? '').trim().toUpperCase();
+    if (!name || !postcode) continue;
+    const address = (row.venue_address ?? '').trim();
+    const key = `${name.toLowerCase()}|${address.toLowerCase()}|${postcode}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    venues.push({ venue_name: name, venue_address: address, venue_postcode: postcode });
+    if (venues.length >= RECENT_VENUE_LIMIT) break;
+  }
+  return venues;
+}
+
+export function useRecentVenues(): UseQueryResult<RecentVenue[]> {
+  return useQuery<RecentVenue[]>({
+    queryKey: recentVenuesKey(),
+    queryFn: fetchRecentVenues,
+    staleTime: 5 * 60_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Territory-conflict error class
 //
 // The Edge Function returns HTTP 409 with a CreateCourseInstanceTerritoryConflict

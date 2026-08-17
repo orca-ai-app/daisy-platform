@@ -114,6 +114,16 @@ interface CreateCourseInstanceRequest {
   display_name?: string | null;
   /** Venue not yet confirmed (private courses only, migration 040). */
   venue_tbc?: boolean;
+  /**
+   * Optional franchisee-written class description shown to customers
+   * (migration 045 / G1). Null falls back to the template description.
+   */
+  description_override?: string | null;
+  /**
+   * Explicit confirmation that a £0.00 price is intentional (F6). Without it
+   * a zero instance price or zero ticket price is rejected.
+   */
+  allow_free?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -299,6 +309,18 @@ function validateBody(
   if (typeof b.price_pence !== 'number' || !Number.isInteger(b.price_pence) || b.price_pence < 0) {
     return { ok: false, error: 'price_pence must be a non-negative integer' };
   }
+
+  // F6: a £0.00 price is almost always a mistake (the form's price field was
+  // never filled in). Only allow it when the franchisee ticked the explicit
+  // "This class really is free" box, which sets allow_free.
+  //
+  // The gate is applied to the TICKET prices below, not to price_pence on its
+  // own: price_pence is the standard price, and what a customer actually pays
+  // is the ticket price. Several seeded templates ship a 0 default price
+  // (e.g. "Bespoke First Aid Class", price agreed per booking), so rejecting a
+  // zero standard price outright would block a correctly priced bespoke class.
+  const allowFree = b.allow_free === true;
+
   if (!Array.isArray(b.ticket_types)) {
     return { ok: false, error: 'ticket_types must be an array' };
   }
@@ -317,12 +339,31 @@ function validateBody(
     ) {
       return { ok: false, error: `ticket_types[${i}].price_pence must be a non-negative integer` };
     }
+    // F6: a ticket customers pay nothing for needs explicit confirmation.
+    if (tt.price_pence === 0 && !allowFree) {
+      return {
+        ok: false,
+        error: `Ticket "${tt.name}" is priced at £0.00. Enter a price, or tick "This class really is free" to confirm.`,
+      };
+    }
     if (
       typeof tt.seats_consumed !== 'number' ||
       !Number.isInteger(tt.seats_consumed) ||
       tt.seats_consumed < 1
     ) {
-      return { ok: false, error: `ticket_types[${i}].seats_consumed must be a positive integer` };
+      return {
+        ok: false,
+        error: `ticket_types[${i}].seats_consumed must be a positive integer (the number of places one ticket uses)`,
+      };
+    }
+    // F1: a ticket can never consume more places than the class has. A ticket
+    // with seats_consumed = capacity makes the class unbookable after a single
+    // booking, which is the bug this guard exists to stop.
+    if (tt.seats_consumed > (b.capacity as number)) {
+      return {
+        ok: false,
+        error: `Ticket "${tt.name}" uses ${tt.seats_consumed} places but the class only has ${b.capacity}. A ticket cannot use more places than the class has.`,
+      };
     }
     if (tt.max_available !== null && tt.max_available !== undefined) {
       if (
@@ -388,6 +429,9 @@ function validateBody(
           : null,
       display_name: typeof b.display_name === 'string' ? b.display_name.trim() || null : null,
       venue_tbc: venueTbc,
+      description_override:
+        typeof b.description_override === 'string' ? b.description_override.trim() || null : null,
+      allow_free: allowFree,
     },
   };
 }
@@ -616,6 +660,59 @@ Deno.serve(async (req: Request) => {
   }
 
   // ----------------------------------------------------------
+  // Build ticket-type rows
+  // ----------------------------------------------------------
+  // Prefer the client's explicit ticket_types array when non-empty.
+  // Fall back to the template's default_ticket_types.
+  //
+  // Built and validated BEFORE the instance insert so a rejection here cannot
+  // leave an orphaned course instance behind.
+  const ticketInputs: CreateCourseTicketTypeInput[] =
+    input.ticket_types.length > 0
+      ? input.ticket_types
+      : (templateRow.default_ticket_types ?? []).map((dt, i) => ({
+          name: dt.name,
+          price_pence: input.price_pence + (dt.price_modifier_pence ?? 0),
+          seats_consumed: dt.seats_consumed,
+          max_available: null,
+          sort_order: i,
+        }));
+
+  // Guarantee at least one ticket type (Single at base price) even if the
+  // template has an empty default_ticket_types array.
+  if (ticketInputs.length === 0) {
+    ticketInputs.push({
+      name: 'Single',
+      price_pence: input.price_pence,
+      seats_consumed: 1,
+      max_available: null,
+      sort_order: 0,
+    });
+  }
+
+  // F1/F6: the template-default fallback path above never went through
+  // validateBody, so re-apply both guards here — a template default that
+  // exceeds the chosen capacity would otherwise make the class unbookable.
+  for (const tt of ticketInputs) {
+    if (tt.seats_consumed > input.capacity) {
+      return jsonResponse(
+        {
+          error: `Ticket "${tt.name}" uses ${tt.seats_consumed} places but the class only has ${input.capacity}. A ticket cannot use more places than the class has.`,
+        },
+        400,
+      );
+    }
+    if (tt.price_pence === 0 && input.allow_free !== true) {
+      return jsonResponse(
+        {
+          error: `Ticket "${tt.name}" is priced at £0.00. Enter a price, or tick "This class really is free" to confirm.`,
+        },
+        400,
+      );
+    }
+  }
+
+  // ----------------------------------------------------------
   // INSERT da_course_instances
   // ----------------------------------------------------------
   const instancePayload: Record<string, unknown> = {
@@ -644,6 +741,9 @@ Deno.serve(async (req: Request) => {
     // Migration 040: customer-facing name override + venue-TBC flag.
     display_name: input.display_name ?? null,
     venue_tbc: input.venue_tbc === true,
+    // Migration 045 (G1): franchisee-written customer-facing description.
+    // NULL falls back to the template description on the booking page.
+    description_override: input.description_override ?? null,
   };
 
   const instanceInsert = await admin
@@ -659,34 +759,6 @@ Deno.serve(async (req: Request) => {
 
   const instanceRow = instanceInsert.data as Record<string, unknown>;
   const instanceId = instanceRow.id as string;
-
-  // ----------------------------------------------------------
-  // Build ticket-type rows
-  // ----------------------------------------------------------
-  // Prefer the client's explicit ticket_types array when non-empty.
-  // Fall back to the template's default_ticket_types.
-  const ticketInputs: CreateCourseTicketTypeInput[] =
-    input.ticket_types.length > 0
-      ? input.ticket_types
-      : (templateRow.default_ticket_types ?? []).map((dt, i) => ({
-          name: dt.name,
-          price_pence: input.price_pence + (dt.price_modifier_pence ?? 0),
-          seats_consumed: dt.seats_consumed,
-          max_available: null,
-          sort_order: i,
-        }));
-
-  // Guarantee at least one ticket type (Single at base price) even if the
-  // template has an empty default_ticket_types array.
-  if (ticketInputs.length === 0) {
-    ticketInputs.push({
-      name: 'Single',
-      price_pence: input.price_pence,
-      seats_consumed: 1,
-      max_available: null,
-      sort_order: 0,
-    });
-  }
 
   const ticketRows = ticketInputs.map((tt) => ({
     course_instance_id: instanceId,

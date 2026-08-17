@@ -10,13 +10,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useOwnProfile, useUpdateOwnProfile } from './profileQueries';
+import { useOwnProfile, useUpdateOwnProfile, type ProfileSelfUpdateFields } from './profileQueries';
 import { MedicalQr } from './components/MedicalQr';
 
 // ---------------------------------------------------------------------------
-// Schema — only name, phone and business name are mutable on this surface.
-// Email is read-only: only HQ can change it via the admin form.
+// Schema — only name, phone, business name and the booking email message are
+// mutable on this surface. Email is read-only: only HQ can change it via the
+// admin form.
 // ---------------------------------------------------------------------------
+
+/** Mirrors the server cap in update-franchisee-self (migration 046). */
+const BOOKING_EMAIL_MESSAGE_MAX = 1500;
 
 const profileSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -28,6 +32,14 @@ const profileSchema = z.object({
     .refine((v) => v.length === 0 || v.length >= 2, {
       message: 'Business name must be at least 2 characters',
     })
+    .optional(),
+  booking_email_message: z
+    .string()
+    .trim()
+    .max(
+      BOOKING_EMAIL_MESSAGE_MAX,
+      `Your message must be ${BOOKING_EMAIL_MESSAGE_MAX} characters or fewer`,
+    )
     .optional(),
 });
 
@@ -45,6 +57,7 @@ export default function Profile() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -52,8 +65,11 @@ export default function Profile() {
       name: '',
       phone: '',
       business_name: '',
+      booking_email_message: '',
     },
   });
+
+  const bookingEmailMessage = watch('booking_email_message') ?? '';
 
   // Populate form when profile loads (or reloads after save).
   useEffect(() => {
@@ -62,6 +78,7 @@ export default function Profile() {
         name: profile.data.name ?? '',
         phone: profile.data.phone ?? '',
         business_name: profile.data.business_name ?? '',
+        booking_email_message: profile.data.booking_email_message ?? '',
       });
     }
   }, [profile.data, reset]);
@@ -73,11 +90,15 @@ export default function Profile() {
     const trimmedPhone = values.phone?.trim() ?? '';
     const phoneValue = trimmedPhone.length > 0 ? trimmedPhone : null;
     const trimmedBusinessName = values.business_name?.trim() ?? '';
+    const trimmedEmailMessage = values.booking_email_message?.trim() ?? '';
+    // Unlike business name, this one CAN be cleared: emptying the box sends
+    // null so the extra block disappears from the emails again.
+    const emailMessageValue = trimmedEmailMessage.length > 0 ? trimmedEmailMessage : null;
 
     // Compute diff — only send changed fields. Business name cannot be
     // cleared from this surface (the server requires 2-80 characters), so an
     // emptied field is treated as "no change".
-    const fields: { name?: string; phone?: string | null; business_name?: string } = {};
+    const fields: ProfileSelfUpdateFields = {};
     if (trimmedName !== profile.data.name) fields.name = trimmedName;
     if (phoneValue !== (profile.data.phone ?? null)) fields.phone = phoneValue;
     if (
@@ -85,6 +106,9 @@ export default function Profile() {
       trimmedBusinessName !== (profile.data.business_name ?? '')
     ) {
       fields.business_name = trimmedBusinessName;
+    }
+    if (emailMessageValue !== (profile.data.booking_email_message ?? null)) {
+      fields.booking_email_message = emailMessageValue;
     }
 
     if (Object.keys(fields).length === 0) {
@@ -105,7 +129,7 @@ export default function Profile() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="My profile"
-        subtitle="Update your name, contact number and business name. Email changes must go through HQ."
+        subtitle="Update your name, contact number, business name and the message customers see on their confirmation emails. Email changes must go through HQ."
       />
 
       {profile.isLoading ? (
@@ -174,6 +198,35 @@ export default function Profile() {
                   </p>
                   {errors.business_name ? (
                     <p className="text-daisy-orange text-xs">{errors.business_name.message}</p>
+                  ) : null}
+                </div>
+
+                {/* Booking email message — the franchisee's own words on the
+                    confirmation emails their customers receive (G2). */}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="profile-booking-email-message">
+                    Your message on confirmation emails
+                  </Label>
+                  <textarea
+                    id="profile-booking-email-message"
+                    rows={5}
+                    maxLength={BOOKING_EMAIL_MESSAGE_MAX}
+                    className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+                    placeholder="e.g. Parking is easiest on the side street. Please wear comfy clothes, we do a lot on the floor. Any questions, just reply to this email."
+                    {...register('booking_email_message')}
+                  />
+                  <p className="text-daisy-muted text-xs">
+                    Added to the confirmation email every customer receives after booking a class or
+                    buying from your shop, in its own block below the booking details. Leave it
+                    blank for nothing extra.
+                  </p>
+                  <p className="text-daisy-muted text-xs tabular-nums">
+                    {bookingEmailMessage.length} / {BOOKING_EMAIL_MESSAGE_MAX}
+                  </p>
+                  {errors.booking_email_message ? (
+                    <p className="text-daisy-orange text-xs">
+                      {errors.booking_email_message.message}
+                    </p>
                   ) : null}
                 </div>
 

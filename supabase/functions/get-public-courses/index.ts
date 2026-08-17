@@ -3,22 +3,31 @@
 // PUBLIC (no auth) — the booking widget's read API. PRD §5.2.
 //
 // POST {
-//   postcode: string,
+//   postcode?: string,                 // a UK postcode OR (round 2, G8) a town/area name
+//   location?: string,                 // explicit free-text town/area alias for `postcode`
 //   lat?: number, lng?: number,        // pre-resolved (skips geocode)
 //   radius_miles?: number,             // default from da_settings.course_finder_radius_miles
 //   franchisee_id?: string,            // optional: filter to one franchisee's courses
 //   limit?: number
 // }
 // -> {
-//   courses: Array<CourseCard>,
+//   courses: Array<CourseCard>,        // each carries sold_out + spots_remaining
 //   territory_status: 'active' | 'vacant' | 'none',
-//   suggest_interest_form: boolean
+//   suggest_interest_form: boolean,
+//   resolved_location?: string         // the place name we matched a town search to
 // }
 //
-// Only PUBLIC, SCHEDULED courses with spots remaining are returned. Geocoding is
-// done server-side via postcodes.io (free, keyless — replaced Google Geocoding
-// 2026-07-30 after Google Cloud billing lapsed). Best-effort per-IP rate limit
-// (20/min) per PRD §12.5.
+// All PUBLIC, SCHEDULED courses are returned, INCLUDING sold-out ones (round 2,
+// G4: Feola runs waiting lists and a full schedule reads better than a thin one,
+// so a full class stays visible, marked sold out, with booking disabled). The
+// `spots_remaining > 0` predicate was dropped from find_nearest_courses in
+// migration 048.
+//
+// Geocoding is done server-side via postcodes.io (free, keyless — replaced
+// Google Geocoding 2026-07-30 after Google Cloud billing lapsed). A search term
+// that is not a valid postcode is resolved as a place name via the same API's
+// /places endpoint (round 2, G8). Best-effort per-IP rate limit (20/min) per
+// PRD §12.5.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -62,6 +71,8 @@ function rateLimited(ip: string): boolean {
 
 interface RequestBody {
   postcode?: unknown;
+  /** Free-text town/area (G8). An alias for `postcode` — either field accepts either kind. */
+  location?: unknown;
   lat?: unknown;
   lng?: unknown;
   radius_miles?: unknown;
@@ -82,6 +93,10 @@ function toCard(r: any) {
     template_slug: r.template_slug ?? r.template?.slug ?? null,
     // Class content + suitability, shown before booking (Jenni, M3 feedback §1).
     template_description: r.template_description ?? r.template?.description ?? null,
+    // The franchisee's own wording for this one class (G1, migration 045).
+    // Absent until that migration lands, hence the `?? null` — the widget falls
+    // back to template_description whenever it is null or blank.
+    description_override: r.description_override ?? null,
     age_range: r.age_range ?? r.template?.age_range ?? null,
     event_date: r.event_date,
     start_time: r.start_time,
@@ -92,8 +107,40 @@ function toCard(r: any) {
     franchisee_name: r.franchisee_name ?? r.franchisee?.name ?? null,
     capacity: r.capacity,
     spots_remaining: r.spots_remaining,
+    // Explicit so the widget never has to infer "full" from a number that could
+    // in principle go negative (G4).
+    sold_out: Number(r.spots_remaining) <= 0,
     ticket_types: Array.isArray(r.ticket_types) ? r.ticket_types : [],
   };
+}
+
+// postcodes.io /places returns matches in no useful order, so taking the first
+// is wrong: "Guildford" returns a suburban area in Pembrokeshire ahead of the
+// Surrey town, which sent customers 200 miles west and found nothing. Rank an
+// exact name match first, then by how substantial the settlement is.
+const PLACE_TYPE_RANK: Record<string, number> = {
+  City: 0,
+  Town: 1,
+  Village: 2,
+  'Suburban Area': 3,
+  Hamlet: 4,
+  'Other Settlement': 5,
+};
+
+function pickBestPlace(places: any[], query: string): any | null {
+  if (!Array.isArray(places) || places.length === 0) return null;
+  const wanted = query.trim().toLowerCase();
+  const scored = places
+    .filter((p) => typeof p?.latitude === 'number' && typeof p?.longitude === 'number')
+    .map((p, i) => ({
+      place: p,
+      exact: String(p.name_1 ?? '').toLowerCase() === wanted ? 0 : 1,
+      type: PLACE_TYPE_RANK[String(p.local_type ?? '')] ?? 6,
+      order: i,
+    }));
+  if (scored.length === 0) return null;
+  scored.sort((a, b) => a.exact - b.exact || a.type - b.type || a.order - b.order);
+  return scored[0].place;
 }
 
 // Today's date in Europe/London ('YYYY-MM-DD') — a 23:30 UTC submission in BST
@@ -135,16 +182,26 @@ Deno.serve(async (req: Request) => {
   // --- booking_token path: resolve a single course (the /book/:token page) ---
   const bookingToken = typeof body.booking_token === 'string' ? body.booking_token.trim() : '';
   if (bookingToken) {
-    const single = await admin
-      .from('da_course_instances')
-      .select(
-        `id, booking_token, display_name, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
+    // description_override (migration 045) may not exist yet — a select naming a
+    // missing column is a hard 400 from PostgREST, so try it first and retry
+    // without it rather than breaking every /book/:token page in between.
+    const columns = (withOverride: boolean) =>
+      `id, booking_token, display_name,${withOverride ? ' description_override,' : ''} event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
          template:da_course_templates ( name, slug, description, age_range ),
          franchisee:da_franchisees ( name ),
-         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`,
-      )
+         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`;
+    let single = await admin
+      .from('da_course_instances')
+      .select(columns(true))
       .eq('booking_token', bookingToken)
       .maybeSingle();
+    if (single.error) {
+      single = await admin
+        .from('da_course_instances')
+        .select(columns(false))
+        .eq('booking_token', bookingToken)
+        .maybeSingle();
+    }
     if (single.error) {
       console.error('booking_token lookup failed', single.error);
       return jsonResponse({ error: 'Could not load that course' }, 500);
@@ -217,11 +274,20 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const postcode = typeof body.postcode === 'string' ? body.postcode.trim() : '';
-  if (!postcode || !UK_POSTCODE_RE.test(postcode)) {
-    return jsonResponse({ error: 'A valid UK postcode is required' }, 400);
+  // --- Search term: a postcode OR a town/area name (G8) ---------------------
+  // `location` and `postcode` are interchangeable: the WordPress embeds and the
+  // widget have always sent `postcode`, and customers now type towns into that
+  // same box, so both fields accept both kinds of input.
+  const searchTerm =
+    (typeof body.location === 'string' ? body.location.trim() : '') ||
+    (typeof body.postcode === 'string' ? body.postcode.trim() : '');
+  if (!searchTerm) {
+    return jsonResponse({ error: 'A postcode or town is required' }, 400);
   }
-  const prefix = postcodePrefix(postcode);
+  const isPostcode = UK_POSTCODE_RE.test(searchTerm);
+  // Only a real postcode has a territory prefix — a town search leaves the
+  // territory lookup to the postcode resolved from the matched place.
+  let prefix = isPostcode ? postcodePrefix(searchTerm) : '';
 
   // franchisee_id accepts EITHER the internal UUID or the human franchisee
   // number ("0042") — the WordPress embeds use the number, so resolve it.
@@ -255,37 +321,87 @@ Deno.serve(async (req: Request) => {
   }
 
   // --- Resolve lat/lng (geocode if not provided) ----------------------------
+  // Two postcodes.io endpoints, both free and keyless:
+  //   /postcodes/{pc} -> { result: { latitude, longitude, ... } }
+  //   /places?q=&limit=1 -> { result: [ { name_1, outcode, latitude, longitude } ] }
+  // The places endpoint returns an ARRAY (verified against the live API), and a
+  // no-match is a 200 with an empty array, not a 404.
   let lat = typeof body.lat === 'number' ? body.lat : NaN;
   let lng = typeof body.lng === 'number' ? body.lng : NaN;
+  let resolvedLocation: string | null = null;
   if (Number.isNaN(lat) || Number.isNaN(lng)) {
-    try {
-      const geo = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
-      if (geo.status === 404) {
-        return jsonResponse({ error: `Could not locate postcode ${postcode}` }, 404);
+    if (isPostcode) {
+      try {
+        const geo = await fetch(
+          `https://api.postcodes.io/postcodes/${encodeURIComponent(searchTerm)}`,
+        );
+        if (geo.status === 404) {
+          return jsonResponse({ error: `Could not locate postcode ${searchTerm}` }, 404);
+        }
+        const payload = (await geo.json()) as any;
+        const result = payload?.result;
+        if (
+          !geo.ok ||
+          typeof result?.latitude !== 'number' ||
+          typeof result?.longitude !== 'number'
+        ) {
+          return jsonResponse({ error: `Could not locate postcode ${searchTerm}` }, 404);
+        }
+        lat = result.latitude;
+        lng = result.longitude;
+      } catch (err) {
+        console.error('geocode failed', err);
+        return jsonResponse({ error: 'Could not look up that postcode right now' }, 502);
       }
-      const payload = (await geo.json()) as any;
-      const result = payload?.result;
-      if (
-        !geo.ok ||
-        typeof result?.latitude !== 'number' ||
-        typeof result?.longitude !== 'number'
-      ) {
-        return jsonResponse({ error: `Could not locate postcode ${postcode}` }, 404);
+    } else {
+      // Town/area search (G8).
+      try {
+        const geo = await fetch(
+          `https://api.postcodes.io/places?q=${encodeURIComponent(searchTerm)}&limit=10`,
+        );
+        const payload = (await geo.json()) as any;
+        const place = pickBestPlace(
+          Array.isArray(payload?.result) ? payload.result : [],
+          searchTerm,
+        );
+        if (
+          !geo.ok ||
+          !place ||
+          typeof place.latitude !== 'number' ||
+          typeof place.longitude !== 'number'
+        ) {
+          return jsonResponse(
+            { error: `We could not find ${searchTerm}. Please try a postcode.` },
+            404,
+          );
+        }
+        lat = place.latitude;
+        lng = place.longitude;
+        resolvedLocation =
+          typeof place.name_1 === 'string' && place.name_1.trim()
+            ? place.name_1.trim()
+            : searchTerm;
+        // The place's outcode ("RG1") is the territory prefix for this search.
+        if (typeof place.outcode === 'string' && place.outcode.trim()) {
+          prefix = place.outcode.trim().toUpperCase();
+        }
+      } catch (err) {
+        console.error('place lookup failed', err);
+        return jsonResponse({ error: 'Could not look up that place right now' }, 502);
       }
-      lat = result.latitude;
-      lng = result.longitude;
-    } catch (err) {
-      console.error('geocode failed', err);
-      return jsonResponse({ error: 'Could not look up that postcode right now' }, 502);
     }
   }
 
   // --- Territory status ------------------------------------------------------
-  const territory = await admin
-    .from('da_territories')
-    .select('status')
-    .eq('postcode_prefix', prefix)
-    .maybeSingle();
+  // `prefix` is empty only when a town search was handed pre-resolved lat/lng,
+  // so there is no outcode to look up — that is 'none', not a wasted query.
+  const territory = prefix
+    ? await admin
+        .from('da_territories')
+        .select('status')
+        .eq('postcode_prefix', prefix)
+        .maybeSingle()
+    : { data: null };
   const territoryStatus: 'active' | 'vacant' | 'none' = territory.data
     ? (territory.data as any).status === 'active'
       ? 'active'
@@ -303,38 +419,35 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Could not search for courses right now' }, 500);
   }
 
-  // Public, scheduled, with space. Optional franchisee filter.
+  // Public and scheduled. Optional franchisee filter. Sold-out classes are
+  // DELIBERATELY kept (G4) — they render marked "Sold out" with booking
+  // disabled, in their normal date/distance position.
   const rows = ((nearest.data ?? []) as any[]).filter(
     (r) =>
       r.visibility === 'public' &&
       r.status === 'scheduled' &&
-      r.spots_remaining > 0 &&
       (!franchiseeId || r.franchisee_id === franchiseeId),
   );
 
-  const courses = rows.slice(0, limit).map((r) => ({
-    id: r.id,
-    template_name: r.template_name,
-    template_slug: r.template_slug,
-    event_date: r.event_date,
-    start_time: r.start_time,
-    end_time: r.end_time,
-    venue_name: r.venue_name,
-    venue_postcode: r.venue_postcode,
-    distance_miles: r.distance_miles == null ? null : Math.round(r.distance_miles * 10) / 10,
-    franchisee_name: r.franchisee_name,
-    capacity: r.capacity,
-    spots_remaining: r.spots_remaining,
-    ticket_types: Array.isArray(r.ticket_types) ? r.ticket_types : [],
-  }));
+  // toCard already resolves description_override, sold_out and the rounded
+  // distance — the RPC's column names match the fields it reads.
+  const courses = rows.slice(0, limit).map(toCard);
 
   // Suggest the interest form when the searched area has no active franchisee
-  // and the search found nothing. (Group-size threshold is applied client-side
-  // per da_settings.interest_form_min_attendees.)
-  const suggestInterestForm = courses.length === 0 && territoryStatus !== 'active';
+  // and the search found nothing bookable. A schedule made up entirely of
+  // sold-out classes still counts as "nothing they can book", so the interest
+  // form stays on offer. (Group-size threshold is applied client-side per
+  // da_settings.interest_form_min_attendees.)
+  const bookable = courses.filter((c) => !c.sold_out);
+  const suggestInterestForm = bookable.length === 0 && territoryStatus !== 'active';
 
   return jsonResponse(
-    { courses, territory_status: territoryStatus, suggest_interest_form: suggestInterestForm },
+    {
+      courses,
+      territory_status: territoryStatus,
+      suggest_interest_form: suggestInterestForm,
+      ...(resolvedLocation ? { resolved_location: resolvedLocation } : {}),
+    },
     200,
   );
 });

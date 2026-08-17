@@ -1,6 +1,11 @@
 // supabase/functions/update-franchisee-self/index.ts
 //
-// POST { fields: { name?: string, phone?: string | null, business_name?: string } }
+// POST { fields: {
+//          name?: string,
+//          phone?: string | null,
+//          business_name?: string,
+//          booking_email_message?: string | null
+//        } }
 //   -> updated franchisee row
 //
 // Franchisee self-service profile update. Constrained counterpart to
@@ -8,10 +13,10 @@
 //
 //  - The target row is resolved from the caller's own JWT sub (auth_user_id),
 //    not from a request-body `id`. A franchisee can ONLY update their own row.
-//  - Only `name`, `phone` and `business_name` are mutable. Any attempt to pass
-//    email, fee_tier, status, is_hq, billing_date, stripe_account_id,
-//    stripe_connected, gocardless_mandate_id, number, auth_user_id, or any
-//    other field returns 400.
+//  - Only `name`, `phone`, `business_name` and `booking_email_message`
+//    (migration 046) are mutable. Any attempt to pass email, fee_tier, status,
+//    is_hq, billing_date, stripe_account_id, stripe_connected,
+//    gocardless_mandate_id, number, auth_user_id, or any other field returns 400.
 //  - Inserts a da_activities row with actor_type='franchisee', action='profile_updated',
 //    and metadata={ changed_fields, before, after }.
 //  - Uses service_role client for all DB writes (anon key has no write access).
@@ -33,7 +38,10 @@ const CORS_HEADERS = {
 // Whitelist: the ONLY fields a franchisee may change on their own row.
 // Any other key in the request body is rejected with 400.
 // ---------------------------------------------------------------------------
-const ALLOWED_SELF_FIELDS = new Set(['name', 'phone', 'business_name']);
+const ALLOWED_SELF_FIELDS = new Set(['name', 'phone', 'business_name', 'booking_email_message']);
+
+/** Cap on the franchisee's own confirmation-email message (migration 046). */
+const BOOKING_EMAIL_MESSAGE_MAX = 1500;
 
 // ---------------------------------------------------------------------------
 // Explicitly-blocked fields to produce a clearer error message than the
@@ -200,6 +208,23 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // booking_email_message — free text, so unlike business_name it may be
+  // cleared: null (or an empty string) removes the block from the emails.
+  if ('booking_email_message' in requestedFields) {
+    const msg = requestedFields.booking_email_message;
+    if (msg !== null && typeof msg !== 'string') {
+      return jsonResponse({ error: 'booking_email_message must be a string or null' }, 400);
+    }
+    if (typeof msg === 'string' && msg.trim().length > BOOKING_EMAIL_MESSAGE_MAX) {
+      return jsonResponse(
+        {
+          error: `booking_email_message must be ${BOOKING_EMAIL_MESSAGE_MAX} characters or fewer`,
+        },
+        400,
+      );
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Normalise text fields.
   // ---------------------------------------------------------------------------
@@ -220,6 +245,16 @@ Deno.serve(async (req: Request) => {
 
   if ('business_name' in requestedFields) {
     updateFields.business_name = (requestedFields.business_name as string).trim();
+  }
+
+  if ('booking_email_message' in requestedFields) {
+    const msg = requestedFields.booking_email_message;
+    if (msg === null) {
+      updateFields.booking_email_message = null;
+    } else {
+      const trimmed = (msg as string).trim();
+      updateFields.booking_email_message = trimmed.length === 0 ? null : trimmed;
+    }
   }
 
   // ---------------------------------------------------------------------------

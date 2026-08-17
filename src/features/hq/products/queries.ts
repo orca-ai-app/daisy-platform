@@ -30,6 +30,12 @@ export interface Product {
   kind: ProductKind | null;
   fulfilment_url: string | null;
   fulfilment_notes: string | null;
+  /**
+   * Owner of this catalogue item (migration 046). NULL = an HQ network item
+   * every franchisee can sell. Set = one franchisee's own item, which only they
+   * see in their shop; HQ can still view and manage it from here.
+   */
+  franchisee_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -71,13 +77,21 @@ function isTableMissing(code: string | null | undefined): boolean {
 // Read
 // ---------------------------------------------------------------------------
 
+/**
+ * A product row with its owning franchisee's name resolved (migration 046).
+ * `owner_name` is null for HQ network items.
+ */
+export interface ProductRow extends Product {
+  owner_name: string | null;
+}
+
 export function useAllProducts() {
-  return useQuery<Product[]>({
+  return useQuery<ProductRow[]>({
     queryKey: HQ_PRODUCTS_QUERY_KEY,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('da_products')
-        .select('*')
+        .select('*, franchisee:da_franchisees ( name )')
         .order('sort_order', { ascending: true })
         .order('name', { ascending: true });
 
@@ -85,7 +99,12 @@ export function useAllProducts() {
         if (isTableMissing(error.code)) return [];
         throw error;
       }
-      return (data ?? []) as Product[];
+
+      type Joined = Product & { franchisee: { name: string } | null };
+      return ((data ?? []) as unknown as Joined[]).map(({ franchisee, ...product }) => ({
+        ...product,
+        owner_name: franchisee?.name ?? null,
+      }));
     },
   });
 }
@@ -149,9 +168,13 @@ export function useUpdateProduct() {
     mutationFn: (payload) => callEdgeFunction<Product>('update-product', payload),
     onSuccess: (updated) => {
       // Punch the updated row into the list cache immediately so the
-      // table reflects the change before the invalidation refetch lands.
-      queryClient.setQueryData<Product[]>(HQ_PRODUCTS_QUERY_KEY, (prev) =>
-        prev ? prev.map((p) => (p.id === updated.id ? updated : p)) : [updated],
+      // table reflects the change before the invalidation refetch lands. The
+      // Edge Function returns the bare row, so keep the owner name we already
+      // resolved rather than blanking it for a beat.
+      queryClient.setQueryData<ProductRow[]>(HQ_PRODUCTS_QUERY_KEY, (prev) =>
+        prev
+          ? prev.map((p) => (p.id === updated.id ? { ...updated, owner_name: p.owner_name } : p))
+          : [{ ...updated, owner_name: null }],
       );
       void queryClient.invalidateQueries({ queryKey: HQ_PRODUCTS_QUERY_KEY });
     },

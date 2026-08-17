@@ -5,6 +5,7 @@ export { default as MerchandisePage } from './MerchandisePage';
 export { RecordSaleDialog } from './RecordSaleDialog';
 export { ShopPanel } from './ShopPanel';
 export { ShopListingDialog } from './ShopListingDialog';
+export { OwnProductDialog } from './OwnProductDialog';
 export {
   useProducts,
   useOwnProductSales,
@@ -14,6 +15,8 @@ export {
   useOwnFranchiseeProducts,
   useShopItems,
   useUpsertFranchiseeProduct,
+  useCreateOwnProduct,
+  useUpdateOwnProduct,
   saleChannel,
 } from './merchandiseQueries';
 export type {
@@ -24,6 +27,8 @@ export type {
   ProductSalePaymentMethod,
   ProductSaleChannel,
   CreateProductSalePayload,
+  CreateOwnProductPayload,
+  UpdateOwnProductPayload,
   SaleCourseOption,
   FranchiseeProduct,
   UpsertFranchiseeProductPayload,

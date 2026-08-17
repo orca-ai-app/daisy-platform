@@ -9,6 +9,11 @@
 //   valid_from?:  string | null  — ISO timestamp
 //   valid_until?: string | null  — ISO timestamp
 //   is_active?:   boolean
+//   template_ids?: string[] | null — da_course_templates ids the code is
+//                 restricted to (migration 046). null or an empty array = valid
+//                 on every course type. Every id is checked against
+//                 da_course_templates; an unknown id is a 400 (there is no FK
+//                 on an array element, so this function is the only guard).
 // }
 // -> updated da_discount_codes row (200)
 //
@@ -67,6 +72,9 @@ const BLOCKED_FIELDS = new Set(['uses_count', 'franchisee_id', 'created_at']);
 
 const CODE_REGEX = /^[A-Z0-9_-]{1,50}$/;
 const ISO_REGEX = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A code restricted to more course types than the network has is a mistake. */
+const MAX_TEMPLATE_IDS = 50;
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -81,6 +89,7 @@ interface RawBody {
   valid_from?: unknown;
   valid_until?: unknown;
   is_active?: unknown;
+  template_ids?: unknown;
   [key: string]: unknown;
 }
 
@@ -93,6 +102,8 @@ interface ValidatedInput {
   valid_from?: string | null;
   valid_until?: string | null;
   is_active?: boolean;
+  /** NULL = valid on every course type; otherwise da_course_templates ids. */
+  template_ids?: string[] | null;
 }
 
 function validate(
@@ -201,6 +212,32 @@ function validate(
       return { ok: false, error: 'is_active must be a boolean' };
     }
     out.is_active = body.is_active;
+  }
+
+  // template_ids (optional) — course-type restriction (migration 046). Mirrors
+  // create-discount-code: shape is checked here, each id's existence is checked
+  // against da_course_templates in the handler. An empty array normalises to
+  // NULL so "all course types" stores the same as every pre-046 row.
+  if (body.template_ids !== undefined) {
+    if (body.template_ids === null) {
+      out.template_ids = null;
+    } else {
+      if (!Array.isArray(body.template_ids)) {
+        return { ok: false, error: 'template_ids must be an array of course type ids or null' };
+      }
+      const ids = body.template_ids as unknown[];
+      if (ids.length > MAX_TEMPLATE_IDS) {
+        return { ok: false, error: `template_ids must contain ${MAX_TEMPLATE_IDS} ids or fewer` };
+      }
+      for (const id of ids) {
+        if (typeof id !== 'string' || !UUID_REGEX.test(id)) {
+          return { ok: false, error: 'template_ids must contain course type ids only' };
+        }
+      }
+      // De-duplicate: the picker cannot produce duplicates, but a direct caller can.
+      const unique = Array.from(new Set(ids as string[]));
+      out.template_ids = unique.length > 0 ? unique : null;
+    }
   }
 
   return { ok: true, value: out };
@@ -314,6 +351,29 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // --- Course-type restriction: every id must be a real template ----------
+  // Postgres cannot foreign-key an array element, so this is the only place a
+  // bogus id gets caught. A code silently restricted to a course type that
+  // does not exist would never be redeemable.
+  if (input.template_ids) {
+    const templates = await admin
+      .from('da_course_templates')
+      .select('id')
+      .in('id', input.template_ids);
+    if (templates.error) {
+      console.error('template validation failed', templates.error);
+      return jsonResponse({ error: 'Failed to check the selected course types' }, 500);
+    }
+    const found = new Set(((templates.data ?? []) as any[]).map((t) => t.id as string));
+    const unknown = input.template_ids.filter((id) => !found.has(id));
+    if (unknown.length > 0) {
+      return jsonResponse(
+        { error: 'One or more of the selected course types no longer exists' },
+        400,
+      );
+    }
+  }
+
   // --- Cross-validate type+value when only one side is being updated -------
   // If caller updates value but not type, resolve against existing type.
   if (input.value !== undefined && input.type === undefined) {
@@ -333,6 +393,7 @@ Deno.serve(async (req: Request) => {
   if ('valid_from' in input) updateFields.valid_from = input.valid_from ?? null;
   if ('valid_until' in input) updateFields.valid_until = input.valid_until ?? null;
   if (input.is_active !== undefined) updateFields.is_active = input.is_active;
+  if ('template_ids' in input) updateFields.template_ids = input.template_ids ?? null;
 
   // --- Apply DB update -----------------------------------------------------
   const updated = await admin
@@ -360,10 +421,22 @@ Deno.serve(async (req: Request) => {
   const changedFields: Record<string, unknown> = {};
   const beforeSnapshot: Record<string, unknown> = {};
 
+  /**
+   * template_ids is an array, so `!==` would report a change on every save
+   * even when the restriction is untouched. Compare by value for arrays and
+   * by identity for the scalar columns.
+   */
+  function sameValue(a: unknown, b: unknown): boolean {
+    if (Array.isArray(a) || Array.isArray(b)) {
+      return JSON.stringify(a) === JSON.stringify(b);
+    }
+    return a === b;
+  }
+
   for (const [key, newVal] of Object.entries(updateFields)) {
     if (key === 'updated_at') continue;
     const oldVal = currentRow[key] ?? null;
-    if (oldVal !== (newVal ?? null)) {
+    if (!sameValue(oldVal, newVal ?? null)) {
       changedFields[key] = newVal ?? null;
       beforeSnapshot[key] = oldVal;
     }

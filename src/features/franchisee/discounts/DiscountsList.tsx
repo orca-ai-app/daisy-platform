@@ -19,8 +19,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatPence } from '@/lib/format';
-import { useOwnDiscountCodes } from './discountQueries';
+import { useOwnDiscountCodes, useDiscountCourseTypes } from './discountQueries';
 import { DiscountDialog } from './DiscountDialog';
+import { restrictionSummary } from './types';
 import type { DiscountCode } from './types';
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,7 @@ function renderValue(row: DiscountCode): string {
 
 export default function DiscountsList() {
   const { data: codes = [], isLoading, error } = useOwnDiscountCodes();
+  const { data: courseTypes = [] } = useDiscountCourseTypes();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
@@ -126,6 +128,21 @@ export default function DiscountsList() {
         ),
       },
       {
+        id: 'template_ids',
+        header: 'Course types',
+        accessorFn: (row) => restrictionSummary(row.template_ids, courseTypes),
+        cell: ({ row }) => {
+          const summary = restrictionSummary(row.original.template_ids, courseTypes);
+          return row.original.template_ids && row.original.template_ids.length > 0 ? (
+            <span className="text-daisy-ink text-[13px]" title={summary}>
+              {summary}
+            </span>
+          ) : (
+            <span className="text-daisy-muted text-[13px]">All</span>
+          );
+        },
+      },
+      {
         accessorKey: 'max_uses',
         header: 'Max uses',
         cell: ({ row }) => (
@@ -188,7 +205,7 @@ export default function DiscountsList() {
         ),
       },
     ],
-    [],
+    [courseTypes],
   );
 
   return (

@@ -26,16 +26,27 @@ export function TopBar({ brand, nav, actions, className }: TopBarProps) {
         className,
       )}
     >
-      <div className="mx-auto flex h-16 max-w-[1440px] items-center gap-6 px-6">
-        <div className="flex shrink-0 items-center">{brand ?? <DefaultBrand />}</div>
+      {/*
+        The nav wrapper is `md:flex` only. Below md the consumer's nav list is
+        hidden and navigation moves to the MobileNav drawer in the actions
+        slot, so the bar never has to scroll a long link list sideways.
+      */}
+      <div className="mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 sm:px-6 md:gap-6">
+        <div className="flex min-w-0 shrink-0 items-center">{brand ?? <DefaultBrand />}</div>
         {nav ? (
-          <nav aria-label="Primary" className="flex flex-1 items-center gap-1 overflow-x-auto">
+          <nav
+            aria-label="Primary"
+            className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto md:flex"
+          >
             {nav}
           </nav>
         ) : (
           <div className="flex-1" />
         )}
-        {actions ? <div className="flex shrink-0 items-center gap-3">{actions}</div> : null}
+        {nav ? <div className="flex-1 md:hidden" /> : null}
+        {actions ? (
+          <div className="flex shrink-0 items-center gap-2 md:gap-3">{actions}</div>
+        ) : null}
       </div>
     </header>
   );

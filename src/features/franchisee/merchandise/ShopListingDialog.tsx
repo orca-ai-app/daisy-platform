@@ -88,17 +88,19 @@ export interface ShopListingDialogProps {
 
 export function ShopListingDialog({ item, open, onClose }: ShopListingDialogProps) {
   const upsert = useUpsertFranchiseeProduct();
-  const { product, listing } = item;
+  const { product, listing, isOwn } = item;
   const isElearning = product.kind === 'elearning';
 
   /**
    * Price defaults to the existing listing, then the HQ RRP, then blank —
    * the franchisee sets their own price but rarely starts from nothing.
+   * Their OWN items carry no network RRP (create-product forces rrp_pence to
+   * 0 for them), so those start blank rather than prefilling a misleading £0.
    */
   const defaultPriceRaw =
     listing != null
       ? penceToPounds(listing.price_pence).toFixed(2)
-      : product.rrp_pence != null
+      : !isOwn && product.rrp_pence != null
         ? penceToPounds(product.rrp_pence).toFixed(2)
         : '';
 
@@ -166,7 +168,9 @@ export function ShopListingDialog({ item, open, onClose }: ShopListingDialogProp
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : null)}>
-      <DialogContent className="max-w-lg">
+      {/* Capped at 90vh with an internally scrolling body so the action
+          buttons stay reachable on a short screen (F2). */}
+      <DialogContent className="flex max-h-[90vh] max-w-lg flex-col">
         <DialogHeader>
           <DialogTitle>{product.name}</DialogTitle>
           <DialogDescription>
@@ -179,105 +183,111 @@ export function ShopListingDialog({ item, open, onClose }: ShopListingDialogProp
           onSubmit={(e) => {
             void handleSubmit(onSubmit)(e);
           }}
-          className="mt-4 flex flex-col gap-4"
+          className="mt-4 flex min-h-0 flex-1 flex-col"
         >
-          {/* HQ reference */}
-          <div className="border-daisy-line bg-daisy-paper-soft flex items-center justify-between rounded-[8px] border-2 p-3">
-            <span className="text-daisy-muted text-xs font-bold tracking-wider uppercase">
-              HQ recommended price
-            </span>
-            <span className="text-daisy-ink text-sm font-extrabold tabular-nums">
-              {product.rrp_pence != null ? formatPence(product.rrp_pence) : '—'}
-            </span>
-          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            {/* HQ reference — a franchisee's own item has no network RRP */}
+            {!isOwn ? (
+              <div className="border-daisy-line bg-daisy-paper-soft flex items-center justify-between rounded-[8px] border-2 p-3">
+                <span className="text-daisy-muted text-xs font-bold tracking-wider uppercase">
+                  HQ recommended price
+                </span>
+                <span className="text-daisy-ink text-sm font-extrabold tabular-nums">
+                  {product.rrp_pence != null ? formatPence(product.rrp_pence) : '—'}
+                </span>
+              </div>
+            ) : null}
 
-          {/* Your price + VAT */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="fp-price">Your price (£)</Label>
-              <Input
-                id="fp-price"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="12.50"
-                {...register('priceRaw')}
+            {/* Your price + VAT */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="fp-price">Your price (£)</Label>
+                <Input
+                  id="fp-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="12.50"
+                  {...register('priceRaw')}
+                />
+                {errors.priceRaw ? (
+                  <p className="text-daisy-orange text-xs">{errors.priceRaw.message}</p>
+                ) : null}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label>VAT rate</Label>
+                <Select
+                  value={vat}
+                  onValueChange={(v) =>
+                    setValue('vat', v, { shouldDirty: true, shouldValidate: true })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VAT_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-daisy-muted text-xs">
+                  Leave as None if you are not VAT registered.
+                </p>
+              </div>
+            </div>
+
+            {/* Show on booking page */}
+            <label className="border-daisy-line bg-daisy-paper-soft flex items-start gap-3 rounded-[8px] border-2 p-3">
+              <input
+                type="checkbox"
+                checked={isOnline}
+                onChange={(e) => setValue('is_online', e.target.checked, { shouldDirty: true })}
+                className="mt-0.5 h-4 w-4"
+                role="switch"
+                aria-checked={isOnline}
               />
-              {errors.priceRaw ? (
-                <p className="text-daisy-orange text-xs">{errors.priceRaw.message}</p>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label>VAT rate</Label>
-              <Select
-                value={vat}
-                onValueChange={(v) =>
-                  setValue('vat', v, { shouldDirty: true, shouldValidate: true })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {VAT_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-daisy-muted text-xs">
-                Leave as None if you are not VAT registered.
-              </p>
-            </div>
-          </div>
-
-          {/* Show on booking page */}
-          <label className="border-daisy-line bg-daisy-paper-soft flex items-start gap-3 rounded-[8px] border-2 p-3">
-            <input
-              type="checkbox"
-              checked={isOnline}
-              onChange={(e) => setValue('is_online', e.target.checked, { shouldDirty: true })}
-              className="mt-0.5 h-4 w-4"
-              role="switch"
-              aria-checked={isOnline}
-            />
-            <span className="flex flex-col">
-              <span className="text-sm font-bold">Show on my booking page</span>
-              <span className="text-daisy-muted text-xs">
-                Customers can buy this at any time, unlike classes which need a date.
+              <span className="flex flex-col">
+                <span className="text-sm font-bold">Show on my booking page</span>
+                <span className="text-daisy-muted text-xs">
+                  Customers can buy this at any time, unlike classes which need a date.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
 
-          {/* E-learning fulfilment note */}
-          {isElearning ? (
-            <div className="border-daisy-line bg-daisy-paper-soft rounded-[8px] border-2 p-3">
-              <p className="text-sm font-bold">E-learning</p>
-              <p className="text-daisy-muted mt-1 text-xs">
-                {product.fulfilment_url
-                  ? 'After paying, the customer is sent straight to the course by HQ. You have nothing to post.'
-                  : 'HQ has not set the course link for this item yet, so buyers cannot be sent to it. Contact HQ before putting it on your booking page.'}
-              </p>
-              {product.fulfilment_notes ? (
-                <p className="text-daisy-muted mt-2 text-xs">{product.fulfilment_notes}</p>
-              ) : null}
+            {/* E-learning fulfilment note */}
+            {isElearning ? (
+              <div className="border-daisy-line bg-daisy-paper-soft rounded-[8px] border-2 p-3">
+                <p className="text-sm font-bold">E-learning</p>
+                <p className="text-daisy-muted mt-1 text-xs">
+                  {isOwn
+                    ? 'This is your own course, so you enrol the buyer yourself. Their confirmation email tells them their access details will follow separately, usually within 48 hours.'
+                    : product.fulfilment_url
+                      ? 'After paying, the customer is sent straight to the course by HQ. You have nothing to post.'
+                      : 'HQ has not set the course link for this item yet, so buyers cannot be sent to it. Contact HQ before putting it on your booking page.'}
+                </p>
+                {product.fulfilment_notes ? (
+                  <p className="text-daisy-muted mt-2 text-xs">{product.fulfilment_notes}</p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Price preview */}
+            <div className="border-daisy-line bg-daisy-paper-soft flex items-center justify-between rounded-[8px] border-2 p-3">
+              <span className="text-daisy-muted text-xs font-bold tracking-wider uppercase">
+                Customers pay
+              </span>
+              <span className="text-daisy-ink text-sm font-extrabold tabular-nums">
+                {pricePence !== null ? formatPence(pricePence) : '—'}
+              </span>
             </div>
-          ) : null}
-
-          {/* Price preview */}
-          <div className="border-daisy-line bg-daisy-paper-soft flex items-center justify-between rounded-[8px] border-2 p-3">
-            <span className="text-daisy-muted text-xs font-bold tracking-wider uppercase">
-              Customers pay
-            </span>
-            <span className="text-daisy-ink text-sm font-extrabold tabular-nums">
-              {pricePence !== null ? formatPence(pricePence) : '—'}
-            </span>
           </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-2">
+          {/* Actions — pinned below the scrolling body */}
+          <div className="border-daisy-line-soft mt-4 flex shrink-0 justify-end gap-2 border-t pt-4">
             <Button
               type="button"
               variant="outline"

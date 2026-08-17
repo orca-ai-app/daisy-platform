@@ -57,6 +57,11 @@ function isUuid(value: string): boolean {
 interface RequestBody {
   id?: unknown;
   fields?: Record<string, unknown>;
+  /**
+   * F6: explicit confirmation that a £0.00 ticket is intentional. Without it a
+   * zero price is rejected, so a mis-typed price cannot reach the booking page.
+   */
+  allow_free?: unknown;
 }
 
 Deno.serve(async (req: Request) => {
@@ -149,11 +154,26 @@ Deno.serve(async (req: Request) => {
     if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) {
       return jsonResponse({ error: 'price_pence must be a non-negative integer' }, 400);
     }
+    // F6: a £0.00 ticket is almost always an unfilled price field.
+    if (v === 0 && body.allow_free !== true) {
+      return jsonResponse(
+        {
+          error:
+            'This ticket is priced at £0.00. Enter a price, or tick "This ticket really is free" to confirm.',
+        },
+        400,
+      );
+    }
   }
   if ('seats_consumed' in updateFields) {
     const v = updateFields.seats_consumed;
     if (typeof v !== 'number' || !Number.isInteger(v) || v < 1) {
-      return jsonResponse({ error: 'seats_consumed must be a positive integer' }, 400);
+      return jsonResponse(
+        {
+          error: 'seats_consumed must be a positive integer (the number of places one ticket uses)',
+        },
+        400,
+      );
     }
   }
   if ('max_available' in updateFields) {
@@ -189,7 +209,7 @@ Deno.serve(async (req: Request) => {
 
   const instanceQuery = await admin
     .from('da_course_instances')
-    .select('id, franchisee_id, venue_postcode, event_date')
+    .select('id, franchisee_id, venue_postcode, event_date, capacity')
     .eq('id', beforeRow.course_instance_id as string)
     .maybeSingle();
 
@@ -206,11 +226,27 @@ Deno.serve(async (req: Request) => {
     franchisee_id: string;
     venue_postcode: string;
     event_date: string;
+    capacity: number;
   };
 
   // Auth predicate: HQ or owning franchisee.
   if (!actor.is_hq && actor.id !== instance.franchisee_id) {
     return jsonResponse({ error: 'You do not own this course instance' }, 403);
+  }
+
+  // F1: a ticket can never consume more places than the class has. A ticket
+  // with seats_consumed = capacity makes the class unbookable after a single
+  // booking, which is exactly the fault this guard exists to stop.
+  if ('seats_consumed' in updateFields) {
+    const seats = updateFields.seats_consumed as number;
+    if (seats > instance.capacity) {
+      return jsonResponse(
+        {
+          error: `This ticket uses ${seats} places but the class only has ${instance.capacity}. A ticket cannot use more places than the class has.`,
+        },
+        400,
+      );
+    }
   }
 
   // -------------------------------------------------------------------------

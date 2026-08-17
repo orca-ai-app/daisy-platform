@@ -37,7 +37,9 @@ export function PageHeader({ title, subtitle, breadcrumb, actions, className }: 
         </h1>
         {subtitle ? <p className="text-daisy-muted text-[14px]">{subtitle}</p> : null}
       </div>
-      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+      {/* Wrap rather than squash: several pages put three or more controls
+          here, which overflow a 375px viewport on a single line. */}
+      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
   );
 }

@@ -64,6 +64,7 @@ import {
   type TicketTypeInput,
 } from './courseDetailQueries';
 import type { TicketType } from './types';
+import { TicketPlacesHint } from './TicketPlacesHint';
 import { useOwnProfile } from '../profileQueries';
 import { MedicalQr } from '../components/MedicalQr';
 import { bookingUrl } from '@/lib/publicUrls';
@@ -101,23 +102,53 @@ function formatTime(t: string | null): string {
 // Ticket-type form schema
 // ---------------------------------------------------------------------------
 
-const ticketTypeSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  price_pounds: z
-    .number({ invalid_type_error: 'Price must be a number' })
-    .nonnegative('Price cannot be negative'),
-  seats_consumed: z
-    .number({ invalid_type_error: 'Seats must be a number' })
-    .int()
-    .min(1, 'At least 1 seat'),
-  max_available: z
-    .number({ invalid_type_error: 'Max must be a number' })
-    .int()
-    .positive('Must be positive')
-    .nullable(),
-});
+/**
+ * Ticket-type form schema. Capacity-aware because "Places used per ticket"
+ * (seats_consumed) can never exceed the class size — a ticket that consumed
+ * the whole class made the booking page report "Not enough spaces remaining"
+ * on an empty class (F1).
+ */
+function buildTicketTypeSchema(capacity: number | undefined) {
+  return z
+    .object({
+      name: z.string().min(1, 'Name is required'),
+      price_pounds: z
+        .number({ invalid_type_error: 'Price must be a number' })
+        .nonnegative('Price cannot be negative'),
+      seats_consumed: z
+        .number({ invalid_type_error: 'Enter how many places one ticket uses' })
+        .int('Enter a whole number of places')
+        .min(1, 'A ticket must use at least 1 place')
+        .refine(
+          (v) => !Number.isFinite(capacity) || v <= (capacity as number),
+          `A ticket cannot use more places than the class has (${capacity ?? 0}).`,
+        ),
+      max_available: z
+        .number({ invalid_type_error: 'Max must be a number' })
+        .int()
+        .positive('Must be positive')
+        .nullable(),
+      /** Explicit confirmation that a £0.00 ticket is intentional (F6). */
+      allow_free: z.boolean(),
+    })
+    .superRefine((vals, ctx) => {
+      if (vals.price_pounds === 0 && !vals.allow_free) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['price_pounds'],
+          message: 'Enter a price, or tick "This ticket really is free" below.',
+        });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['allow_free'],
+          message:
+            'This ticket is priced at £0.00. Enter a price, or tick "This ticket really is free" to confirm.',
+        });
+      }
+    });
+}
 
-type TicketTypeFormValues = z.infer<typeof ticketTypeSchema>;
+type TicketTypeFormValues = z.infer<ReturnType<typeof buildTicketTypeSchema>>;
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -213,6 +244,7 @@ export default function CourseDetail() {
                       display_name: instance.display_name,
                       visibility: instance.visibility,
                       bespoke_details: instance.bespoke_details,
+                      description_override: instance.description_override,
                       capacity: instance.capacity,
                       price_pence: instance.price_pence,
                       ticket_types: ticketTypes.map((tt) => ({
@@ -369,8 +401,8 @@ export default function CourseDetail() {
                             <span className="text-daisy-muted text-[12px]">
                               {formatPrice(tt.price_pence)}
                               {tt.vat_rate != null ? ` incl. VAT @ ${tt.vat_rate}%` : ''} ·{' '}
-                              {tt.seats_consumed} seat
-                              {tt.seats_consumed === 1 ? '' : 's'}{' '}
+                              {tt.seats_consumed} place
+                              {tt.seats_consumed === 1 ? '' : 's'} per ticket{' '}
                               {tt.max_available != null
                                 ? `· max ${tt.max_available}`
                                 : '· unlimited'}
@@ -476,6 +508,7 @@ export default function CourseDetail() {
             <TicketTypeFormDialog
               mode="create"
               courseInstanceId={id}
+              capacity={instance?.capacity}
               open={addingTicket}
               onClose={() => setAddingTicket(false)}
             />
@@ -485,6 +518,7 @@ export default function CourseDetail() {
             <TicketTypeFormDialog
               mode="edit"
               ticketType={editingTicket}
+              capacity={instance?.capacity}
               open={!!editingTicket}
               onClose={() => setEditingTicket(null)}
             />
@@ -630,24 +664,26 @@ function CancelDialog({
 // TicketTypeFormDialog — handles both create and edit
 // ---------------------------------------------------------------------------
 
-type TicketTypeFormDialogProps =
+type TicketTypeFormDialogProps = (
   | {
       mode: 'create';
       courseInstanceId: string;
-      open: boolean;
-      onClose: () => void;
       ticketType?: never;
     }
   | {
       mode: 'edit';
       ticketType: TicketType;
-      open: boolean;
-      onClose: () => void;
       courseInstanceId?: never;
-    };
+    }
+) & {
+  open: boolean;
+  onClose: () => void;
+  /** Class size, used to cap "Places used per ticket" (F1). */
+  capacity: number | undefined;
+};
 
 function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
-  const { mode, open, onClose } = props;
+  const { mode, open, onClose, capacity } = props;
   const createTicketType = useCreateTicketType();
   const updateTicketType = useUpdateTicketType();
 
@@ -656,16 +692,25 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
     price_pounds: mode === 'edit' ? props.ticketType.price_pence / 100 : 0,
     seats_consumed: mode === 'edit' ? props.ticketType.seats_consumed : 1,
     max_available: mode === 'edit' ? props.ticketType.max_available : null,
+    // Pre-tick for a ticket already saved as free, so editing an unrelated
+    // field on an existing free ticket is not blocked (F6).
+    allow_free: mode === 'edit' && props.ticketType.price_pence === 0,
   };
 
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<TicketTypeFormValues>({
-    resolver: zodResolver(ticketTypeSchema),
+    resolver: zodResolver(buildTicketTypeSchema(capacity)),
     defaultValues,
   });
+
+  const seatsConsumed = watch('seats_consumed');
+  const pricePounds = watch('price_pounds');
+  const allowFree = watch('allow_free');
 
   const onSubmit = async (values: TicketTypeFormValues) => {
     const input: TicketTypeInput = {
@@ -680,12 +725,14 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
         await createTicketType.mutateAsync({
           course_instance_id: props.courseInstanceId,
           ticket_type: input,
+          allow_free: values.allow_free,
         });
         toast.success('Ticket type added');
       } else {
         await updateTicketType.mutateAsync({
           id: props.ticketType.id,
           fields: input,
+          allow_free: values.allow_free,
         });
         toast.success('Ticket type updated');
       }
@@ -737,7 +784,7 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="tt-seats">Seats used per ticket</Label>
+              <Label htmlFor="tt-seats">Places used per ticket</Label>
               <Input
                 id="tt-seats"
                 type="number"
@@ -746,9 +793,10 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
                 {...register('seats_consumed', { valueAsNumber: true })}
               />
               <p className="text-daisy-muted text-xs">
-                How many spaces on the course one ticket takes up — almost always 1. This is NOT how
-                many tickets are available (use Max available for that).
+                A single ticket uses 1, a couple's ticket uses 2, a family ticket uses 4. This is
+                NOT how many tickets are available (use Max available for that).
               </p>
+              <TicketPlacesHint seatsConsumed={seatsConsumed} capacity={capacity} />
               {errors.seats_consumed ? (
                 <p className="text-daisy-orange text-xs">{errors.seats_consumed.message}</p>
               ) : null}
@@ -771,6 +819,35 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
               ) : null}
             </div>
           </div>
+
+          {/* Free-ticket confirmation (F6) */}
+          {pricePounds === 0 ? (
+            <div className="border-daisy-line rounded-[8px] border-2 bg-white p-3">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={allowFree}
+                  onChange={(e) =>
+                    setValue('allow_free', e.target.checked, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                  className="accent-daisy-primary mt-0.5 h-4 w-4"
+                />
+                <span>
+                  <span className="text-daisy-ink font-semibold">This ticket really is free</span>
+                  <span className="text-daisy-muted block text-xs">
+                    This ticket is priced at £0.00. Tick this only if customers should pay nothing,
+                    otherwise enter a price above.
+                  </span>
+                </span>
+              </label>
+              {errors.allow_free ? (
+                <p className="text-daisy-orange mt-2 text-xs">{errors.allow_free.message}</p>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>

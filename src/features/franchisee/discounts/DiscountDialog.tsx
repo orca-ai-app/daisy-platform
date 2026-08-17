@@ -14,6 +14,16 @@
  * Money rule: the form collects a "pounds" value for fixed-type codes and
  * converts to pence before sending. Percentage values are whole integers.
  *
+ * Course-type restriction (G10, migration 046): `template_ids` limits the code
+ * to selected da_course_templates. Empty = valid on everything. It is enforced
+ * at checkout by create-checkout-session and validate-discount, and is editable
+ * in both create and edit mode (both Edge Functions accept the field).
+ *
+ * The dialog is taller than a phone viewport once every option is showing, so
+ * DialogContent is capped at 90vh with the form body scrolling internally and
+ * the Cancel/Create buttons pinned to the bottom. Feola could not reach the
+ * Create button at all before this (round 2 feedback, F2).
+ *
  * The Edge Function server-side enforces:
  *   - franchisee_id stamped from JWT (never sent from client)
  *   - global code uniqueness (409 on collision)
@@ -49,7 +59,9 @@ import {
   useCreateDiscountCode,
   useCreateDiscountBatch,
   useUpdateDiscountCode,
+  useDiscountCourseTypes,
 } from './discountQueries';
+import { restrictionSummary } from './types';
 import type { DiscountCode, DiscountType } from './types';
 
 // ---------------------------------------------------------------------------
@@ -87,6 +99,8 @@ const discountSchema = z
     single_use: z.boolean(),
     group_name: z.string().trim().max(60, 'Group name must be 60 characters or fewer').optional(),
     batchCountRaw: z.string().trim().optional(),
+    /** Selected da_course_templates ids; empty = valid on every course type. */
+    template_ids: z.array(z.string()),
   })
   .superRefine((data, ctx) => {
     if (!data.batch && data.code.length === 0) {
@@ -182,6 +196,8 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
   const { data: codes = [] } = useOwnDiscountCodes();
   const existing = isEdit ? codes.find((c) => c.id === discountId) : undefined;
 
+  const { data: courseTypes = [] } = useDiscountCourseTypes();
+
   const create = useCreateDiscountCode();
   const createBatch = useCreateDiscountBatch();
   const update = useUpdateDiscountCode();
@@ -213,6 +229,7 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
       single_use: code?.max_uses === 1,
       group_name: code?.group_name ?? '',
       batchCountRaw: '10',
+      template_ids: code?.template_ids ?? [],
     };
   }
 
@@ -232,6 +249,13 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
   const isActive = useWatch({ control, name: 'is_active' });
   const isBatch = useWatch({ control, name: 'batch' });
   const isSingleUse = useWatch({ control, name: 'single_use' });
+  const templateIds = useWatch({ control, name: 'template_ids' }) ?? [];
+
+  /** Toggle one course type in/out of the restriction list. */
+  function toggleTemplate(id: string, checked: boolean) {
+    const next = checked ? [...templateIds, id] : templateIds.filter((t) => t !== id);
+    setValue('template_ids', next, { shouldDirty: true });
+  }
 
   // Reset form when the dialog opens / target code changes.
   useEffect(() => {
@@ -266,6 +290,10 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
         ? new Date(values.valid_until).toISOString()
         : null;
 
+    // Empty selection means "all course types" — send null rather than [] so
+    // the column reads the same as every pre-046 row.
+    const templateIdsPayload = values.template_ids.length > 0 ? values.template_ids : null;
+
     try {
       if (isEdit && discountId) {
         await update.mutateAsync({
@@ -277,6 +305,7 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
           valid_from: validFrom,
           valid_until: validUntil,
           is_active: values.is_active,
+          template_ids: templateIdsPayload,
         });
         toast.success(`Discount code ${values.code} updated`);
         onOpenChange(false);
@@ -290,6 +319,7 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
           valid_from: validFrom,
           valid_until: validUntil,
           is_active: values.is_active,
+          template_ids: templateIdsPayload,
         });
         toast.success(`${rows.length} single-use codes created in ${values.group_name!.trim()}`);
         // Keep the dialog open showing the generated codes.
@@ -307,6 +337,7 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
             values.group_name && values.group_name.trim().length > 0
               ? values.group_name.trim()
               : null,
+          template_ids: templateIdsPayload,
         });
         toast.success(`Discount code ${values.code} created`);
         onOpenChange(false);
@@ -330,7 +361,9 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      {/* Capped at 90vh with an internally scrolling body so the action
+          buttons are always reachable, however tall the form gets (F2). */}
+      <DialogContent className="flex max-h-[90vh] max-w-lg flex-col">
         {createdBatch ? (
           <>
             <DialogHeader>
@@ -341,7 +374,7 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
                 now — each one can be redeemed exactly once.
               </DialogDescription>
             </DialogHeader>
-            <div className="border-daisy-line bg-daisy-paper-soft mt-4 max-h-64 overflow-y-auto rounded-[8px] border-2 p-3">
+            <div className="border-daisy-line bg-daisy-paper-soft mt-4 max-h-64 min-h-0 overflow-y-auto rounded-[8px] border-2 p-3">
               <ul className="flex flex-col gap-1">
                 {createdBatch.map((c) => (
                   <li key={c.id} className="font-mono text-[13px] font-bold tracking-wider">
@@ -374,216 +407,257 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
               onSubmit={(e) => {
                 void handleSubmit(onSubmit)(e);
               }}
-              className="mt-4 flex flex-col gap-4"
+              className="mt-4 flex min-h-0 flex-1 flex-col"
             >
-              {/* Batch mode toggle — create only */}
-              {!isEdit ? (
-                <label className="border-daisy-line bg-daisy-paper-soft flex items-start gap-3 rounded-[8px] border-2 p-3">
-                  <input
-                    type="checkbox"
-                    checked={isBatch}
-                    onChange={(e) => setValue('batch', e.target.checked, { shouldDirty: true })}
-                    className="mt-0.5 h-4 w-4"
-                  />
-                  <span className="flex flex-col">
-                    <span className="text-sm font-bold">Create a batch of single-use codes</span>
-                    <span className="text-daisy-muted text-xs">
-                      Generates a group of codes that share the same value and validity. Each code
-                      can be redeemed exactly once.
-                    </span>
-                  </span>
-                </label>
-              ) : null}
-
-              {isBatch ? (
-                <>
-                  {/* Group name + how many */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="dc-group">Group name</Label>
-                      <Input
-                        id="dc-group"
-                        placeholder="e.g. Spring fair"
-                        {...register('group_name')}
-                      />
-                      {errors.group_name ? (
-                        <p className="text-daisy-orange text-xs">{errors.group_name.message}</p>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="dc-batch-count">How many</Label>
-                      <Input
-                        id="dc-batch-count"
-                        type="number"
-                        min="2"
-                        max="200"
-                        step="1"
-                        {...register('batchCountRaw')}
-                      />
-                      {errors.batchCountRaw ? (
-                        <p className="text-daisy-orange text-xs">{errors.batchCountRaw.message}</p>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {/* Optional prefix */}
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="dc-code">Code prefix (optional)</Label>
-                    <Input
-                      id="dc-code"
-                      placeholder="e.g. FAIR25"
-                      autoCapitalize="characters"
-                      {...register('code', {
-                        onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-                          e.target.value = e.target.value.toUpperCase();
-                        },
-                      })}
-                    />
-                    <p className="text-daisy-muted text-xs">
-                      Codes look like PREFIX-A7K2. Leave blank to use the group name as the prefix.
-                    </p>
-                    {errors.code ? (
-                      <p className="text-daisy-orange text-xs">{errors.code.message}</p>
-                    ) : null}
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* Code */}
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="dc-code">Code</Label>
-                    <Input
-                      id="dc-code"
-                      placeholder="e.g. SUMMER25"
-                      autoCapitalize="characters"
-                      {...register('code', {
-                        onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-                          e.target.value = e.target.value.toUpperCase();
-                        },
-                      })}
-                    />
-                    <p className="text-daisy-muted text-xs">
-                      Codes are converted to uppercase. They must be unique across the entire
-                      network.
-                    </p>
-                    {errors.code ? (
-                      <p className="text-daisy-orange text-xs">{errors.code.message}</p>
-                    ) : null}
-                  </div>
-                </>
-              )}
-
-              {/* Type + Value */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label>Type</Label>
-                  <Select
-                    value={type}
-                    onValueChange={(v) =>
-                      setValue('type', v as DiscountType, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="percentage">Percentage (%)</SelectItem>
-                      <SelectItem value="fixed">Fixed amount (£)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="dc-value">
-                    {type === 'percentage' ? 'Percentage (0-100)' : 'Amount (pounds)'}
-                  </Label>
-                  <Input
-                    id="dc-value"
-                    type="number"
-                    min="0"
-                    max={type === 'percentage' ? 100 : undefined}
-                    step={type === 'percentage' ? 1 : 0.01}
-                    placeholder={type === 'percentage' ? '10' : '5.00'}
-                    {...register('valueRaw')}
-                  />
-                  {errors.valueRaw ? (
-                    <p className="text-daisy-orange text-xs">{errors.valueRaw.message}</p>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* Single use + Max uses — hidden in batch mode (always 1 there) */}
-              {!isBatch ? (
-                <>
+              {/* Scrolling body — the actions below stay pinned. */}
+              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+                {/* Batch mode toggle — create only */}
+                {!isEdit ? (
                   <label className="border-daisy-line bg-daisy-paper-soft flex items-start gap-3 rounded-[8px] border-2 p-3">
                     <input
                       type="checkbox"
-                      checked={isSingleUse}
-                      onChange={(e) =>
-                        setValue('single_use', e.target.checked, { shouldDirty: true })
-                      }
+                      checked={isBatch}
+                      onChange={(e) => setValue('batch', e.target.checked, { shouldDirty: true })}
                       className="mt-0.5 h-4 w-4"
                     />
                     <span className="flex flex-col">
-                      <span className="text-sm font-bold">Single use</span>
+                      <span className="text-sm font-bold">Create a batch of single-use codes</span>
                       <span className="text-daisy-muted text-xs">
-                        The code can be redeemed exactly once, then stops working.
+                        Generates a group of codes that share the same value and validity. Each code
+                        can be redeemed exactly once.
                       </span>
                     </span>
                   </label>
+                ) : null}
 
-                  {!isSingleUse ? (
+                {isBatch ? (
+                  <>
+                    {/* Group name + how many */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="dc-group">Group name</Label>
+                        <Input
+                          id="dc-group"
+                          placeholder="e.g. Spring fair"
+                          {...register('group_name')}
+                        />
+                        {errors.group_name ? (
+                          <p className="text-daisy-orange text-xs">{errors.group_name.message}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="dc-batch-count">How many</Label>
+                        <Input
+                          id="dc-batch-count"
+                          type="number"
+                          min="2"
+                          max="200"
+                          step="1"
+                          {...register('batchCountRaw')}
+                        />
+                        {errors.batchCountRaw ? (
+                          <p className="text-daisy-orange text-xs">
+                            {errors.batchCountRaw.message}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Optional prefix */}
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="dc-max-uses">Max uses</Label>
+                      <Label htmlFor="dc-code">Code prefix (optional)</Label>
                       <Input
-                        id="dc-max-uses"
-                        type="number"
-                        min="1"
-                        step="1"
-                        placeholder="Leave blank for unlimited"
-                        {...register('maxUsesRaw')}
+                        id="dc-code"
+                        placeholder="e.g. FAIR25"
+                        autoCapitalize="characters"
+                        {...register('code', {
+                          onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                            e.target.value = e.target.value.toUpperCase();
+                          },
+                        })}
                       />
-                      {errors.maxUsesRaw ? (
-                        <p className="text-daisy-orange text-xs">{errors.maxUsesRaw.message}</p>
+                      <p className="text-daisy-muted text-xs">
+                        Codes look like PREFIX-A7K2. Leave blank to use the group name as the
+                        prefix.
+                      </p>
+                      {errors.code ? (
+                        <p className="text-daisy-orange text-xs">{errors.code.message}</p>
                       ) : null}
                     </div>
-                  ) : null}
-                </>
-              ) : null}
+                  </>
+                ) : (
+                  <>
+                    {/* Code */}
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="dc-code">Code</Label>
+                      <Input
+                        id="dc-code"
+                        placeholder="e.g. SUMMER25"
+                        autoCapitalize="characters"
+                        {...register('code', {
+                          onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                            e.target.value = e.target.value.toUpperCase();
+                          },
+                        })}
+                      />
+                      <p className="text-daisy-muted text-xs">
+                        Codes are converted to uppercase. They must be unique across the entire
+                        network.
+                      </p>
+                      {errors.code ? (
+                        <p className="text-daisy-orange text-xs">{errors.code.message}</p>
+                      ) : null}
+                    </div>
+                  </>
+                )}
 
-              {/* Valid from / until */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="dc-valid-from">Valid from (optional)</Label>
-                  <Input id="dc-valid-from" type="date" {...register('valid_from')} />
+                {/* Type + Value */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Type</Label>
+                    <Select
+                      value={type}
+                      onValueChange={(v) =>
+                        setValue('type', v as DiscountType, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="percentage">Percentage (%)</SelectItem>
+                        <SelectItem value="fixed">Fixed amount (£)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="dc-value">
+                      {type === 'percentage' ? 'Percentage (0-100)' : 'Amount (pounds)'}
+                    </Label>
+                    <Input
+                      id="dc-value"
+                      type="number"
+                      min="0"
+                      max={type === 'percentage' ? 100 : undefined}
+                      step={type === 'percentage' ? 1 : 0.01}
+                      placeholder={type === 'percentage' ? '10' : '5.00'}
+                      {...register('valueRaw')}
+                    />
+                    {errors.valueRaw ? (
+                      <p className="text-daisy-orange text-xs">{errors.valueRaw.message}</p>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="dc-valid-until">Valid until (optional)</Label>
-                  <Input id="dc-valid-until" type="date" {...register('valid_until')} />
+
+                {/* Single use + Max uses — hidden in batch mode (always 1 there) */}
+                {!isBatch ? (
+                  <>
+                    <label className="border-daisy-line bg-daisy-paper-soft flex items-start gap-3 rounded-[8px] border-2 p-3">
+                      <input
+                        type="checkbox"
+                        checked={isSingleUse}
+                        onChange={(e) =>
+                          setValue('single_use', e.target.checked, { shouldDirty: true })
+                        }
+                        className="mt-0.5 h-4 w-4"
+                      />
+                      <span className="flex flex-col">
+                        <span className="text-sm font-bold">Single use</span>
+                        <span className="text-daisy-muted text-xs">
+                          The code can be redeemed exactly once, then stops working.
+                        </span>
+                      </span>
+                    </label>
+
+                    {!isSingleUse ? (
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="dc-max-uses">Max uses</Label>
+                        <Input
+                          id="dc-max-uses"
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="Leave blank for unlimited"
+                          {...register('maxUsesRaw')}
+                        />
+                        {errors.maxUsesRaw ? (
+                          <p className="text-daisy-orange text-xs">{errors.maxUsesRaw.message}</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {/* Valid from / until */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="dc-valid-from">Valid from (optional)</Label>
+                    <Input id="dc-valid-from" type="date" {...register('valid_from')} />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="dc-valid-until">Valid until (optional)</Label>
+                    <Input id="dc-valid-until" type="date" {...register('valid_until')} />
+                  </div>
                 </div>
+
+                {/* Course-type restriction (G10) — editable in both modes;
+                  create-discount-code and update-discount-code both accept
+                  template_ids, and checkout enforces it. */}
+                <div className="flex flex-col gap-1.5">
+                  <Label>Course types</Label>
+                  <p className="text-daisy-muted text-xs">
+                    Choose which classes this code works on. Leave everything unticked for all
+                    course types.
+                  </p>
+                  <div className="border-daisy-line bg-daisy-paper-soft flex max-h-44 flex-col gap-2 overflow-y-auto rounded-[8px] border-2 p-3">
+                    {courseTypes.length === 0 ? (
+                      <span className="text-daisy-muted text-xs">
+                        No course types are available yet.
+                      </span>
+                    ) : (
+                      courseTypes.map((t) => (
+                        <label key={t.id} className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={templateIds.includes(t.id)}
+                            onChange={(e) => toggleTemplate(t.id, e.target.checked)}
+                            className="h-4 w-4"
+                          />
+                          <span className="text-sm">{t.name}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                  <p className="text-daisy-muted text-xs">
+                    {templateIds.length === 0
+                      ? 'All course types'
+                      : restrictionSummary(templateIds, courseTypes)}
+                  </p>
+                </div>
+
+                {/* Active toggle */}
+                <label className="border-daisy-line bg-daisy-paper-soft flex items-start gap-3 rounded-[8px] border-2 p-3">
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={(e) => setValue('is_active', e.target.checked, { shouldDirty: true })}
+                    className="mt-0.5 h-4 w-4"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-sm font-bold">Active</span>
+                    <span className="text-daisy-muted text-xs">
+                      Inactive codes are stored but cannot be redeemed at booking.
+                    </span>
+                  </span>
+                </label>
               </div>
 
-              {/* Active toggle */}
-              <label className="border-daisy-line bg-daisy-paper-soft flex items-start gap-3 rounded-[8px] border-2 p-3">
-                <input
-                  type="checkbox"
-                  checked={isActive}
-                  onChange={(e) => setValue('is_active', e.target.checked, { shouldDirty: true })}
-                  className="mt-0.5 h-4 w-4"
-                />
-                <span className="flex flex-col">
-                  <span className="text-sm font-bold">Active</span>
-                  <span className="text-daisy-muted text-xs">
-                    Inactive codes are stored but cannot be redeemed at booking.
-                  </span>
-                </span>
-              </label>
-
-              {/* Actions */}
-              <div className="flex justify-end gap-2 pt-2">
+              {/* Actions — pinned below the scrolling body */}
+              <div className="border-daisy-line-soft mt-4 flex shrink-0 justify-end gap-2 border-t pt-4">
                 <Button
                   type="button"
                   variant="outline"

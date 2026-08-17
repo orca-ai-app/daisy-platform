@@ -194,7 +194,7 @@ Deno.serve(async (req: Request) => {
             .select(
               `id, quantity, total_pence,
                product:da_products ( name, kind, fulfilment_url, fulfilment_notes ),
-               franchisee:da_franchisees ( name, email ),
+               franchisee:da_franchisees ( name, email, booking_email_message ),
                customer:da_customers ( first_name, last_name, email )`,
             )
             .eq('id', row.product_sale_id)
@@ -220,8 +220,13 @@ Deno.serve(async (req: Request) => {
             unsubscribe_url: await buildUnsubscribeUrl(row.customer_id),
             product_name: s.product?.name ?? 'your order',
             product_quantity: String(s.quantity ?? 1),
+            // Decides the access wording: e-learning access is arranged by
+            // hand, so the buyer is told details follow separately (F8).
+            product_kind: s.product?.kind ?? 'physical',
             fulfilment_url: s.product?.fulfilment_url ?? '',
             fulfilment_notes: s.product?.fulfilment_notes ?? '',
+            // The franchisee's own message, if they have written one (G2).
+            booking_email_message: s.franchisee?.booking_email_message ?? '',
           };
 
           const saleTmpl = renderTemplate(row.template_key, saleCtx);
@@ -263,7 +268,7 @@ Deno.serve(async (req: Request) => {
              event_date, start_time, venue_name, venue_postcode,
              template:da_course_templates ( name )
            ),
-           franchisee:da_franchisees ( name, email )`,
+           franchisee:da_franchisees ( name, email, booking_email_message )`,
           )
           .eq('id', row.booking_id)
           .maybeSingle();
@@ -301,6 +306,18 @@ Deno.serve(async (req: Request) => {
           franchisee_email: b.franchisee?.email ?? '',
           booking_reference: b.booking_reference,
           unsubscribe_url: await buildUnsubscribeUrl(row.customer_id),
+          // The franchisee's own message (G2), rendered by the code
+          // booking_confirmation template. It is deliberately blank on
+          // new_booking_notification: that one goes TO the franchisee, who
+          // wrote the message in the first place.
+          //
+          // NOTE: booking_confirmation has no da_email_templates row (migration
+          // 031 seeds only the marketing journey), so the code template below
+          // is what actually runs. If HQ ever authors a block set for this key,
+          // renderBlocks takes over and the message would need a block of its
+          // own — it is not a {{merge}} field, by design (free customer-visible
+          // text must be escaped, not substituted).
+          booking_email_message: toFranchisee ? '' : (b.franchisee?.booking_email_message ?? ''),
         };
 
         let tmpl: { subject: string; html: string; text: string } | null;

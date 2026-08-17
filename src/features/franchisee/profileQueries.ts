@@ -14,12 +14,19 @@ import { franchiseeKeys } from './queryKeys';
 
 const STALE_TIME = 5 * 60_000;
 
+/**
+ * The profile row is just the shared `Franchisee` shape, including migration
+ * 046's `booking_email_message`. Kept as a named alias because the hooks and
+ * their callers refer to it throughout this surface.
+ */
+export type FranchiseeProfile = Franchisee;
+
 // ---------------------------------------------------------------------------
 // Read: own profile row (RLS restricts to the signed-in franchisee's row).
 // ---------------------------------------------------------------------------
 
 export function useOwnProfile() {
-  return useQuery<Franchisee | null>({
+  return useQuery<FranchiseeProfile | null>({
     queryKey: franchiseeKeys.profile(),
     staleTime: STALE_TIME,
     retry: 1,
@@ -27,25 +34,32 @@ export function useOwnProfile() {
       const { data, error } = await supabase.from('da_franchisees').select('*').maybeSingle();
 
       if (error) throw error;
-      return (data as Franchisee | null) ?? null;
+      return (data as FranchiseeProfile | null) ?? null;
     },
   });
 }
 
 // ---------------------------------------------------------------------------
 // Write: constrained self-update through the update-franchisee-self EF.
-// Only name, phone and business_name are mutable from this surface — the
-// server enforces the same whitelist; this type is a UI-layer hint, not the
-// trust boundary.
+// Only name, phone, business_name and booking_email_message are mutable from
+// this surface — the server enforces the same whitelist; this type is a
+// UI-layer hint, not the trust boundary.
 // ---------------------------------------------------------------------------
 
 export interface ProfileSelfUpdateFields {
   name?: string;
   phone?: string | null;
   business_name?: string;
+  /**
+   * The franchisee's own words, added to the confirmation emails their
+   * customers receive (migration 046). Send null to clear it.
+   */
+  booking_email_message?: string | null;
 }
 
-async function callUpdateFranchiseeSelf(fields: ProfileSelfUpdateFields): Promise<Franchisee> {
+async function callUpdateFranchiseeSelf(
+  fields: ProfileSelfUpdateFields,
+): Promise<FranchiseeProfile> {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
   if (!token) {
@@ -73,17 +87,17 @@ async function callUpdateFranchiseeSelf(fields: ProfileSelfUpdateFields): Promis
     throw new Error(message);
   }
 
-  return (await response.json()) as Franchisee;
+  return (await response.json()) as FranchiseeProfile;
 }
 
 export function useUpdateOwnProfile() {
   const queryClient = useQueryClient();
-  return useMutation<Franchisee, Error, ProfileSelfUpdateFields>({
+  return useMutation<FranchiseeProfile, Error, ProfileSelfUpdateFields>({
     mutationFn: callUpdateFranchiseeSelf,
     onSuccess: (updated) => {
       // Update the cached profile row immediately so the form reflects the
       // saved state without a refetch round-trip.
-      queryClient.setQueryData<Franchisee | null>(franchiseeKeys.profile(), updated);
+      queryClient.setQueryData<FranchiseeProfile | null>(franchiseeKeys.profile(), updated);
       // Invalidate so background refetch brings in the true server state.
       void queryClient.invalidateQueries({ queryKey: franchiseeKeys.profile() });
     },

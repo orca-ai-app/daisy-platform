@@ -16,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatInTimeZone } from 'date-fns-tz';
 import { supabase } from '@/lib/supabase';
 import { franchiseeKeys } from '../queryKeys';
+import { useOwnProfile } from '../profileQueries';
 
 const STALE_TIME = 2 * 60_000;
 
@@ -48,8 +49,32 @@ export interface Product {
   kind: ProductKind | null;
   fulfilment_url: string | null;
   fulfilment_notes: string | null;
+  /**
+   * Owner of this catalogue item (migration 046). NULL = HQ network item,
+   * read-only to a franchisee apart from their own listing. Set = this
+   * franchisee's own item, which they can rename, edit and delete.
+   */
+  franchisee_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Payload for create-product when a franchisee adds an item of their own. */
+export interface CreateOwnProductPayload {
+  name: string;
+  description?: string | null;
+  kind: ProductKind;
+  fulfilment_notes?: string | null;
+}
+
+/** Payload for update-product when a franchisee edits one of their own items. */
+export interface UpdateOwnProductPayload {
+  product_id: string;
+  name?: string;
+  description?: string | null;
+  kind?: ProductKind;
+  fulfilment_notes?: string | null;
+  active?: boolean;
 }
 
 export type ProductSalePaymentMethod = 'cash' | 'card' | 'other';
@@ -138,6 +163,12 @@ export interface UpsertFranchiseeProductPayload {
 export interface ShopItem {
   product: Product;
   listing: FranchiseeProduct | null;
+  /**
+   * TRUE when the franchisee added this item themselves (migration 046), so
+   * they may rename and edit it. FALSE for HQ network items, where only their
+   * own price / VAT / visibility is theirs to change.
+   */
+  isOwn: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,8 +191,11 @@ function londonDatePlusDays(days: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Active products from the network-wide catalogue, ordered by sort_order.
- * RLS: any authenticated user can SELECT da_products.
+ * Active products the signed-in franchisee may sell: the HQ network catalogue
+ * (franchisee_id IS NULL) plus their own items (migration 046), ordered by
+ * sort_order. The `network_and_own_read` RLS policy does the filtering, so no
+ * client-side franchisee_id filter is needed — another franchisee's own items
+ * are never returned.
  */
 export function useProducts() {
   return useQuery<Product[]>({
@@ -292,18 +326,26 @@ export function useOwnFranchiseeProducts() {
 }
 
 /**
- * Every active catalogue product paired with this franchisee's own listing.
- * Products the franchisee has never priced come through with `listing: null`
- * so the shop table can still offer them a row to fill in.
+ * Every active product this franchisee may sell (HQ network items plus their
+ * own, migration 046) paired with their own listing. Products they have never
+ * priced come through with `listing: null` so the shop table can still offer
+ * them a row to fill in.
+ *
+ * `isOwn` is derived by comparing da_products.franchisee_id to the caller's own
+ * franchisee row. RLS already guarantees a non-null franchisee_id here can only
+ * be the caller's, so the profile is belt-and-braces, not the trust boundary.
  */
 export function useShopItems() {
   const products = useProducts();
   const listings = useOwnFranchiseeProducts();
+  const profile = useOwnProfile();
 
+  const ownFranchiseeId = profile.data?.id ?? null;
   const byProductId = new Map((listings.data ?? []).map((l) => [l.product_id, l]));
   const items: ShopItem[] = (products.data ?? []).map((product) => ({
     product,
     listing: byProductId.get(product.id) ?? null,
+    isOwn: product.franchisee_id != null && product.franchisee_id === ownFranchiseeId,
   }));
 
   return {
@@ -400,6 +442,41 @@ export function useUpsertFranchiseeProduct() {
   return useMutation<FranchiseeProduct, Error, UpsertFranchiseeProductPayload>({
     mutationFn: (payload) =>
       callEdgeFunction<FranchiseeProduct>('upsert-franchisee-product', payload),
+    onSuccess: () => {
+      invalidateMerchandise(queryClient);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The franchisee's own catalogue items (migration 046)
+// ---------------------------------------------------------------------------
+
+/**
+ * Add an item of the franchisee's own to the catalogue. The same create-product
+ * Edge Function HQ uses; it stamps franchisee_id from the JWT for a non-HQ
+ * caller, so the item is theirs alone. RRP is not collected here — the
+ * franchisee's own price lives on their da_franchisee_products listing.
+ */
+export function useCreateOwnProduct() {
+  const queryClient = useQueryClient();
+  return useMutation<Product, Error, CreateOwnProductPayload>({
+    mutationFn: (payload) => callEdgeFunction<Product>('create-product', payload),
+    onSuccess: () => {
+      invalidateMerchandise(queryClient);
+    },
+  });
+}
+
+/**
+ * Rename or edit one of the franchisee's own items. The server rejects any
+ * attempt to touch an HQ network item (403), so this can only ever change
+ * their own row.
+ */
+export function useUpdateOwnProduct() {
+  const queryClient = useQueryClient();
+  return useMutation<Product, Error, UpdateOwnProductPayload>({
+    mutationFn: (payload) => callEdgeFunction<Product>('update-product', payload),
     onSuccess: () => {
       invalidateMerchandise(queryClient);
     },

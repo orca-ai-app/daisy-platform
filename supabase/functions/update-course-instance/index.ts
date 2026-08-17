@@ -43,6 +43,9 @@ const ALLOWED_FIELDS = new Set([
   // Migration 040 (NTH-9): customer-facing name override + venue-TBC flag.
   'display_name',
   'venue_tbc',
+  // Migration 045 (G1): franchisee-written customer-facing description.
+  // NULL falls back to the template description on the booking page.
+  'description_override',
 ]);
 
 // Changes to any of these trigger the course_updated email when
@@ -287,6 +290,17 @@ Deno.serve(async (req: Request) => {
       updateFields.display_name = v.trim() || null;
     }
   }
+  // Migration 045 (G1): empty string normalises to NULL so clearing the box
+  // falls back to the template description rather than showing nothing.
+  if ('description_override' in updateFields) {
+    const v = updateFields.description_override;
+    if (v !== null && typeof v !== 'string') {
+      return jsonResponse({ error: 'description_override must be a string or null' }, 400);
+    }
+    if (typeof v === 'string') {
+      updateFields.description_override = v.trim() || null;
+    }
+  }
   for (const k of ['venue_name', 'venue_address'] as const) {
     if (k in updateFields) {
       const v = updateFields[k];
@@ -332,6 +346,35 @@ Deno.serve(async (req: Request) => {
   // non-existent ids regardless of who is calling.
   if (!actor.is_hq && actor.id !== (beforeRow.franchisee_id as string)) {
     return jsonResponse({ error: 'You do not own this course instance' }, 403);
+  }
+
+  // F1: a ticket must never use more places than the class has. Lowering the
+  // capacity below an existing ticket's seats_consumed would recreate the bug
+  // where a single booking consumes the whole class, so reject it and name the
+  // ticket that blocks the change.
+  if ('capacity' in updateFields) {
+    const newCapacity = updateFields.capacity as number;
+    const tickets = await admin
+      .from('da_ticket_types')
+      .select('name, seats_consumed')
+      .eq('course_instance_id', body.id as string);
+
+    if (tickets.error) {
+      console.error('ticket type lookup failed', tickets.error);
+      return jsonResponse({ error: 'Failed to check ticket types' }, 500);
+    }
+
+    const offending = (
+      (tickets.data ?? []) as Array<{ name: string; seats_consumed: number }>
+    ).find((tt) => tt.seats_consumed > newCapacity);
+    if (offending) {
+      return jsonResponse(
+        {
+          error: `Ticket "${offending.name}" uses ${offending.seats_consumed} places, so the class cannot have a capacity of ${newCapacity}. A ticket cannot use more places than the class has.`,
+        },
+        400,
+      );
+    }
   }
 
   // Venue rules (migration 040 / NTH-9), evaluated against the POST-update

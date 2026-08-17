@@ -331,7 +331,9 @@ function DeleteSaleDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : null)}>
-      <DialogContent>
+      {/* Capped at 90vh so a long product name can never push the buttons
+          off-screen (F2). */}
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Delete sale</DialogTitle>
           <DialogDescription>

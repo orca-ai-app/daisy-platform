@@ -134,10 +134,11 @@ Deno.serve(async (req: Request) => {
   }
 
   // Product must exist and be active — a franchisee cannot list a product HQ
-  // has retired.
+  // has retired. Since migration 046 it must also be one they can see: an HQ
+  // network item or their own; never another franchisee's.
   const product = await admin
     .from('da_products')
-    .select('id, name, active, kind, fulfilment_url')
+    .select('id, name, active, kind, fulfilment_url, franchisee_id')
     .eq('id', productId)
     .maybeSingle();
   if (product.error) {
@@ -158,10 +159,18 @@ Deno.serve(async (req: Request) => {
       400,
     );
   }
-  // An e-learning item with no access link would take money and deliver
-  // nothing — HQ must set fulfilment_url before it can go online.
+  const productOwnerId = ((product.data as any).franchisee_id ?? null) as string | null;
+  if (productOwnerId !== null && productOwnerId !== franchiseeId) {
+    return jsonResponse({ error: 'Product not found', request_id: requestId }, 404);
+  }
+  // An HQ e-learning item with no access link would take money and deliver
+  // nothing — HQ must set fulfilment_url before it can go online. A
+  // franchisee's OWN e-learning item is different: they fulfil it by hand
+  // (licence keys enrolled through elearnhere) and the confirmation email tells
+  // the buyer access follows separately, so no link is expected.
   if (
     isOnline &&
+    productOwnerId === null &&
     (product.data as any).kind === 'elearning' &&
     !(product.data as any).fulfilment_url
   ) {

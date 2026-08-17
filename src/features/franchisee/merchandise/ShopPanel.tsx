@@ -1,23 +1,31 @@
 /**
- * "My shop" — the franchisee's own online listings for the HQ catalogue.
+ * "My shop" — the franchisee's online listings.
  *
- * Every active da_products row appears here, whether or not the franchisee
- * has priced it. Clicking a row opens ShopListingDialog to set their price,
- * VAT rate and whether it shows on their public booking page.
+ * Two kinds of row appear here (migration 046):
+ *   - HQ NETWORK items, which every franchisee sells. Read-only apart from
+ *     their own price, VAT rate and visibility.
+ *   - THEIR OWN items, added from this page. Fully theirs to rename, edit and
+ *     retire. Hannah needed this to add her second e-learning course; Feola
+ *     needed it to rename things.
+ *
+ * Clicking a row opens ShopListingDialog to set price / VAT / visibility;
+ * "Edit item" on one of their own opens OwnProductDialog for the item itself.
  *
  * Reads via anon client + RLS (da_franchisee_products is franchisee-scoped,
- * exactly like da_product_sales); writes go through the
- * upsert-franchisee-product Edge Function.
+ * exactly like da_product_sales, and da_products now returns network items plus
+ * their own); writes go through the upsert-franchisee-product, create-product
+ * and update-product Edge Functions.
  */
 
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { GraduationCap, BookOpen, Store } from 'lucide-react';
+import { GraduationCap, BookOpen, Store, Plus } from 'lucide-react';
 import { DataTable, EmptyState, StatusPill } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import { formatPence } from '@/lib/format';
-import { useShopItems, type ShopItem } from './merchandiseQueries';
+import { useShopItems, type Product, type ShopItem } from './merchandiseQueries';
 import { ShopListingDialog } from './ShopListingDialog';
+import { OwnProductDialog } from './OwnProductDialog';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -35,6 +43,8 @@ function isElearning(item: ShopItem): boolean {
 export function ShopPanel() {
   const { items, isLoading, error } = useShopItems();
   const [editing, setEditing] = useState<ShopItem | null>(null);
+  /** null = closed; { product: undefined } = add a new item of their own. */
+  const [editingOwn, setEditingOwn] = useState<{ product?: Product } | null>(null);
 
   const onlineCount = items.filter((i) => i.listing?.is_online).length;
 
@@ -61,6 +71,17 @@ export function ShopPanel() {
               <BookOpen className="h-3 w-3" aria-hidden />
               Book
             </span>
+          ),
+      },
+      {
+        id: 'owner',
+        header: 'Owner',
+        accessorFn: (row) => (row.isOwn ? 'Yours' : 'Daisy HQ'),
+        cell: ({ row }) =>
+          row.original.isOwn ? (
+            <span className="text-daisy-ink text-[13px] font-semibold">Yours</span>
+          ) : (
+            <span className="text-daisy-muted text-[13px]">Daisy HQ</span>
           ),
       },
       {
@@ -114,16 +135,30 @@ export function ShopPanel() {
         header: '',
         enableSorting: false,
         cell: ({ row }) => (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditing(row.original);
-            }}
-          >
-            {row.original.listing ? 'Edit' : 'Set price'}
-          </Button>
+          <div className="flex justify-end gap-2">
+            {row.original.isOwn ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingOwn({ product: row.original.product });
+                }}
+              >
+                Edit item
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditing(row.original);
+              }}
+            >
+              {row.original.listing ? 'Edit price' : 'Set price'}
+            </Button>
+          </div>
         ),
       },
     ],
@@ -132,10 +167,17 @@ export function ShopPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-daisy-muted text-sm">
-        Set your own price for anything in the catalogue, then switch it on to sell it from your
-        booking page. Customers can buy these at any time, unlike classes which need a date.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="text-daisy-muted max-w-2xl text-sm">
+          Set your own price for anything in the catalogue, then switch it on to sell it from your
+          booking page. Customers can buy these at any time, unlike classes which need a date. You
+          can also add items of your own, such as a second e-learning course.
+        </p>
+        <Button size="sm" onClick={() => setEditingOwn({})}>
+          <Plus className="h-4 w-4" />
+          Add your own item
+        </Button>
+      </div>
 
       {error ? (
         <div className="rounded-[8px] border border-[#FDEAE5] bg-[#FDEAE5]/40 p-4 text-sm text-[#8A2A2A]">
@@ -163,13 +205,18 @@ export function ShopPanel() {
         emptyState={
           <EmptyState
             icon={<Store />}
-            title="Nothing in the catalogue yet"
-            body="Once HQ adds books or e-learning courses, you can price them here and sell them from your booking page at any time."
+            title="Nothing in your shop yet"
+            body="Add an item of your own, such as an e-learning course, and price it to sell from your booking page at any time. HQ catalogue items will appear here too."
+            cta={{ label: 'Add your own item', onClick: () => setEditingOwn({}) }}
           />
         }
       />
 
       {editing ? <ShopListingDialog item={editing} open onClose={() => setEditing(null)} /> : null}
+
+      {editingOwn ? (
+        <OwnProductDialog open product={editingOwn.product} onClose={() => setEditingOwn(null)} />
+      ) : null}
     </div>
   );
 }

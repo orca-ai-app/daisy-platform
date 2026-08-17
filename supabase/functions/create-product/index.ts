@@ -1,18 +1,26 @@
 // supabase/functions/create-product/index.ts
 //
-// HQ-ONLY — adds a product to the network merchandise catalogue (migration
-// 038). Franchisees record sales against catalogue rows; they cannot create
-// products themselves (brand + pricing control stays with HQ).
+// Adds a product to the merchandise catalogue (migration 038). Two callers:
 //
-// Migration 044 adds SELLABLE ITEMS: kind distinguishes physical stock from
-// e-learning courses, which are delivered by sending the buyer to
-// fulfilment_url after payment (required for kind='elearning' — an e-learning
-// item with no access link would take money and deliver nothing).
+//   HQ (is_hq)   — creates a NETWORK item (franchisee_id NULL) visible to every
+//                  franchisee. Full control: rrp_pence, sort_order, active,
+//                  fulfilment_url.
+//   Franchisee   — creates THEIR OWN item (franchisee_id stamped from the JWT,
+//                  migration 046). Hannah cannot add her second e-learning
+//                  course while the catalogue is HQ-only. Their own items are
+//                  visible and editable only to them.
+//
+// A franchisee's own item is deliberately narrower: rrp_pence is forced to 0
+// (their selling price lives on their da_franchisee_products listing, not on a
+// network RRP), sort_order is forced to 0, and fulfilment_url is ignored — HQ
+// owns access links, and a franchisee's e-learning is fulfilled by hand
+// (licence keys enrolled through elearnhere), which is exactly what
+// fulfilment_notes is for.
 //
 // POST {
-//   name, description?, rrp_pence, active?, sort_order?,
+//   name, description?, rrp_pence?, active?, sort_order?,
 //   kind?: 'physical' | 'elearning',   // default 'physical'
-//   fulfilment_url?: string,           // https, REQUIRED when kind='elearning'
+//   fulfilment_url?: string,           // HQ only; https, REQUIRED when kind='elearning'
 //   fulfilment_notes?: string
 // } -> 201 row
 // Errors: { error, request_id } — 400/401/403/500.
@@ -80,12 +88,19 @@ Deno.serve(async (req: Request) => {
 
   const caller = await admin
     .from('da_franchisees')
-    .select('id, is_hq')
+    .select('id, name, is_hq')
     .eq('auth_user_id', authUserId)
     .maybeSingle();
-  if (caller.error || !caller.data || !(caller.data as any).is_hq) {
-    return jsonResponse({ error: 'HQ access required', request_id: requestId }, 403);
+  if (caller.error || !caller.data) {
+    return jsonResponse(
+      { error: 'No franchisee account for this login', request_id: requestId },
+      403,
+    );
   }
+  const isHq = Boolean((caller.data as any).is_hq);
+  const callerId = (caller.data as any).id as string;
+  // NULL = network item (HQ); set = the caller's own item (migration 046).
+  const ownerId: string | null = isHq ? null : callerId;
 
   let body: any;
   try {
@@ -101,20 +116,29 @@ Deno.serve(async (req: Request) => {
       400,
     );
   }
-  const rrp = body?.rrp_pence;
-  if (typeof rrp !== 'number' || !Number.isInteger(rrp) || rrp < 0 || rrp > 100_000_00) {
-    return jsonResponse(
-      { error: 'rrp_pence must be a non-negative whole number of pence', request_id: requestId },
-      400,
-    );
+  // A network RRP is HQ's to set. A franchisee's own item has no network RRP —
+  // their selling price lives on their da_franchisee_products listing — so the
+  // column is forced to 0 rather than demanded from them.
+  let rrp = 0;
+  if (isHq) {
+    rrp = body?.rrp_pence;
+    if (typeof rrp !== 'number' || !Number.isInteger(rrp) || rrp < 0 || rrp > 100_000_00) {
+      return jsonResponse(
+        { error: 'rrp_pence must be a non-negative whole number of pence', request_id: requestId },
+        400,
+      );
+    }
   }
   const description =
     typeof body?.description === 'string' && body.description.trim()
       ? body.description.trim().slice(0, 500)
       : null;
   const active = typeof body?.active === 'boolean' ? body.active : true;
+  // sort_order orders the network catalogue, so only HQ sets it.
   const sortOrder =
-    typeof body?.sort_order === 'number' && Number.isInteger(body.sort_order) ? body.sort_order : 0;
+    isHq && typeof body?.sort_order === 'number' && Number.isInteger(body.sort_order)
+      ? body.sort_order
+      : 0;
 
   // --- Sellable-item fields (migration 044) -----------------------------------
   const kind = body?.kind === undefined ? 'physical' : body.kind;
@@ -124,8 +148,12 @@ Deno.serve(async (req: Request) => {
       400,
     );
   }
+  // Access links are HQ's to set: a franchisee's own e-learning is fulfilled by
+  // hand (licence keys enrolled through elearnhere), so an instant link would be
+  // a promise they cannot keep. Their item stays link-free and the confirmation
+  // email tells the buyer access follows separately.
   const fulfilmentUrl =
-    typeof body?.fulfilment_url === 'string' && body.fulfilment_url.trim()
+    isHq && typeof body?.fulfilment_url === 'string' && body.fulfilment_url.trim()
       ? body.fulfilment_url.trim()
       : null;
   if (fulfilmentUrl && (!isHttpsUrl(fulfilmentUrl) || fulfilmentUrl.length > 2000)) {
@@ -134,7 +162,7 @@ Deno.serve(async (req: Request) => {
       400,
     );
   }
-  if (kind === 'elearning' && !fulfilmentUrl) {
+  if (isHq && kind === 'elearning' && !fulfilmentUrl) {
     return jsonResponse(
       {
         error: 'fulfilment_url is required for an e-learning course (where buyers get access)',
@@ -159,6 +187,7 @@ Deno.serve(async (req: Request) => {
       kind,
       fulfilment_url: fulfilmentUrl,
       fulfilment_notes: fulfilmentNotes,
+      franchisee_id: ownerId,
     })
     .select('*')
     .single();
@@ -175,13 +204,15 @@ Deno.serve(async (req: Request) => {
   await admin
     .from('da_activities')
     .insert({
-      actor_type: 'hq',
-      actor_id: (caller.data as any).id,
+      actor_type: isHq ? 'hq' : 'franchisee',
+      actor_id: callerId,
       entity_type: 'product',
       entity_id: (ins.data as any).id,
       action: 'product_created',
-      metadata: { name, rrp_pence: rrp, active, kind },
-      description: `Product added to catalogue: ${name}`,
+      metadata: { name, rrp_pence: rrp, active, kind, franchisee_id: ownerId },
+      description: isHq
+        ? `Product added to catalogue: ${name}`
+        : `${(caller.data as any).name} added their own item: ${name}`,
     })
     .then((r: { error: unknown }) => {
       if (r.error) console.error('product_created activity insert failed', r.error);

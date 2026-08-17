@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase';
 import { franchiseeKeys } from '../queryKeys';
 import type {
   DiscountCode,
+  DiscountCourseType,
   CreateDiscountCodePayload,
   CreateDiscountBatchPayload,
   UpdateDiscountCodePayload,
@@ -43,6 +44,31 @@ export function useOwnDiscountCodes() {
 
       if (error) throw error;
       return (data ?? []) as DiscountCode[];
+    },
+  });
+}
+
+/**
+ * Active course types, for the "Only valid on" restriction picker (G10,
+ * migration 046). da_course_templates is world-readable via RLS, so this is a
+ * plain anon read. Deliberately a local hook rather than a reach into the
+ * courses feature: the discounts surface only needs id + name.
+ */
+export function useDiscountCourseTypes() {
+  return useQuery<DiscountCourseType[]>({
+    queryKey: franchiseeKeys.courseTemplates(),
+    // Templates change rarely.
+    staleTime: 10 * 60_000,
+    retry: 1,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('da_course_templates')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      return (data ?? []) as DiscountCourseType[];
     },
   });
 }

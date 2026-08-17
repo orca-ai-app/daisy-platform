@@ -41,7 +41,13 @@ export interface OwnCoursesFilters {
   to?: string;
   /** Course-type filter: da_course_templates.id or 'all' (NTH-3). */
   templateId?: string | 'all';
-  /** Sort direction on event_date. Defaults to 'asc' (soonest first). */
+  /**
+   * Course-type GROUP filter (G7): the template ids behind the chosen grouping.
+   * When set (and non-empty) it takes precedence over templateId. Undefined
+   * means "no group filter".
+   */
+  templateIds?: string[];
+  /** Sort direction on event_date. Defaults to 'desc' (latest first, F5). */
   sortDir?: 'asc' | 'desc';
   page?: number;
   /** Defaults to 20. */
@@ -84,7 +90,7 @@ export interface OwnCoursesResult {
 /**
  * Paginated list of the signed-in franchisee's own course instances.
  * RLS restricts rows server-side; no client franchisee_id filter needed.
- * Sorted ascending by event_date by default.
+ * Sorted descending by event_date by default (latest first, F5).
  */
 export function useOwnCourses(filters: OwnCoursesFilters = {}) {
   const {
@@ -92,7 +98,8 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
     from,
     to,
     templateId = 'all',
-    sortDir = 'asc',
+    templateIds,
+    sortDir = 'desc',
     page = 0,
     pageSize = 20,
   } = filters;
@@ -103,6 +110,7 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
     from,
     to,
     templateId,
+    templateIds,
     sortDir,
     page,
     pageSize,
@@ -132,7 +140,7 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
            ticket_types:da_ticket_types ( price_pence )`,
           { count: 'exact' },
         )
-        // Default sort: upcoming courses first (asc), toggleable (NTH-3)
+        // Default sort: latest first (desc), toggleable (NTH-3 / F5)
         .order('event_date', { ascending: sortDir === 'asc' })
         .order('start_time', { ascending: sortDir === 'asc' });
 
@@ -140,7 +148,10 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
         qb = qb.eq('status', status);
       }
 
-      if (templateId !== 'all') {
+      // Course-type filter: a group (G7) wins over a single template id.
+      if (templateIds && templateIds.length > 0) {
+        qb = qb.in('template_id', templateIds);
+      } else if (templateId !== 'all') {
         qb = qb.eq('template_id', templateId);
       }
 

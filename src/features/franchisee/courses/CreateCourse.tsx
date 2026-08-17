@@ -59,8 +59,17 @@ import { cn } from '@/lib/utils';
 import {
   useCourseTemplates,
   useCreateCourseInstance,
+  useRecentVenues,
   TerritoryConflictError,
+  type RecentVenue,
 } from './createCourseQueries';
+import {
+  CLASS_LENGTH_OPTIONS,
+  CUSTOM_LENGTH,
+  addMinutesToTime,
+  deriveLengthValue,
+} from './classLength';
+import { TicketPlacesHint } from './TicketPlacesHint';
 import type {
   CourseTemplateOption,
   CreateCourseInstanceRequest,
@@ -86,6 +95,8 @@ export interface DuplicateCourseState {
   display_name: string | null;
   visibility: Visibility;
   bespoke_details: string | null;
+  /** Customer-facing description override (migration 045); optional on older state. */
+  description_override?: string | null;
   capacity: number;
   price_pence: number;
   ticket_types: Array<{
@@ -113,9 +124,9 @@ const ticketTypeSchema = z.object({
   name: z.string().trim().min(1, 'Name required'),
   price_pounds: poundsSchema,
   seats_consumed: z
-    .number({ invalid_type_error: 'Seats required' })
-    .int()
-    .min(1, 'At least 1 seat'),
+    .number({ invalid_type_error: 'Enter how many places one ticket uses' })
+    .int('Enter a whole number of places')
+    .min(1, 'A ticket must use at least 1 place'),
   max_available: z.number({ invalid_type_error: 'Must be a number' }).int().min(1).nullable(),
   sort_order: z.number().int(),
   /** Optional session details, e.g. "6-hour · 9:30–15:30" (NTH-15). */
@@ -148,12 +159,56 @@ const schema = z
       .min(1, 'Capacity must be at least 1'),
     price_pounds: poundsSchema,
     bespoke_details: z.string(),
+    /** Optional customer-facing class description (G1 / migration 045). */
+    description_override: z.string(),
     ticket_types: z.array(ticketTypeSchema).min(1, 'At least one ticket type required'),
     out_of_territory_confirmed: z.boolean(),
+    /** Explicit confirmation that a £0.00 class is intentional (F6). */
+    allow_free: z.boolean(),
     /** Optional: private client selected in Step 2. Only relevant for private courses. */
     private_client_id: z.string().uuid().nullable().optional(),
   })
   .superRefine((vals, ctx) => {
+    // F1: a ticket can never use more places than the class has. This is the
+    // bug that blocked Feola's whole test run — she read "Seats" as "how many
+    // of these tickets are on sale" and typed the class size, so one booking
+    // consumed the entire class and the booking page said the course was full.
+    vals.ticket_types.forEach((tt, i) => {
+      if (
+        Number.isFinite(tt.seats_consumed) &&
+        Number.isFinite(vals.capacity) &&
+        tt.seats_consumed > vals.capacity
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ticket_types', i, 'seats_consumed'],
+          message: `A ticket cannot use more places than the class has (${vals.capacity}).`,
+        });
+      }
+    });
+
+    // F6: block accidental £0.00 classes unless explicitly confirmed.
+    if (!vals.allow_free) {
+      const freeTickets = vals.ticket_types
+        .map((tt, i) => ({ tt, i }))
+        .filter(({ tt }) => Number.isFinite(tt.price_pounds) && tt.price_pounds === 0);
+      for (const { i } of freeTickets) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ticket_types', i, 'price_pounds'],
+          message: 'Enter a price, or tick "This class really is free" below.',
+        });
+      }
+      if (freeTickets.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['allow_free'],
+          message:
+            'One or more tickets are priced at £0.00. Enter a price, or tick "This class really is free" to confirm.',
+        });
+      }
+    }
+
     // Postcode rules (NTH-9): public needs a full postcode; private accepts a
     // full postcode, an outcode (e.g. GU1), or nothing when venue TBC.
     const pc = vals.venue_postcode.trim();
@@ -552,10 +607,12 @@ function Step3Venue({
   form,
   territoryPreview,
   onPostcodeBlur,
+  recentVenues,
 }: {
   form: ReturnType<typeof useForm<FormValues>>;
   territoryPreview: PreviewState;
   onPostcodeBlur: () => void;
+  recentVenues: RecentVenue[];
 }) {
   const {
     register,
@@ -568,6 +625,12 @@ function Step3Venue({
   const confirmed = watch('out_of_territory_confirmed');
   const visibility = watch('visibility');
   const venueTbc = watch('venue_tbc');
+  const startTime = watch('start_time');
+  const endTime = watch('end_time');
+
+  // Class length (G5) — derived from the current times, so a hand-edited end
+  // time shows as "Custom" without needing any extra form state.
+  const lengthValue = deriveLengthValue(startTime, endTime);
   const previewWarning: OutOfTerritoryWarning =
     territoryPreview.status === 'done' ? territoryPreview.warning : 'none';
 
@@ -590,7 +653,18 @@ function Step3Venue({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="start-time">Start time</Label>
-          <Input id="start-time" type="time" {...register('start_time')} />
+          <Input
+            id="start-time"
+            type="time"
+            {...register('start_time', {
+              // Keep the end time in step with the chosen length (G5).
+              onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                if (lengthValue === CUSTOM_LENGTH) return;
+                const nextEnd = addMinutesToTime(e.target.value, Number(lengthValue));
+                if (nextEnd) setValue('end_time', nextEnd, { shouldDirty: true });
+              },
+            })}
+          />
           {errors.start_time ? (
             <p className="text-daisy-orange text-xs">{errors.start_time.message}</p>
           ) : null}
@@ -602,6 +676,35 @@ function Step3Venue({
             <p className="text-daisy-orange text-xs">{errors.end_time.message}</p>
           ) : null}
         </div>
+      </div>
+
+      {/* Class length preset (G5) — fills the end time from the start time.
+          Editing the end time by hand switches this back to Custom. */}
+      <div className="flex flex-col gap-1.5 sm:max-w-[calc(33.333%-0.667rem)]">
+        <Label htmlFor="class-length">Class length</Label>
+        <Select
+          value={lengthValue}
+          onValueChange={(v) => {
+            if (v === CUSTOM_LENGTH) return;
+            const nextEnd = addMinutesToTime(startTime, Number(v));
+            if (nextEnd) setValue('end_time', nextEnd, { shouldDirty: true, shouldValidate: true });
+          }}
+        >
+          <SelectTrigger id="class-length">
+            <SelectValue placeholder="Choose a length" />
+          </SelectTrigger>
+          <SelectContent>
+            {CLASS_LENGTH_OPTIONS.map((o) => (
+              <SelectItem key={o.minutes} value={String(o.minutes)}>
+                {o.label}
+              </SelectItem>
+            ))}
+            <SelectItem value={CUSTOM_LENGTH}>Custom</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-daisy-muted text-xs">
+          Sets the end time for you. Change the end time directly for anything else.
+        </p>
       </div>
 
       {/* Additional dates (NTH-8) — one instance is created per date */}
@@ -665,6 +768,46 @@ function Step3Venue({
           <span className="text-daisy-ink font-semibold">Venue to be confirmed</span>
           <span className="text-daisy-muted">— you can add the venue later</span>
         </label>
+      ) : null}
+
+      {/* Previously used venues (G6) — fills all three venue fields at once.
+          Typing a venue by hand works exactly as before. */}
+      {!venueTbc && recentVenues.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="recent-venue">
+            Use a previous venue <span className="text-daisy-muted font-normal">(optional)</span>
+          </Label>
+          <Select
+            value=""
+            onValueChange={(v) => {
+              const venue = recentVenues[Number(v)];
+              if (!venue) return;
+              setValue('venue_name', venue.venue_name, { shouldDirty: true });
+              setValue('venue_address', venue.venue_address, { shouldDirty: true });
+              setValue('venue_postcode', venue.venue_postcode, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+              onPostcodeBlur();
+            }}
+          >
+            <SelectTrigger id="recent-venue">
+              <span className="block min-w-0 flex-1 truncate text-left">
+                <SelectValue placeholder="Choose one of your venues..." />
+              </span>
+            </SelectTrigger>
+            <SelectContent className="max-w-[min(28rem,calc(100vw-2rem))]">
+              {recentVenues.map((v, i) => (
+                <SelectItem key={`${v.venue_name}-${v.venue_postcode}-${i}`} value={String(i)}>
+                  {v.venue_name} ({v.venue_postcode})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-daisy-muted text-xs">
+            Fills the venue name, address and postcode below. You can still edit them.
+          </p>
+        </div>
       ) : null}
 
       {/* Venue */}
@@ -740,17 +883,24 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
     register,
     control,
     watch,
+    setValue,
     formState: { errors },
   } = form;
 
   const { fields, append, remove } = useFieldArray({ control, name: 'ticket_types' });
   const basePrice = watch('price_pounds');
+  const capacity = watch('capacity');
+  const allowFree = watch('allow_free');
+  const ticketTypes = watch('ticket_types');
+  const hasFreeTicket = (ticketTypes ?? []).some(
+    (tt) => Number.isFinite(tt?.price_pounds) && tt.price_pounds === 0,
+  );
 
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="price-pounds">Base price (£)</Label>
+          <Label htmlFor="price-pounds">Standard price (£)</Label>
           <Input
             id="price-pounds"
             type="number"
@@ -759,6 +909,10 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
             placeholder="e.g. 65 or 65.50"
             {...register('price_pounds', { valueAsNumber: true })}
           />
+          <p className="text-daisy-muted text-xs">
+            The price used unless a ticket type sets its own. When ticket prices differ, customers
+            see "From £X".
+          </p>
           {errors.price_pounds ? (
             <p className="text-daisy-orange text-xs">{errors.price_pounds.message}</p>
           ) : null}
@@ -845,9 +999,13 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
                   ) : null}
                 </div>
 
+                {/* F1 — this field used to be labelled just "Seats", which
+                    reads as "how many of these tickets are available". A
+                    franchisee typed the class size here and one booking then
+                    consumed the whole class. */}
                 <div className="flex flex-col gap-1">
                   <Label htmlFor={`tt-seats-${i}`} className="text-xs">
-                    Seats
+                    Places used per ticket
                   </Label>
                   <Input
                     id={`tt-seats-${i}`}
@@ -856,6 +1014,18 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
                     step="1"
                     {...register(`ticket_types.${i}.seats_consumed`, { valueAsNumber: true })}
                   />
+                  <p className="text-daisy-muted text-xs">
+                    A single ticket uses 1, a couple's ticket uses 2, a family ticket uses 4.
+                  </p>
+                  <TicketPlacesHint
+                    seatsConsumed={ticketTypes?.[i]?.seats_consumed}
+                    capacity={capacity}
+                  />
+                  {errors.ticket_types?.[i]?.seats_consumed ? (
+                    <p className="text-daisy-orange text-xs">
+                      {errors.ticket_types[i].seats_consumed?.message}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="flex items-end pb-0.5">
@@ -917,6 +1087,56 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Free-class confirmation (F6) — only offered once a ticket is at £0.00,
+          so it cannot be ticked by habit before the price is even entered. */}
+      {hasFreeTicket ? (
+        <div className="border-daisy-line rounded-[8px] border-2 bg-white p-3">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={allowFree}
+              onChange={(e) =>
+                setValue('allow_free', e.target.checked, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+              className="accent-daisy-primary mt-0.5 h-4 w-4"
+            />
+            <span>
+              <span className="text-daisy-ink font-semibold">This class really is free</span>
+              <span className="text-daisy-muted block text-xs">
+                One or more tickets are priced at £0.00. Tick this only if customers should pay
+                nothing, otherwise enter a price above.
+              </span>
+            </span>
+          </label>
+          {errors.allow_free ? (
+            <p className="text-daisy-orange mt-2 text-xs">{errors.allow_free.message}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Customer-facing description (G1 / migration 045) — pre-filled from the
+          template so it is a starting point, not a blank box. */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="description-override">
+          Description shown to customers{' '}
+          <span className="text-daisy-muted font-normal">(optional)</span>
+        </Label>
+        <textarea
+          id="description-override"
+          rows={4}
+          placeholder="Describe what this class covers and who it suits..."
+          className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+          {...register('description_override')}
+        />
+        <p className="text-daisy-muted text-xs">
+          Starts from the standard description for this course type. Edit it to describe this
+          particular class, or clear it to use the standard wording.
+        </p>
       </div>
     </div>
   );
@@ -1059,7 +1279,9 @@ const STEP_FIELDS: (keyof FormValues)[][] = [
   ['template_id'],
   ['visibility'],
   ['event_date', 'additional_dates', 'start_time', 'end_time', 'venue_postcode'],
-  ['price_pounds', 'capacity', 'ticket_types'],
+  // allow_free is validated here so the F6 zero-price gate blocks "Next",
+  // not just the final save.
+  ['price_pounds', 'capacity', 'ticket_types', 'allow_free'],
   [],
 ];
 
@@ -1100,6 +1322,7 @@ export default function CreateCourse() {
   });
 
   const { data: templates = [], isLoading: templatesLoading } = useCourseTemplates();
+  const { data: recentVenues = [] } = useRecentVenues();
   const createMutation = useCreateCourseInstance();
 
   const form = useForm<FormValues>({
@@ -1120,6 +1343,8 @@ export default function CreateCourse() {
           capacity: duplicate.capacity,
           price_pounds: penceToPounds(duplicate.price_pence),
           bespoke_details: duplicate.bespoke_details ?? '',
+          description_override: duplicate.description_override ?? '',
+          allow_free: false,
           ticket_types: duplicate.ticket_types.map((tt, i) => ({
             name: tt.name,
             price_pounds: penceToPounds(tt.price_pence),
@@ -1149,6 +1374,8 @@ export default function CreateCourse() {
           capacity: 12,
           price_pounds: 0,
           bespoke_details: '',
+          description_override: '',
+          allow_free: false,
           ticket_types: [
             {
               name: 'Single',
@@ -1173,6 +1400,9 @@ export default function CreateCourse() {
       if (t) {
         form.setValue('price_pounds', penceToPounds(t.default_price_pence));
         form.setValue('capacity', t.default_capacity);
+        // G1: seed the customer-facing description from the template so the
+        // franchisee edits real wording rather than facing an empty box.
+        form.setValue('description_override', t.description ?? '');
         const seeded =
           t.default_ticket_types && t.default_ticket_types.length > 0
             ? t.default_ticket_types.map((dt, i) => ({
@@ -1278,6 +1508,10 @@ export default function CreateCourse() {
       private_client_id: values.private_client_id ?? null,
       display_name: isPrivate ? values.display_name.trim() || null : null,
       venue_tbc: venueTbc,
+      // G1 (migration 045): null falls back to the template description.
+      description_override: values.description_override.trim() || null,
+      // F6: the server rejects a £0.00 price unless this is explicitly set.
+      allow_free: values.allow_free,
     };
 
     // De-duplicated date list: the primary date plus any additional dates.
@@ -1365,6 +1599,7 @@ export default function CreateCourse() {
             <Step3Venue
               form={form}
               territoryPreview={territoryPreview}
+              recentVenues={recentVenues}
               onPostcodeBlur={() => {
                 void handlePostcodeBlur();
               }}
