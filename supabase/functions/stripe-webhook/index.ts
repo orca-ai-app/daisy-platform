@@ -25,7 +25,12 @@
 // Error policy:
 //   - Missing STRIPE_WEBHOOK_SECRET → 500 (fail closed; live test gated on secret being set)
 //   - Invalid Stripe signature → 400
-//   - Internal processing failure → 200 (avoids Stripe retry → double-booking) + console.error
+//   - RetryableWebhookError → 500 so Stripe retries — thrown only where the
+//     handler is idempotent (finalise's pending-status claim, the product
+//     sale's unique index, the M2 path's session-id check + compensated
+//     decrement), so a redelivery cannot double-book
+//   - Any other processing failure → 200 (permanent/malformed input; a retry
+//     would fail identically) + console.error
 //
 // Money: always integer pence. Never floats.
 
@@ -35,6 +40,11 @@ import Stripe from 'https://esm.sh/stripe@17.7.0?target=denonext';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { buildJourneyRows, type SequenceRow } from '../_shared/emailSchedule.ts';
 import { logSystem } from '../_shared/log.ts';
+
+// Transient failure in an idempotent handler — safe (and necessary) for Stripe
+// to redeliver. Without the retry, a booking whose finalise write failed stays
+// 'pending' and the 35-minute expiry sweep cancels it despite money moving.
+class RetryableWebhookError extends Error {}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -217,10 +227,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         break;
     }
   } catch (err) {
-    // Internal error — log loudly but return 200 to prevent Stripe retrying
-    // (a retry on checkout.session.completed risks creating a duplicate booking).
+    const retryable = err instanceof RetryableWebhookError;
     console.error(
-      `stripe-webhook: unhandled error processing event="${event.type}" id="${event.id}"`,
+      `stripe-webhook: ${retryable ? 'retryable' : 'unhandled'} error processing event="${event.type}" id="${event.id}"`,
       err,
     );
 
@@ -241,12 +250,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
           event_id: event.id,
           event_type: event.type,
           error: String(err),
+          retryable,
         },
         description: `Stripe webhook processing error for event ${event.type} (${event.id})`,
       })
       .then((r: { error: unknown }) => {
         if (r.error) console.error('stripe-webhook: could not write error activity row', r.error);
       });
+
+    if (retryable) {
+      return new Response(JSON.stringify({ error: 'transient failure — please retry' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
 
   return new Response(JSON.stringify({ received: true }), {
@@ -272,21 +289,41 @@ async function finalisePendingBooking(
   const bRes = await admin
     .from('da_bookings')
     .select(
-      'id, payment_status, course_instance_id, ticket_type_id, quantity, customer_id, booking_reference, franchisee_id, discount_code, reserved_seats',
+      'id, payment_status, booking_status, course_instance_id, ticket_type_id, quantity, customer_id, booking_reference, franchisee_id, discount_code, reserved_seats',
     )
     .eq('id', bookingId)
     .maybeSingle();
-  if (bRes.error) throw new Error(`pending booking lookup failed: ${bRes.error.message}`);
+  if (bRes.error)
+    throw new RetryableWebhookError(`pending booking lookup failed: ${bRes.error.message}`);
   if (!bRes.data) {
     console.error(`stripe-webhook: pending booking ${bookingId} not found (session ${session.id})`);
     return;
   }
   const booking = bRes.data as any;
-  if (booking.payment_status !== 'pending') {
+
+  // The expiry sweep (send-emails) flips abandoned checkouts to failed/cancelled
+  // and releases their seats. If the customer nonetheless completed payment
+  // (webhook delayed, or a session created before expires_at was set), the
+  // money has moved — recover the booking rather than acking it away. The
+  // released hold means seats must be re-taken via the decrement path below
+  // (reserved_seats was cleared by the sweep).
+  const sweepCancelled =
+    booking.payment_status === 'failed' && booking.booking_status === 'cancelled';
+  if (booking.payment_status !== 'pending' && !sweepCancelled) {
     console.log(
       `stripe-webhook: booking ${bookingId} already finalised (${booking.payment_status}) — idempotent ack.`,
     );
     return;
+  }
+  if (sweepCancelled) {
+    await logSystem(admin, {
+      level: 'error',
+      source: 'stripe-webhook',
+      entityType: 'booking',
+      entityId: booking.id,
+      message: `payment completed AFTER expiry sweep cancelled booking ${booking.booking_reference} — recovering (re-taking seats)`,
+      context: { session_id: session.id, course_instance_id: booking.course_instance_id },
+    });
   }
 
   const ttRes = await admin
@@ -309,20 +346,24 @@ async function finalisePendingBooking(
   // remains only for legacy pending rows created before the reservation model;
   // its 'manual' flag should never fire for new bookings.
   let ok = true;
+  let decremented = false;
   if (booking.reserved_seats == null) {
     const dec = await admin.rpc('decrement_spots', {
       instance_id: booking.course_instance_id,
       seats,
     });
-    if (dec.error) throw new Error(`decrement_spots failed: ${dec.error.message}`);
+    if (dec.error) throw new RetryableWebhookError(`decrement_spots failed: ${dec.error.message}`);
     ok = dec.data === true;
+    decremented = ok;
     if (!ok) {
       await logSystem(admin, {
         level: 'error',
         source: 'stripe-webhook',
         entityType: 'booking',
         entityId: booking.id,
-        message: `OVERBOOK on legacy (pre-reservation) booking ${booking.booking_reference} — flagged manual`,
+        message: sweepCancelled
+          ? `seats RESOLD before sweep-cancelled booking ${booking.booking_reference} recovered — flagged manual, HQ must resolve (refund or extra place)`
+          : `OVERBOOK on legacy (pre-reservation) booking ${booking.booking_reference} — flagged manual`,
         context: { course_instance_id: booking.course_instance_id, seats },
       });
     }
@@ -331,18 +372,48 @@ async function finalisePendingBooking(
   const paymentIntentId =
     typeof session.payment_intent === 'string' ? session.payment_intent : null;
 
+  // Claim-guarded: only finalise the row if it still holds the status we read.
+  // Without the guard, the sweep claiming the row between our read and this
+  // write would be silently overwritten — booking flipped to paid with its
+  // seats already released back to the pool (oversell).
   const upd = await admin
     .from('da_bookings')
     .update({
       payment_status: paymentStatus,
+      booking_status: 'confirmed',
       stripe_payment_intent_id: paymentIntentId,
       // The hold becomes the booking's permanent seat consumption; clearing it
       // means no later sweep/cancel logic can mistake this row for a live hold.
       reserved_seats: null,
       updated_at: now.toISOString(),
     })
-    .eq('id', booking.id);
-  if (upd.error) throw new Error(`booking finalise update failed: ${upd.error.message}`);
+    .eq('id', booking.id)
+    .eq('payment_status', booking.payment_status)
+    .select('id');
+  if (upd.error || !upd.data || upd.data.length === 0) {
+    // Lost the claim (sweep or a concurrent delivery won) or transient failure.
+    // Give back any seats we just took, then let Stripe redeliver — the retry
+    // re-reads the row and lands in the correct branch.
+    if (decremented) {
+      const rel = await admin.rpc('release_spots', {
+        instance_id: booking.course_instance_id,
+        seats,
+      });
+      if (rel.error) {
+        await logSystem(admin, {
+          level: 'error',
+          source: 'stripe-webhook',
+          entityType: 'booking',
+          entityId: booking.id,
+          message: `compensating release_spots FAILED for booking ${booking.booking_reference} — ${seats} seat(s) may be over-held`,
+          context: { error: rel.error.message, course_instance_id: booking.course_instance_id },
+        });
+      }
+    }
+    throw new RetryableWebhookError(
+      `booking finalise update ${upd.error ? `failed: ${upd.error.message}` : 'matched no row (lost claim race)'}`,
+    );
+  }
 
   // Bump the discount use atomically — concurrent webhooks must not lose
   // increments or max-use codes over-redeem.
@@ -506,7 +577,7 @@ async function handleCheckoutSessionCompleted(
     .maybeSingle();
 
   if (existing.error) {
-    throw new Error(`Idempotency check failed: ${existing.error.message}`);
+    throw new RetryableWebhookError(`Idempotency check failed: ${existing.error.message}`);
   }
   if (existing.data) {
     console.log(
@@ -556,7 +627,7 @@ async function handleCheckoutSessionCompleted(
     .single();
 
   if (customerUpsert.error || !customerUpsert.data) {
-    throw new Error(`Customer upsert failed: ${customerUpsert.error?.message}`);
+    throw new RetryableWebhookError(`Customer upsert failed: ${customerUpsert.error?.message}`);
   }
 
   const customerId = (customerUpsert.data as CustomerRow).id;
@@ -571,7 +642,7 @@ async function handleCheckoutSessionCompleted(
     .single();
 
   if (instanceResult.error || !instanceResult.data) {
-    throw new Error(
+    throw new RetryableWebhookError(
       `Course instance not found: id="${courseInstanceId}" error="${instanceResult.error?.message}"`,
     );
   }
@@ -586,7 +657,7 @@ async function handleCheckoutSessionCompleted(
     .single();
 
   if (ticketTypeResult.error || !ticketTypeResult.data) {
-    throw new Error(
+    throw new RetryableWebhookError(
       `Ticket type not found: id="${ticketTypeId}" instance="${courseInstanceId}" error="${ticketTypeResult.error?.message}"`,
     );
   }
@@ -604,7 +675,7 @@ async function handleCheckoutSessionCompleted(
     .single();
 
   if (franchiseeResult.error || !franchiseeResult.data) {
-    throw new Error(
+    throw new RetryableWebhookError(
       `Franchisee not found: id="${franchiseeId}" error="${franchiseeResult.error?.message}"`,
     );
   }
@@ -622,7 +693,7 @@ async function handleCheckoutSessionCompleted(
   });
 
   if (decrementResult.error) {
-    throw new Error(`decrement_spots RPC failed: ${decrementResult.error.message}`);
+    throw new RetryableWebhookError(`decrement_spots RPC failed: ${decrementResult.error.message}`);
   }
 
   const spotsDecrementedOk = decrementResult.data as boolean;
@@ -638,6 +709,23 @@ async function handleCheckoutSessionCompleted(
     );
   }
 
+  // From here on the decrement has happened: any bail-out must give the seats
+  // back before throwing, or a Stripe retry would decrement them again.
+  const releaseDecrement = async () => {
+    if (!spotsDecrementedOk) return;
+    const rel = await admin.rpc('release_spots', {
+      instance_id: courseInstanceId,
+      seats: seatsToDecrement,
+    });
+    if (rel.error) {
+      console.error(
+        `stripe-webhook: compensating release_spots failed for instance="${courseInstanceId}" ` +
+          `seats=${seatsToDecrement} session="${session.id}"`,
+        rel.error,
+      );
+    }
+  };
+
   // -------------------------------------------------------------------------
   // Step 6 — Generate booking reference
   // -------------------------------------------------------------------------
@@ -646,7 +734,10 @@ async function handleCheckoutSessionCompleted(
   });
 
   if (bookingRefResult.error) {
-    throw new Error(`next_booking_reference RPC failed: ${bookingRefResult.error.message}`);
+    await releaseDecrement();
+    throw new RetryableWebhookError(
+      `next_booking_reference RPC failed: ${bookingRefResult.error.message}`,
+    );
   }
 
   const bookingReference = bookingRefResult.data as string;
@@ -685,7 +776,17 @@ async function handleCheckoutSessionCompleted(
     .single();
 
   if (bookingInsert.error || !bookingInsert.data) {
-    throw new Error(`da_bookings insert failed: ${bookingInsert.error?.message}`);
+    await releaseDecrement();
+    if (bookingInsert.error?.code === '23505') {
+      // Unique index on stripe_checkout_session_id (migration 049): a
+      // concurrent delivery inserted the booking between our idempotency check
+      // and this insert. Its decrement stands; ours is released above. Ack.
+      console.log(
+        `stripe-webhook: concurrent duplicate insert for session="${session.id}" — idempotent ack.`,
+      );
+      return;
+    }
+    throw new RetryableWebhookError(`da_bookings insert failed: ${bookingInsert.error?.message}`);
   }
 
   const bookingId = (bookingInsert.data as { id: string }).id;
@@ -796,7 +897,9 @@ async function recordProductSale(
     .eq('stripe_checkout_session_id', session.id)
     .maybeSingle();
   if (existing.error) {
-    throw new Error(`product sale idempotency check failed: ${existing.error.message}`);
+    throw new RetryableWebhookError(
+      `product sale idempotency check failed: ${existing.error.message}`,
+    );
   }
   if (existing.data) {
     console.log(
@@ -810,7 +913,8 @@ async function recordProductSale(
     .select('id, franchisee_id, product_id, price_pence, product:da_products ( name )')
     .eq('id', franchiseeProductId)
     .maybeSingle();
-  if (fpRes.error) throw new Error(`franchisee product lookup failed: ${fpRes.error.message}`);
+  if (fpRes.error)
+    throw new RetryableWebhookError(`franchisee product lookup failed: ${fpRes.error.message}`);
   if (!fpRes.data) {
     throw new Error(
       `franchisee product not found: id="${franchiseeProductId}" session="${session.id}"`,

@@ -90,9 +90,14 @@ Deno.serve(async (req: Request) => {
   }
 
   const instructorNumber = reqStr(body.instructor_number);
+  const courseTokenRaw = reqStr(body.course_token);
   const territoryPostcode = reqStr(body.territory_postcode);
   const attendeeName = reqStr(body.attendee_name);
-  if (!instructorNumber) return jsonResponse({ error: 'instructor_number is required' }, 400);
+  // A per-event QR carries a course_token that identifies the class (and so
+  // the franchisee) on its own — legacy QR codes reach us with a token but no
+  // instructor number. Either identifier is enough.
+  if (!instructorNumber && !courseTokenRaw)
+    return jsonResponse({ error: 'instructor_number is required' }, 400);
   if (!territoryPostcode) return jsonResponse({ error: 'territory_postcode is required' }, 400);
   if (!attendeeName) return jsonResponse({ error: 'attendee_name is required' }, 400);
 
@@ -105,22 +110,28 @@ Deno.serve(async (req: Request) => {
   }
 
   // --- Resolve instructor (franchisee) --------------------------------------
-  const frRes = await admin
-    .from('da_franchisees')
-    .select('id')
-    .eq('number', instructorNumber)
-    .maybeSingle();
-  if (frRes.error) {
-    console.error('franchisee lookup failed', frRes.error);
-    return jsonResponse({ error: 'Could not submit right now' }, 500);
+  // Primary: the instructor number. Token-only fallback: a valid course_token
+  // identifies the class, whose row carries the franchisee — legacy per-event
+  // QRs link straight to the form with no instructor number.
+  let franchiseeId: string | null = null;
+  if (instructorNumber) {
+    const frRes = await admin
+      .from('da_franchisees')
+      .select('id')
+      .eq('number', instructorNumber)
+      .maybeSingle();
+    if (frRes.error) {
+      console.error('franchisee lookup failed', frRes.error);
+      return jsonResponse({ error: 'Could not submit right now' }, 500);
+    }
+    if (!frRes.data) return jsonResponse({ error: 'Instructor not found' }, 404);
+    franchiseeId = (frRes.data as any).id;
   }
-  if (!frRes.data) return jsonResponse({ error: 'Instructor not found' }, 404);
-  const franchiseeId = (frRes.data as any).id;
 
   // --- Resolve the course instance -------------------------------------------
   // Exact: course_token (from the per-event QR or the static-QR today-resolver).
   // Fallback: legacy fuzzy match (franchisee + postcode prefix, last 24h).
-  const courseToken = reqStr(body.course_token);
+  const courseToken = courseTokenRaw;
   let courseInstanceId: string | null = null;
   let courseTimes: {
     event_date: string;
@@ -134,8 +145,15 @@ Deno.serve(async (req: Request) => {
       .select('id, franchisee_id, event_date, start_time, end_time')
       .eq('booking_token', courseToken)
       .maybeSingle();
-    if (exact.data && (exact.data as any).franchisee_id === franchiseeId) {
+    // With an instructor number the token must agree with it (a stray token
+    // cannot attach the declaration to another franchisee). Token-only: the
+    // course row itself is the source of truth for the franchisee.
+    if (
+      exact.data &&
+      (franchiseeId === null || (exact.data as any).franchisee_id === franchiseeId)
+    ) {
       courseInstanceId = (exact.data as any).id;
+      franchiseeId = (exact.data as any).franchisee_id;
       courseTimes = {
         event_date: (exact.data as any).event_date,
         start_time: (exact.data as any).start_time,
@@ -144,8 +162,24 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // Token-only requests with an invalid/unknown token have nothing left to
+  // resolve the franchisee from — the fuzzy fallback needs an instructor.
+  if (franchiseeId === null) {
+    return jsonResponse(
+      { error: 'Course not found — please ask your trainer for their instructor number' },
+      404,
+    );
+  }
+
   if (!courseInstanceId) {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    // Upper bound: today in Europe/London. The fallback means "the class the
+    // attendee is AT (yesterday/today)" — without the bound, descending order
+    // matched the franchisee's furthest-FUTURE class at the same venue prefix,
+    // mis-linking the booking and anchoring the email journey months out.
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(
+      new Date(),
+    );
     const prefix =
       territoryPostcode.toUpperCase().replace(/\s+/g, '').slice(0, -3) || territoryPostcode;
     const ciRes = await admin
@@ -153,6 +187,7 @@ Deno.serve(async (req: Request) => {
       .select('id, venue_postcode, event_date, start_time, end_time')
       .eq('franchisee_id', franchiseeId)
       .gte('event_date', since)
+      .lte('event_date', today)
       .order('event_date', { ascending: false })
       .limit(20);
     if (ciRes.data) {

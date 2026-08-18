@@ -52,6 +52,12 @@ verify_jwt = false
 # Public medical-app submit (M3). Encrypts health data; consent-gated. No user auth.
 verify_jwt = false
 
+[functions.get-public-items]
+# Public booking-widget shop read API (migration 044). No user — anon callers.
+# Without this pin a blind redeploy defaults to verify_jwt=true and the widget
+# silently loses its shop section (it swallows get-public-items errors).
+verify_jwt = false
+
 [functions.purge-medical-declarations]
 # HQ-only manual GDPR purge (M3). The scheduled purge is a pg_cron SQL job (029).
 verify_jwt = true
@@ -195,4 +201,13 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.update-ticket-type]
+verify_jwt = true
+
+[functions.transfer-booking]
+verify_jwt = true
+
+[functions.update-customer]
+verify_jwt = true
+
+[functions.upsert-franchisee-product]
 verify_jwt = true

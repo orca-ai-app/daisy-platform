@@ -249,6 +249,12 @@ async function calculateFranchiseePreview(
       )
       .in('payment_status', ['paid', 'manual'])
       .neq('booking_status', 'cancelled')
+      // Scope to THIS franchisee's own bookings. The territory join alone also
+      // matched bookings another franchisee took at a venue inside this
+      // territory (create-course-instance stamps the VENUE's territory even
+      // when it is owned_by_other) — billing the territory owner for revenue
+      // that was never theirs.
+      .eq('franchisee_id', franchisee.id)
       .eq('da_course_instances.territory_id', territory.id)
       .gte('da_course_instances.event_date', periodStart)
       .lte('da_course_instances.event_date', periodEnd);
@@ -268,6 +274,33 @@ async function calculateFranchiseePreview(
       }, 0),
     );
   }
+
+  // Out-of-area bookings: this franchisee's revenue on course instances whose
+  // territory is NULL (unknown/vacant venue prefix) or owned by ANOTHER
+  // franchisee (out_of_territory_warning venues). Neither appears in the
+  // per-territory pass above, so without this it escaped the fee run entirely.
+  // Billed at the flat 10% via a pseudo-row — same never-silently-dropped
+  // treatment as merchandise with no territory.
+  const ownTerritoryIds = new Set(territories.map((t) => t.id));
+  const outsideRes = await admin
+    .from('da_bookings')
+    .select(
+      `total_price_pence, payment_status, booking_status,
+       course_instance:da_course_instances!inner ( territory_id, event_date )`,
+    )
+    .in('payment_status', ['paid', 'manual'])
+    .neq('booking_status', 'cancelled')
+    .eq('franchisee_id', franchisee.id)
+    .gte('da_course_instances.event_date', periodStart)
+    .lte('da_course_instances.event_date', periodEnd);
+  if (outsideRes.error) {
+    throw new Error(`Failed to load out-of-area bookings: ${outsideRes.error.message}`);
+  }
+  const outsidePence = ((outsideRes.data ?? []) as unknown as BookingRow[]).reduce((acc, row) => {
+    const tid = row.course_instance?.territory_id ?? null;
+    if (tid !== null && ownTerritoryIds.has(tid)) return acc; // counted in pass 1
+    return acc + (row.total_price_pence ?? 0);
+  }, 0);
 
   // Merch attaches to the highest-booking-revenue territory this period
   // (ties/zero bookings → first territory by postcode order).
@@ -308,6 +341,23 @@ async function calculateFranchiseePreview(
     totalBase += baseFeePencePerTerritory;
     totalPercentage += percentageFeePence;
     totalDue += feeCharged;
+  }
+
+  if (outsidePence > 0) {
+    const outsideFee = Math.floor(outsidePence * 0.1);
+    breakdown.push({
+      territory_id: '',
+      postcode_prefix: '—',
+      territory_name: 'Out-of-area bookings',
+      base_fee_pence: 0,
+      revenue_pence: outsidePence,
+      merchandise_pence: 0,
+      percentage_fee_pence: outsideFee,
+      fee_charged_pence: outsideFee,
+      logic: 'percentage_wins',
+    });
+    totalPercentage += outsideFee;
+    totalDue += outsideFee;
   }
 
   return {

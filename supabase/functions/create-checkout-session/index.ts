@@ -445,6 +445,12 @@ Deno.serve(async (req: Request) => {
         mode: 'payment',
         payment_method_types: ['card'],
         customer_email: email,
+        // Without expires_at Stripe keeps the session payable for 24 HOURS,
+        // but the send-emails sweep cancels the pending booking and releases
+        // its seat hold at 35 minutes — a customer paying in the gap would be
+        // charged for a cancelled booking. Expire the session first (31 min:
+        // Stripe's minimum is 30, +1 for clock skew).
+        expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
         line_items: [
           {
             price_data: {

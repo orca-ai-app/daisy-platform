@@ -262,10 +262,10 @@ Deno.serve(async (req: Request) => {
         const booking = await admin
           .from('da_bookings')
           .select(
-            `booking_reference,
+            `booking_reference, booking_status,
            customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
-             event_date, start_time, venue_name, venue_postcode,
+             event_date, start_time, venue_name, venue_postcode, status,
              template:da_course_templates ( name )
            ),
            franchisee:da_franchisees ( name, email, booking_email_message )`,
@@ -274,6 +274,16 @@ Deno.serve(async (req: Request) => {
           .maybeSingle();
         if (booking.error || !booking.data) throw new Error('booking load failed');
         const b = booking.data as any;
+
+        // Lifecycle gate: a cancelled booking (or a cancelled class) must not
+        // keep emailing the customer — without this, the "class starts in 1
+        // hour" reminder and a year of recaps still fired after cancellation.
+        // Cancel the row (mirrors the suppression path) rather than failing it.
+        if (b.booking_status === 'cancelled' || b.course_instance?.status === 'cancelled') {
+          await admin.from('da_email_sequences').update({ status: 'cancelled' }).eq('id', row.id);
+          cancelled++;
+          continue;
+        }
 
         // new_booking_notification goes to the franchisee; everything else to the customer.
         const toFranchisee = row.template_key === 'new_booking_notification';
@@ -382,8 +392,9 @@ Deno.serve(async (req: Request) => {
   }
 
   // --- Expire stale pending checkouts (migration 035) ------------------------
-  // Stripe Checkout sessions expire after 30 minutes; anything still 'pending'
-  // at 35+ minutes was abandoned. Release its seat hold and close the booking
+  // create-checkout-session sets expires_at to 31 minutes (Stripe's default
+  // would otherwise be 24 HOURS), so anything still 'pending' at 35+ minutes
+  // was abandoned. Release its seat hold and close the booking
   // (payment failed, booking cancelled) so spots go back on sale.
   const stale = await admin
     .from('da_bookings')

@@ -158,7 +158,9 @@ Deno.serve(async (req: Request) => {
   // ---------------------------------------------------------------------------
   const bookingResult = await admin
     .from('da_bookings')
-    .select('id, franchisee_id, booking_reference, booking_status, total_price_pence')
+    .select(
+      'id, franchisee_id, booking_reference, booking_status, total_price_pence, payment_status, reserved_seats, course_instance_id, ticket_type_id, quantity, stripe_payment_intent_id, stripe_checkout_session_id',
+    )
     .eq('id', bookingId)
     .maybeSingle();
 
@@ -176,6 +178,13 @@ Deno.serve(async (req: Request) => {
     booking_reference: string;
     booking_status: string;
     total_price_pence: number;
+    payment_status: string;
+    reserved_seats: number | null;
+    course_instance_id: string;
+    ticket_type_id: string | null;
+    quantity: number;
+    stripe_payment_intent_id: string | null;
+    stripe_checkout_session_id: string | null;
   };
 
   // ---------------------------------------------------------------------------
@@ -225,10 +234,53 @@ Deno.serve(async (req: Request) => {
   }
 
   // ---------------------------------------------------------------------------
+  // Release the booking's seats back to the course. Without this every
+  // cancellation permanently shrinks spots_remaining and classes artificially
+  // sell out. Which bookings actually hold seats:
+  //   - pending + reserved_seats set   → live checkout hold; the expiry sweep
+  //     owns it (its pending-status claim releases exactly reserved_seats), so
+  //     releasing here too would double-count. Skip.
+  //   - webhook-origin 'manual' (has a Stripe id) → overbook flag; the
+  //     decrement FAILED, no seats were ever taken. Skip.
+  //   - everything else (paid, refunded, cash 'manual' from mark-booking-paid,
+  //     pending from create-booking's direct decrement) → seats consumed.
+  //     Release seats_consumed × quantity (release_spots is capacity-clamped,
+  //     so a stale ticket type can never inflate availability).
+  // ---------------------------------------------------------------------------
+  const isCheckoutHold = booking.payment_status === 'pending' && booking.reserved_seats !== null;
+  const isOverbookFlag =
+    booking.payment_status === 'manual' &&
+    (booking.stripe_payment_intent_id !== null || booking.stripe_checkout_session_id !== null);
+  let seatsReleased = 0;
+  if (!isCheckoutHold && !isOverbookFlag) {
+    let seatsConsumed = 1;
+    if (booking.ticket_type_id) {
+      const tt = await admin
+        .from('da_ticket_types')
+        .select('seats_consumed')
+        .eq('id', booking.ticket_type_id)
+        .maybeSingle();
+      seatsConsumed = (tt.data as { seats_consumed?: number } | null)?.seats_consumed ?? 1;
+    }
+    seatsReleased = seatsConsumed * (booking.quantity ?? 1);
+    const rel = await admin.rpc('release_spots', {
+      instance_id: booking.course_instance_id,
+      seats: seatsReleased,
+    });
+    if (rel.error) {
+      // Booking is cancelled but its seats did not go back on sale — surface
+      // loudly so the franchisee/HQ adds them back on the course by hand.
+      console.error('cancel-booking: release_spots failed', rel.error);
+      seatsReleased = 0;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // INSERT da_activities
   // ---------------------------------------------------------------------------
   const activityMetadata: Record<string, unknown> = {
     cancellation_reason: cancellationReason,
+    seats_released: seatsReleased,
   };
   if (refundAmountPence !== null && refundAmountPence > 0) {
     activityMetadata.refund_amount_pence = refundAmountPence;
