@@ -50,6 +50,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=denonext';
 import { logSystem, newRequestId } from '../_shared/log.ts';
+import { buildJourneyRows } from '../_shared/emailSchedule.ts';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -200,7 +201,7 @@ Deno.serve(async (req: Request) => {
   let q = admin
     .from('da_course_instances')
     .select(
-      'id, franchisee_id, template_id, event_date, private_client_id, status, visibility, spots_remaining',
+      'id, franchisee_id, template_id, event_date, start_time, end_time, private_client_id, status, visibility, spots_remaining',
     );
   q = courseInstanceId ? q.eq('id', courseInstanceId) : q.eq('booking_token', bookingToken!);
   const instRes = await q.maybeSingle();
@@ -286,6 +287,20 @@ Deno.serve(async (req: Request) => {
   }
   const netPence = Math.max(0, grossPence - discountOffPence);
   const applicationFee = Math.floor((netPence * feePercent) / 100);
+
+  // Stripe rejects payment sessions under its 30p card minimum. A 100%-off
+  // code takes the FREE path below (no Stripe at all); a code leaving 1-29p
+  // has no workable path online, so fail it clearly up front rather than
+  // letting Stripe reject the session after the booking row exists.
+  if (netPence > 0 && netPence < 30) {
+    return jsonResponse(
+      {
+        error:
+          'This discount leaves an amount too small to pay by card online — please contact your trainer to book.',
+      },
+      400,
+    );
+  }
 
   // --- Upsert customer ------------------------------------------------------
   const custRes = await admin
@@ -434,6 +449,104 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Could not start your booking', request_id: requestId }, 500);
   }
   const bookingId = (bookingRes.data as any).id;
+
+  // --- FREE booking (100%-off discount): no Stripe at all -------------------
+  // Nothing to charge, so finalise inline — the mirror of the webhook's
+  // finalisePendingBooking: confirm the booking (the reserve_spots hold
+  // becomes its permanent seat consumption), bump the discount use, queue the
+  // email journey, log activity. The widget's payment tab lands straight on
+  // the branded success page via checkout_url.
+  if (netPence === 0) {
+    const freeOrigin = safeOrigin(reqStr(body.origin));
+    const upd = await admin
+      .from('da_bookings')
+      .update({
+        payment_status: 'paid',
+        booking_status: 'confirmed',
+        reserved_seats: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .eq('payment_status', 'pending')
+      .select('id');
+    if (upd.error || !upd.data || upd.data.length === 0) {
+      await releaseHold();
+      await admin.from('da_bookings').delete().eq('id', bookingId);
+      const requestId = newRequestId();
+      await logSystem(admin, {
+        level: 'error',
+        source: 'create-checkout-session',
+        requestId,
+        entityType: 'booking',
+        entityId: bookingId,
+        message: `free booking finalise failed: ${upd.error?.message ?? 'no row matched'}`,
+        context: { booking_reference: bookingReference },
+      });
+      return jsonResponse({ error: 'Could not complete your booking', request_id: requestId }, 500);
+    }
+
+    if (discountCode) {
+      const bump = await admin.rpc('increment_discount_use', { discount_code: discountCode });
+      if (bump.error) console.error('free booking: discount increment failed', bump.error);
+    }
+
+    const journeyRows = buildJourneyRows({
+      customerId,
+      bookingId,
+      eventDate: instance.event_date,
+      startTime: instance.start_time ?? null,
+      endTime: instance.end_time ?? null,
+      now: new Date(),
+      set: 'full',
+    });
+    if (journeyRows.length > 0) {
+      const er = await admin.from('da_email_sequences').insert(journeyRows);
+      if (er.error) {
+        // Booking stands; make the missing emails loudly visible (same policy
+        // as the webhook).
+        console.error('free booking: email queue insert failed', er.error);
+        await logSystem(admin, {
+          level: 'error',
+          source: 'create-checkout-session',
+          entityType: 'booking',
+          entityId: bookingId,
+          message: `email journey queue FAILED for free booking ${bookingReference} — customer gets no confirmation`,
+          context: { error: er.error.message, row_count: journeyRows.length },
+        });
+      }
+    }
+
+    await admin
+      .from('da_activities')
+      .insert({
+        actor_type: 'system',
+        actor_id: null,
+        entity_type: 'booking',
+        entity_id: bookingId,
+        action: 'booking_created',
+        metadata: {
+          booking_reference: bookingReference,
+          course_instance_id: instance.id,
+          franchisee_id: instance.franchisee_id,
+          payment_status: 'paid',
+          source: 'public_checkout_free',
+          discount_code: discountCode,
+        },
+        description: `Booking ${bookingReference} confirmed via online checkout (100% discount — no payment taken)`,
+      })
+      .then((r: { error: unknown }) => {
+        if (r.error) console.error('free booking: activity insert failed', r.error);
+      });
+
+    return jsonResponse(
+      {
+        checkout_url: `${freeOrigin}/booking/success?ref=${encodeURIComponent(bookingReference)}&free=1`,
+        session_id: '',
+        booking_reference: bookingReference,
+      },
+      201,
+    );
+  }
 
   // --- Stripe Checkout Session (direct charge on connected account) ---------
   const origin = safeOrigin(reqStr(body.origin));
