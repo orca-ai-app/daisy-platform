@@ -33,7 +33,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Logging in',
         body: [
-          'You log in at /login using the email address in your invite email. The invite link lets you set your password on first use. If you did not receive an invite, or the link has expired, contact HQ and they will send a fresh one.',
+          'You log in at app.daisyfirstaid.com. Click "Sign in with Google" and use your daisyfirstaid.com email. There is no password to set or remember. If it will not let you in, contact HQ and they will check your details.',
           'Once you are in, you stay logged in unless you actively sign out.',
         ],
       },
@@ -437,7 +437,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Before you start',
         steps: [
-          'Log in: use the invite email to access your portal. If you cannot log in, contact HQ straight away.',
+          'Log in: go to app.daisyfirstaid.com, click "Sign in with Google" and use your daisyfirstaid.com email. There is no password. If you cannot get in, contact HQ straight away.',
           'Connect Stripe: go to Payments and click "Connect with Stripe". Card payments from customers cannot reach you until this is done.',
         ],
       },
@@ -604,7 +604,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Quick answers to common questions',
         body: [
-          'Cannot log in: check you are using your @daisyfirstaid.com email address. Check your spam folder for the invite email. If the link has expired, reply to the announcement email and HQ will send a new one. You can also use the password reset link on the /login page.',
+          'Cannot log in: make sure you are clicking "Sign in with Google" and using your @daisyfirstaid.com email, the same one HQ has for you. There is no password. If it still will not let you in, reply to the announcement email and HQ will sort it.',
           'Customer cannot pay by card: check that your Stripe account is connected. Go to Payments, the status should show "Connected". If it shows the "Connect with Stripe" button, complete that step first.',
           'My class is not showing on the Daisy website: the class must be set to Public, the date must be in the future, and there must be at least one space remaining. Open the class in Courses and check the visibility and capacity settings.',
         ],

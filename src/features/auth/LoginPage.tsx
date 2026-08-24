@@ -1,23 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useRole } from './RoleContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 
-const schema = z.object({
-  email: z.string().email('Enter a valid email address'),
-  password: z.string().min(8, 'At least 8 characters'),
-});
-
-type FormValues = z.infer<typeof schema>;
-
+/**
+ * Google-only sign-in. Every franchisee and HQ email is a daisyfirstaid.com
+ * Google Workspace account (or a Gmail), so a single "Sign in with Google"
+ * button is the whole login: no passwords to remember or reset, and the
+ * on_auth_user_created trigger links a first-time login to the franchisee row
+ * by email automatically. Kept deliberately to one button to be foolproof.
+ */
 export default function LoginPage() {
   const navigate = useNavigate();
   const { user, isHQ, notProvisioned, isLoading } = useRole();
@@ -33,21 +28,6 @@ export default function LoginPage() {
     }
     navigate(isHQ ? '/hq/dashboard' : '/franchisee/dashboard', { replace: true });
   }, [user, isHQ, notProvisioned, isLoading, navigate]);
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
-
-  const onSubmit = handleSubmit(async ({ email, password }) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success('Signed in');
-  });
 
   const onGoogle = async () => {
     setGoogleSubmitting(true);
@@ -74,9 +54,9 @@ export default function LoginPage() {
             className="mb-3 h-14 w-auto"
             draggable={false}
           />
-          <CardDescription>Sign in to the portal</CardDescription>
+          <CardDescription>Sign in to your portal</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-5">
+        <CardContent className="flex flex-col gap-4">
           <Button
             type="button"
             variant="outline"
@@ -87,47 +67,10 @@ export default function LoginPage() {
             <GoogleLogo />
             {googleSubmitting ? 'Redirecting…' : 'Sign in with Google'}
           </Button>
-
-          <div className="flex items-center gap-3">
-            <span className="bg-daisy-line-soft h-px flex-1" />
-            <span className="text-daisy-muted text-xs font-semibold tracking-wide uppercase">
-              Or with email
-            </span>
-            <span className="bg-daisy-line-soft h-px flex-1" />
-          </div>
-
-          <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@daisyfirstaid.com"
-                aria-invalid={!!errors.email}
-                {...register('email')}
-              />
-              {errors.email ? (
-                <p className="text-daisy-orange text-xs">{errors.email.message}</p>
-              ) : null}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                aria-invalid={!!errors.password}
-                {...register('password')}
-              />
-              {errors.password ? (
-                <p className="text-daisy-orange text-xs">{errors.password.message}</p>
-              ) : null}
-            </div>
-            <Button type="submit" disabled={isSubmitting} className="mt-2 w-full">
-              {isSubmitting ? 'Signing in…' : 'Sign in'}
-            </Button>
-          </form>
+          <p className="text-daisy-muted text-center text-xs leading-snug">
+            Use your daisyfirstaid.com Google account. There is no password to remember. If you
+            cannot get in, contact HQ and we will sort it.
+          </p>
         </CardContent>
       </Card>
     </div>
