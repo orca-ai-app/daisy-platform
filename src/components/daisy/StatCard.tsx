@@ -5,7 +5,7 @@ export type StatDeltaTone = 'up' | 'down' | 'flat';
 
 interface StatCardProps {
   /** Uppercase label (e.g. "Bookings this month"). */
-  label: string;
+  label: ReactNode;
   /** Primary value. Pre-formatted strings preferred (e.g. "£12,345.67", "8/10"). */
   value: ReactNode;
   /** Secondary delta or supporting copy. */

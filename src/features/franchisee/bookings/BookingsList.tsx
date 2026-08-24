@@ -12,7 +12,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
-import { PageHeader, DataTable, StatusPill, EmptyState } from '@/components/daisy';
+import { PageHeader, DataTable, StatusPill, EmptyState, FieldHelp } from '@/components/daisy';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import AddBookingDialog from '@/features/bookings/AddBookingDialog';
@@ -107,7 +107,15 @@ function buildColumns(): ColumnDef<OwnBookingListRow>[] {
   return [
     {
       accessorKey: 'booking_reference',
-      header: 'Reference',
+      meta: { mobileLabel: 'Reference' },
+      header: () => (
+        <span className="inline-flex items-center gap-1">
+          Reference
+          <FieldHelp>
+            A unique code for each booking. Search for it to find a booking quickly.
+          </FieldHelp>
+        </span>
+      ),
       cell: ({ row }) => (
         <span className="text-daisy-ink-soft font-mono text-[13px] font-bold">
           {row.original.booking_reference}
@@ -143,7 +151,13 @@ function buildColumns(): ColumnDef<OwnBookingListRow>[] {
     },
     {
       id: 'ticket_type',
-      header: 'Ticket',
+      meta: { mobileLabel: 'Ticket' },
+      header: () => (
+        <span className="inline-flex items-center gap-1">
+          Ticket
+          <FieldHelp>Which ticket the customer chose, for example Single or Family.</FieldHelp>
+        </span>
+      ),
       accessorFn: (row) => row.ticket_type_name ?? '',
       cell: ({ row }) => (
         <span className="text-daisy-ink-soft text-[13px]">
@@ -160,7 +174,16 @@ function buildColumns(): ColumnDef<OwnBookingListRow>[] {
     },
     {
       accessorKey: 'payment_status',
-      header: 'Payment',
+      meta: { mobileLabel: 'Payment' },
+      header: () => (
+        <span className="inline-flex items-center gap-1">
+          Payment
+          <FieldHelp>
+            Manual means you marked it paid yourself, for example by cash or cheque. Pending means
+            payment has not arrived yet.
+          </FieldHelp>
+        </span>
+      ),
       cell: ({ row }) => (
         <StatusPill variant={paymentStatusVariant(row.original.payment_status)}>
           {row.original.payment_status}
@@ -169,7 +192,13 @@ function buildColumns(): ColumnDef<OwnBookingListRow>[] {
     },
     {
       accessorKey: 'booking_status',
-      header: 'Booking',
+      meta: { mobileLabel: 'Booking' },
+      header: () => (
+        <span className="inline-flex items-center gap-1">
+          Booking
+          <FieldHelp>No show means the customer booked but did not attend.</FieldHelp>
+        </span>
+      ),
       cell: ({ row }) => (
         <StatusPill variant={bookingStatusVariant(row.original.booking_status)}>
           {row.original.booking_status.replace('_', ' ')}

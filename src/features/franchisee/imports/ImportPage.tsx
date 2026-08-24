@@ -14,7 +14,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { PageHeader, EmptyState } from '@/components/daisy';
+import { PageHeader, EmptyState, FieldHelp } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -277,8 +277,13 @@ export default function ImportPage() {
                 <SummaryStat
                   label="Cancelled events skipped"
                   value={plan.skippedCancelledCourses}
+                  help="Bookings that were cancelled in BookWhen. We skip these on purpose."
                 />
-                <SummaryStat label="Unresolved rows" value={plan.unresolved.length} />
+                <SummaryStat
+                  label="Unresolved rows"
+                  value={plan.unresolved.length}
+                  help="Rows we could not turn into a class. They will be left out."
+                />
               </dl>
 
               {plan.warnings.length > 0 ? (
@@ -307,7 +312,15 @@ export default function ImportPage() {
                     <tr className="text-daisy-muted text-[11px] font-bold tracking-[0.06em] uppercase">
                       <th className="px-4 py-3">Date</th>
                       <th className="px-4 py-3">Course</th>
-                      <th className="px-4 py-3">Match</th>
+                      <th className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1">
+                          Match
+                          <FieldHelp>
+                            Matched means we are confident of the class type. Guessed means please
+                            check it. Unmatched means choose the class type yourself.
+                          </FieldHelp>
+                        </span>
+                      </th>
                       <th className="px-4 py-3">Course type</th>
                       <th className="px-4 py-3">Venue</th>
                       <th className="px-4 py-3 text-right">Bookings</th>
@@ -369,7 +382,13 @@ export default function ImportPage() {
                                 {c.venue_postcode}
                               </span>
                             ) : (
-                              <span className="block text-[12px] text-[#8A2A2A]">No postcode</span>
+                              <span className="inline-flex items-center gap-1 text-[12px] text-[#8A2A2A]">
+                                No postcode
+                                <FieldHelp>
+                                  A class needs a venue postcode to import. Fix it in BookWhen or
+                                  add the class by hand.
+                                </FieldHelp>
+                              </span>
                             )}
                           </td>
                           <td className="text-daisy-ink px-4 py-3 text-right tabular-nums">
@@ -518,11 +537,22 @@ export default function ImportPage() {
 // Small presentational helpers
 // ---------------------------------------------------------------------------
 
-function SummaryStat({ label, value }: { label: string; value: number }) {
+function SummaryStat({
+  label,
+  value,
+  help,
+}: {
+  label: string;
+  value: number;
+  help?: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1">
       <dt className="text-daisy-muted text-[11px] font-bold tracking-[0.06em] uppercase">
-        {label}
+        <span className="inline-flex items-center gap-1">
+          {label}
+          {help ? <FieldHelp>{help}</FieldHelp> : null}
+        </span>
       </dt>
       <dd className="text-daisy-ink text-[22px] font-extrabold tabular-nums">{value}</dd>
     </div>

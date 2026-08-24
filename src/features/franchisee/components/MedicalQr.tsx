@@ -124,7 +124,7 @@ export function MedicalQr({ franchiseeNumber, compact = false, title, blurb }: M
 
         <div className="border-daisy-line bg-daisy-paper rounded-[8px] border px-3 py-2">
           <p className="text-daisy-muted mb-1 text-[11px] font-bold tracking-wider uppercase">
-            Destination URL
+            Where this QR goes
           </p>
           <a
             href={url}

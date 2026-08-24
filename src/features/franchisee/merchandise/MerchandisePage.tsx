@@ -17,7 +17,14 @@ import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { ShoppingBag, Trash2, Globe, Store } from 'lucide-react';
-import { PageHeader, DataTable, StatCard, EmptyState, StatusPill } from '@/components/daisy';
+import {
+  PageHeader,
+  DataTable,
+  StatCard,
+  EmptyState,
+  StatusPill,
+  FieldHelp,
+} from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -152,7 +159,16 @@ export default function MerchandisePage() {
       },
       {
         id: 'channel',
-        header: 'Source',
+        meta: { mobileLabel: 'Source' },
+        header: () => (
+          <span className="inline-flex items-center gap-1">
+            Source
+            <FieldHelp>
+              Online sales were paid on your booking page. In person sales are ones you recorded
+              yourself.
+            </FieldHelp>
+          </span>
+        ),
         accessorFn: (row) => channelLabel(row),
         cell: ({ row }) =>
           saleChannel(row.original) === 'online' ? (
@@ -260,6 +276,12 @@ export default function MerchandisePage() {
         <TabsList>
           <TabsTrigger value="sales">Sales</TabsTrigger>
           <TabsTrigger value="shop">My shop</TabsTrigger>
+          <span className="ml-1 inline-flex items-center">
+            <FieldHelp label="About Sales and My shop">
+              Sales is your record of what you have sold. My shop is what customers can buy online
+              from your booking page.
+            </FieldHelp>
+          </span>
         </TabsList>
 
         <TabsContent value="sales" className="mt-4 flex flex-col gap-4">

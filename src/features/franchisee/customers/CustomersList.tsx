@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 
-import { PageHeader, DataTable, EmptyState } from '@/components/daisy';
+import { PageHeader, DataTable, EmptyState, FieldHelp } from '@/components/daisy';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatPence } from '@/lib/format';
@@ -277,9 +277,15 @@ function AllContactsTab() {
           <span className="flex items-center gap-2">
             <span className="text-daisy-ink font-semibold">{row.original.name}</span>
             {row.original.from_medical_form ? (
-              <Badge variant="default" className="text-[11px]">
-                from medical form
-              </Badge>
+              <span className="inline-flex items-center gap-1">
+                <Badge variant="default" className="text-[11px]">
+                  from medical form
+                </Badge>
+                <FieldHelp label="About the from medical form badge">
+                  This person filled in a medical form at one of your classes but has not booked
+                  online.
+                </FieldHelp>
+              </span>
             ) : null}
           </span>
         ),
@@ -406,31 +412,37 @@ export default function CustomersList() {
       />
 
       {/* Tab toggle */}
-      <div className="border-daisy-line-soft flex w-fit overflow-hidden rounded-full border">
-        <button
-          type="button"
-          onClick={() => setTab('booked')}
-          className={
-            tab === 'booked'
-              ? 'bg-daisy-primary px-5 py-1.5 text-[12px] font-bold text-white'
-              : 'text-daisy-muted hover:text-daisy-ink px-5 py-1.5 text-[12px] font-bold'
-          }
-          aria-pressed={tab === 'booked'}
-        >
-          Booked customers
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('all')}
-          className={
-            tab === 'all'
-              ? 'bg-daisy-primary px-5 py-1.5 text-[12px] font-bold text-white'
-              : 'text-daisy-muted hover:text-daisy-ink px-5 py-1.5 text-[12px] font-bold'
-          }
-          aria-pressed={tab === 'all'}
-        >
-          All contacts
-        </button>
+      <div className="flex items-center gap-2">
+        <div className="border-daisy-line-soft flex w-fit overflow-hidden rounded-full border">
+          <button
+            type="button"
+            onClick={() => setTab('booked')}
+            className={
+              tab === 'booked'
+                ? 'bg-daisy-primary px-5 py-1.5 text-[12px] font-bold text-white'
+                : 'text-daisy-muted hover:text-daisy-ink px-5 py-1.5 text-[12px] font-bold'
+            }
+            aria-pressed={tab === 'booked'}
+          >
+            Booked customers
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('all')}
+            className={
+              tab === 'all'
+                ? 'bg-daisy-primary px-5 py-1.5 text-[12px] font-bold text-white'
+                : 'text-daisy-muted hover:text-daisy-ink px-5 py-1.5 text-[12px] font-bold'
+            }
+            aria-pressed={tab === 'all'}
+          >
+            All contacts
+          </button>
+        </div>
+        <FieldHelp label="About All contacts">
+          Booked customers have paid for a class. All contacts also includes people who filled in a
+          medical form but have not booked.
+        </FieldHelp>
       </div>
 
       {tab === 'booked' ? <BookedCustomersTab /> : <AllContactsTab />}

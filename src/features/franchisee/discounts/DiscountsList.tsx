@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { PageHeader, DataTable, StatusPill, EmptyState } from '@/components/daisy';
+import { PageHeader, DataTable, StatusPill, EmptyState, FieldHelp } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -51,6 +51,16 @@ function renderValue(row: DiscountCode): string {
     return `${row.value}%`;
   }
   return formatPence(row.value);
+}
+
+// Column header with a plain-English (i) tooltip beside the label.
+function HeaderWithHelp({ label, help }: { label: string; help: string }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {label}
+      <FieldHelp>{help}</FieldHelp>
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +117,13 @@ export default function DiscountsList() {
       },
       {
         accessorKey: 'group_name',
-        header: 'Group',
+        meta: { mobileLabel: 'Group' },
+        header: () => (
+          <HeaderWithHelp
+            label="Group"
+            help="Codes made in a batch share a group name so you can find them together."
+          />
+        ),
         cell: ({ row }) => (
           <span className="text-daisy-muted text-[13px]">{row.original.group_name ?? '—'}</span>
         ),
@@ -129,7 +145,13 @@ export default function DiscountsList() {
       },
       {
         id: 'template_ids',
-        header: 'Course types',
+        meta: { mobileLabel: 'Course types' },
+        header: () => (
+          <HeaderWithHelp
+            label="Course types"
+            help="Which classes the code works on. All means every class."
+          />
+        ),
         accessorFn: (row) => restrictionSummary(row.template_ids, courseTypes),
         cell: ({ row }) => {
           const summary = restrictionSummary(row.original.template_ids, courseTypes);
@@ -144,7 +166,13 @@ export default function DiscountsList() {
       },
       {
         accessorKey: 'max_uses',
-        header: 'Max uses',
+        meta: { mobileLabel: 'Max uses' },
+        header: () => (
+          <HeaderWithHelp
+            label="Max uses"
+            help="The most times this code can be used in total. The infinity symbol means unlimited."
+          />
+        ),
         cell: ({ row }) => (
           <span className="text-daisy-ink text-[13px]">
             {row.original.max_uses !== null ? row.original.max_uses : '∞'}
@@ -153,14 +181,23 @@ export default function DiscountsList() {
       },
       {
         accessorKey: 'uses_count',
-        header: 'Used',
+        meta: { mobileLabel: 'Used' },
+        header: () => (
+          <HeaderWithHelp label="Used" help="How many times this code has been used so far." />
+        ),
         cell: ({ row }) => (
           <span className="text-[13px] tabular-nums">{row.original.uses_count}</span>
         ),
       },
       {
         id: 'valid_from',
-        header: 'Valid from',
+        meta: { mobileLabel: 'Valid from' },
+        header: () => (
+          <HeaderWithHelp
+            label="Valid from"
+            help="The dates the code works between. Blank means no limit."
+          />
+        ),
         accessorFn: (row) => formatDate(row.valid_from),
         cell: ({ row }) => (
           <span className="text-daisy-muted text-[13px]">
@@ -170,7 +207,13 @@ export default function DiscountsList() {
       },
       {
         id: 'valid_until',
-        header: 'Valid until',
+        meta: { mobileLabel: 'Valid until' },
+        header: () => (
+          <HeaderWithHelp
+            label="Valid until"
+            help="The dates the code works between. Blank means no limit."
+          />
+        ),
         accessorFn: (row) => formatDate(row.valid_until),
         cell: ({ row }) => (
           <span className="text-daisy-muted text-[13px]">
@@ -180,7 +223,13 @@ export default function DiscountsList() {
       },
       {
         accessorKey: 'is_active',
-        header: 'Status',
+        meta: { mobileLabel: 'Status' },
+        header: () => (
+          <HeaderWithHelp
+            label="Status"
+            help="Inactive codes are saved but cannot be used at checkout."
+          />
+        ),
         cell: ({ row }) =>
           row.original.is_active ? (
             <StatusPill variant="active">Active</StatusPill>

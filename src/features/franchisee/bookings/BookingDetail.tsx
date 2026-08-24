@@ -23,7 +23,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { formatInTimeZone } from 'date-fns-tz';
 import { toast } from 'sonner';
-import { PageHeader, StatusPill, EmptyState } from '@/components/daisy';
+import { PageHeader, StatusPill, EmptyState, FieldHelp } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatPence } from '@/lib/format';
 import { BookingEmailsCard } from '@/features/bookings/BookingEmailsCard';
 import TransferBookingDialog from './TransferBookingDialog';
@@ -142,14 +143,20 @@ function stripeRefundHref(booking: {
 
 function StripeRefundLink({ href }: { href: string }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-daisy-primary text-sm font-semibold hover:underline"
-    >
-      Process refund in Stripe ↗
-    </a>
+    <span className="inline-flex items-center gap-1">
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-daisy-primary text-sm font-semibold hover:underline"
+      >
+        Process refund in Stripe ↗
+      </a>
+      <FieldHelp>
+        This opens Stripe where you actually send the money back. Cancelling here does not refund on
+        its own.
+      </FieldHelp>
+    </span>
   );
 }
 
@@ -254,7 +261,7 @@ function MarkAsPaidDialog({
           <DialogTitle>Mark as manually paid</DialogTitle>
           <DialogDescription>
             Record this booking as paid by cheque, invoice, or other manual method. Enter a
-            reference (cheque number, invoice ID, etc.) for the audit trail.
+            reference (cheque number, invoice ID, etc.) so you have a record of it.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
@@ -613,33 +620,54 @@ export default function BookingDetail() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setMarkPaidOpen(true)}
-                  disabled={!isPending || isCancelled}
-                  title={
-                    isCancelled
-                      ? 'Booking is cancelled'
-                      : !isPending
-                        ? `Payment status is '${booking.payment_status}' — only pending bookings can be marked as paid`
-                        : undefined
-                  }
-                >
-                  Mark as paid
-                </Button>
+                {(() => {
+                  const markPaidHint = isCancelled
+                    ? 'Booking is cancelled'
+                    : !isPending
+                      ? `Payment status is '${booking.payment_status}' — only pending bookings can be marked as paid`
+                      : undefined;
+                  const markPaidButton = (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMarkPaidOpen(true)}
+                      disabled={!isPending || isCancelled}
+                    >
+                      Mark as paid
+                    </Button>
+                  );
+                  return markPaidHint ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        {/* Wrapping span keeps the tooltip working while the button is disabled. */}
+                        <span className="inline-flex cursor-help">{markPaidButton}</span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[260px] text-xs leading-snug">
+                        {markPaidHint}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    markPaidButton
+                  );
+                })()}
                 <Button variant="outline" size="sm" onClick={() => setAddNoteOpen(true)}>
                   Add note
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setTransferOpen(true)}
-                  disabled={isCancelled}
-                  title={isCancelled ? 'Cancelled bookings cannot be moved' : undefined}
-                >
-                  Move to another course
-                </Button>
+                <span className="inline-flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTransferOpen(true)}
+                    disabled={isCancelled}
+                    title={isCancelled ? 'Cancelled bookings cannot be moved' : undefined}
+                  >
+                    Move to another course
+                  </Button>
+                  <FieldHelp>
+                    Move this booking to one of your other upcoming classes, keeping the customer's
+                    details.
+                  </FieldHelp>
+                </span>
                 <Button
                   variant="destructive"
                   size="sm"
@@ -780,7 +808,8 @@ export default function BookingDetail() {
                 <CardHeader>
                   <CardTitle>Notes</CardTitle>
                   <CardDescription>
-                    Append-only. Each note is prefixed with the date and time it was added.
+                    Notes can be added but not edited or deleted. Each one is stamped with the date
+                    and time.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -798,7 +827,9 @@ export default function BookingDetail() {
               <Card>
                 <CardHeader>
                   <CardTitle>Activity timeline</CardTitle>
-                  <CardDescription>Audit log entries scoped to this booking.</CardDescription>
+                  <CardDescription>
+                    A history of everything that has happened to this booking.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                   <ActivityTimeline activity={activity} isLoading={activityLoading} />

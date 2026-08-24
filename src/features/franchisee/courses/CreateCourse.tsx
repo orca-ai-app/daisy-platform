@@ -52,7 +52,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { PageHeader } from '@/components/daisy';
+import { PageHeader, FieldHelp } from '@/components/daisy';
 import { TerritoryWarning } from '@/components/daisy/TerritoryWarning';
 import { cn } from '@/lib/utils';
 
@@ -516,7 +516,13 @@ function Step2Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
-        <Label>Visibility</Label>
+        <Label className="inline-flex items-center gap-1">
+          Visibility
+          <FieldHelp>
+            Public classes appear in the online class finder for anyone to book. Private classes are
+            invite-only and never show in search.
+          </FieldHelp>
+        </Label>
         <Controller
           name="visibility"
           control={form.control}
@@ -589,8 +595,8 @@ function Step2Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
               onChange={(id) => setValue('private_client_id', id, { shouldDirty: true })}
             />
             <p className="text-daisy-muted text-xs">
-              Link this course to a client in your directory. The Wave 8 booking webhook will stamp
-              the client on every booking automatically.
+              Link this course to a client in your directory. Every booking for this class will be
+              linked to this client automatically.
             </p>
           </div>
         </>
@@ -847,6 +853,12 @@ function Step3Venue({
           })}
           className="uppercase"
         />
+        {visibility === 'private' ? (
+          <p className="text-daisy-muted text-xs">
+            A district is just the first part of a postcode, like GU1. Use it when you do not have
+            the full address yet.
+          </p>
+        ) : null}
         {errors.venue_postcode ? (
           <p className="text-daisy-orange text-xs">{errors.venue_postcode.message}</p>
         ) : null}
@@ -927,6 +939,9 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
             step="1"
             {...register('capacity', { valueAsNumber: true })}
           />
+          <p className="text-daisy-muted text-xs">
+            The most people who can attend this class in total.
+          </p>
           {errors.capacity ? (
             <p className="text-daisy-orange text-xs">{errors.capacity.message}</p>
           ) : null}
@@ -1045,8 +1060,15 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
 
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr]">
                 <div className="flex flex-col gap-1">
-                  <Label htmlFor={`tt-session-${i}`} className="text-xs">
+                  <Label
+                    htmlFor={`tt-session-${i}`}
+                    className="inline-flex items-center gap-1 text-xs"
+                  >
                     Session details <span className="text-daisy-muted font-normal">(optional)</span>
+                    <FieldHelp>
+                      Extra timing shown to customers, for example 6-hour, 9:30 to 15:30. Leave
+                      blank if not needed.
+                    </FieldHelp>
                   </Label>
                   <Input
                     id={`tt-session-${i}`}
@@ -1082,6 +1104,9 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
                       </Select>
                     )}
                   />
+                  <p className="text-daisy-muted text-xs">
+                    Only set this if you are VAT registered. Leave as None if you are not sure.
+                  </p>
                 </div>
               </div>
             </CardContent>

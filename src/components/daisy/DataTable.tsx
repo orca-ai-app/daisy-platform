@@ -159,7 +159,8 @@ export function DataTable<TRow>({
                     const header = cell.column.columnDef.header;
                     // Only string headers make sensible inline labels; a
                     // custom header node (sort button, checkbox) is skipped.
-                    const label = typeof header === 'string' ? header : null;
+                    const meta = cell.column.columnDef.meta as { mobileLabel?: string } | undefined;
+                    const label = typeof header === 'string' ? header : (meta?.mobileLabel ?? null);
                     return (
                       <div
                         key={cell.id}

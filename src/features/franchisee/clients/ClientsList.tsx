@@ -36,7 +36,7 @@ function RecentBookingsPanel({ clientId }: { clientId: string }) {
     return (
       <div className="bg-daisy-paper-soft rounded-[8px] p-3">
         <p className="text-daisy-muted text-xs">
-          No bookings yet for this client. Link a private course to start generating bookings.
+          Bookings appear here once you run a private class for this client.
         </p>
       </div>
     );
@@ -191,7 +191,7 @@ export default function ClientsList() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Clients"
-        subtitle="Manage your private clients: schools, companies, and organisations."
+        subtitle="Clients are companies, schools or groups you run private classes for, kept separate from individual customers."
         actions={
           <>
             <Badge variant="primary">{clients.length} total</Badge>

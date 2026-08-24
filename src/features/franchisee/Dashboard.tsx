@@ -1,5 +1,12 @@
-import { BookOpen, CalendarDays, Coins, ShoppingBag, Users } from 'lucide-react';
-import { EmptyState, PageHeader, StatCard, type StatDeltaTone } from '@/components/daisy';
+import { useState } from 'react';
+import { BookOpen, CalendarDays, Coins, ShoppingBag, Users, X } from 'lucide-react';
+import {
+  EmptyState,
+  FieldHelp,
+  PageHeader,
+  StatCard,
+  type StatDeltaTone,
+} from '@/components/daisy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRole } from '@/features/auth/RoleContext';
@@ -99,6 +106,9 @@ export default function Dashboard() {
 
   const today = dateFormatter.format(new Date());
 
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+  const hasNoUpcomingCourses = !stats.isLoading && (stats.data?.upcomingCourses ?? 0) === 0;
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -112,6 +122,24 @@ export default function Dashboard() {
         }
         actions={<span className="text-daisy-muted text-sm font-semibold">{today}</span>}
       />
+
+      {/* First-run welcome — shown until the franchisee has upcoming courses */}
+      {hasNoUpcomingCourses && !welcomeDismissed ? (
+        <div className="border-daisy-line flex items-start gap-3 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="flex-1 text-sm font-semibold text-amber-800">
+            Welcome to your Daisy portal. Start by scheduling your first class under Courses, then
+            connect Stripe under Payments so customers can pay by card.
+          </p>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setWelcomeDismissed(true)}
+            className="shrink-0 text-amber-800 hover:text-amber-900"
+          >
+            <X aria-hidden className="h-4 w-4" />
+          </button>
+        </div>
+      ) : null}
 
       {/* KPI ROW */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -131,7 +159,14 @@ export default function Dashboard() {
             />
 
             <StatCard
-              label="Bookings this month"
+              label={
+                <>
+                  Bookings this month{' '}
+                  <FieldHelp>
+                    Every booking made for your classes this month, whether paid yet or not.
+                  </FieldHelp>
+                </>
+              }
               value={(stats.data?.bookingsMtd ?? 0).toLocaleString('en-GB')}
               delta={
                 (stats.data?.bookingsMtd ?? 0) === 0
@@ -143,7 +178,15 @@ export default function Dashboard() {
             />
 
             <StatCard
-              label="Revenue this month"
+              label={
+                <>
+                  Revenue this month{' '}
+                  <FieldHelp>
+                    Money taken from card bookings this month. It does not include cash or cheque
+                    sales you have not marked as paid.
+                  </FieldHelp>
+                </>
+              }
               value={formatPence(stats.data?.revenueMtd ?? 0)}
               delta={
                 (stats.data?.revenueMtd ?? 0) === 0
@@ -155,7 +198,14 @@ export default function Dashboard() {
             />
 
             <StatCard
-              label="Merchandise this month"
+              label={
+                <>
+                  Merchandise this month{' '}
+                  <FieldHelp>
+                    Book and product sales you have recorded this month, both in person and online.
+                  </FieldHelp>
+                </>
+              }
               value={formatPence(stats.data?.merchandiseMtd ?? 0)}
               delta={
                 (stats.data?.merchandiseMtd ?? 0) === 0
@@ -167,7 +217,15 @@ export default function Dashboard() {
             />
 
             <StatCard
-              label="Outstanding capacity"
+              label={
+                <>
+                  Outstanding capacity{' '}
+                  <FieldHelp>
+                    The total number of empty spaces across all your upcoming classes. The higher it
+                    is, the more places you still have to sell.
+                  </FieldHelp>
+                </>
+              }
               value={(stats.data?.outstandingCapacity ?? 0).toLocaleString('en-GB')}
               delta={
                 (stats.data?.outstandingCapacity ?? 0) === 0

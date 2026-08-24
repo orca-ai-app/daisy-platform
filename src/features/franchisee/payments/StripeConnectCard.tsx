@@ -22,6 +22,7 @@ import { ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { FieldHelp } from '@/components/daisy';
 import { useConnectStatus, useStartStripeOAuth, useDisconnectStripe } from './connectQueries';
 import { paymentKeys } from './queryKeys';
 import { useQueryClient } from '@tanstack/react-query';
@@ -63,7 +64,6 @@ export default function StripeConnectCard({ returnState, oauthError }: StripeCon
     if (oauthError) {
       toast.error(`Could not connect Stripe: ${oauthError.replace(/_/g, ' ')}`);
     }
-     
   }, [returnState, oauthError, queryClient]);
 
   // -------------------------------------------------------------------------
@@ -128,7 +128,8 @@ export default function StripeConnectCard({ returnState, oauthError }: StripeCon
           <div>
             <h2 className="text-daisy-ink text-lg font-bold">Stripe payments</h2>
             <p className="text-daisy-muted mt-1 text-sm">
-              Your Stripe account is connected. Payment links can be generated for private courses.
+              Your Stripe account is connected. You can now take card payments and send payment
+              links for private classes.
             </p>
           </div>
           <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
@@ -138,8 +139,11 @@ export default function StripeConnectCard({ returnState, oauthError }: StripeCon
 
         <dl className="border-daisy-line mt-5 border-t pt-4">
           <div className="flex items-center gap-2">
-            <dt className="text-daisy-muted text-xs font-bold tracking-[0.06em] uppercase">
+            <dt className="text-daisy-muted flex items-center gap-1 text-xs font-bold tracking-[0.06em] uppercase">
               Account
+              <FieldHelp>
+                This is your connected Stripe account. Only the start and end are shown for safety.
+              </FieldHelp>
             </dt>
             <dd className="text-daisy-ink font-mono text-sm">
               {maskAccountId(status.stripe_account_id)}
@@ -158,15 +162,18 @@ export default function StripeConnectCard({ returnState, oauthError }: StripeCon
             <ExternalLink aria-hidden className="h-3.5 w-3.5" />
           </a>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDisconnect}
-            disabled={disconnect.isPending}
-            className="text-daisy-muted text-sm"
-          >
-            {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
-          </Button>
+          <span className="inline-flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDisconnect}
+              disabled={disconnect.isPending}
+              className="text-daisy-muted text-sm"
+            >
+              {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
+            </Button>
+            <FieldHelp>Stops card payments through Daisy until you reconnect.</FieldHelp>
+          </span>
         </div>
       </div>
     );
@@ -181,6 +188,13 @@ export default function StripeConnectCard({ returnState, oauthError }: StripeCon
       <p className="text-daisy-muted mt-1 text-sm">
         Connect your existing Stripe account to take card payments for private courses. Daisy takes
         a 2% platform fee; all other revenue settles directly to your bank.
+      </p>
+      <p className="text-daisy-muted mt-2 text-xs">
+        You will sign in to your own Stripe account. If you do not have one yet, you can create it
+        during sign-in.
+      </p>
+      <p className="text-daisy-muted mt-2 text-xs font-semibold">
+        Customers cannot pay by card until you connect.
       </p>
 
       <div className="mt-5">

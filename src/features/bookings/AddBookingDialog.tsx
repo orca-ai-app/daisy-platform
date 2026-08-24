@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatPence } from '@/lib/format';
+import { FieldHelp } from '@/components/daisy';
 
 interface BookableInstance {
   id: string;
@@ -300,10 +301,17 @@ export default function AddBookingDialog({
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-daisy-muted text-xs">
+                Pick the ticket the customer is paying for. The price and how many places it uses
+                come from the class.
+              </p>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ab-qty" className={labelCls}>
-                Quantity
+                <span className="inline-flex items-center gap-1">
+                  Quantity
+                  <FieldHelp>How many of this ticket the customer is buying.</FieldHelp>
+                </span>
               </Label>
               <Input
                 id="ab-qty"
@@ -346,6 +354,9 @@ export default function AddBookingDialog({
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@example.com"
             />
+            <p className="text-daisy-muted text-xs">
+              Confirmation and reminder emails go to this address, so check it is right.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

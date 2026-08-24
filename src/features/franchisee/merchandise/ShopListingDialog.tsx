@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { FieldHelp } from '@/components/daisy';
 import { formatPence } from '@/lib/format';
 import { extractRequestId } from '@/lib/logger';
 import { poundsToPence, penceToPounds } from '../courses/money';
@@ -189,8 +190,11 @@ export function ShopListingDialog({ item, open, onClose }: ShopListingDialogProp
             {/* HQ reference — a franchisee's own item has no network RRP */}
             {!isOwn ? (
               <div className="border-daisy-line bg-daisy-paper-soft flex items-center justify-between rounded-[8px] border-2 p-3">
-                <span className="text-daisy-muted text-xs font-bold tracking-wider uppercase">
-                  HQ recommended price
+                <span className="inline-flex items-center gap-1 text-xs font-bold tracking-wider uppercase">
+                  <span className="text-daisy-muted">HQ recommended price</span>
+                  <FieldHelp label="About the HQ recommended price">
+                    The price HQ suggests. You can charge your own price.
+                  </FieldHelp>
                 </span>
                 <span className="text-daisy-ink text-sm font-extrabold tabular-nums">
                   {product.rrp_pence != null ? formatPence(product.rrp_pence) : '—'}

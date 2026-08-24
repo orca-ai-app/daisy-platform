@@ -61,6 +61,7 @@ import {
   useUpdateDiscountCode,
   useDiscountCourseTypes,
 } from './discountQueries';
+import { FieldHelp } from '@/components/daisy';
 import { restrictionSummary } from './types';
 import type { DiscountCode, DiscountType } from './types';
 
@@ -514,7 +515,13 @@ export function DiscountDialog({ open, onOpenChange, discountId }: DiscountDialo
                 {/* Type + Value */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
-                    <Label>Type</Label>
+                    <Label className="flex items-center gap-1">
+                      Type
+                      <FieldHelp>
+                        Percentage takes a share off the price, for example 10%. Fixed takes a set
+                        amount off, for example £5.
+                      </FieldHelp>
+                    </Label>
                     <Select
                       value={type}
                       onValueChange={(v) =>

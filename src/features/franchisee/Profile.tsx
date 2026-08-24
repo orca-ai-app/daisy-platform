@@ -1,10 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Building2, Lock } from 'lucide-react';
-import { PageHeader } from '@/components/daisy';
+import { FieldHelp, PageHeader } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -248,7 +248,18 @@ export default function Profile() {
             </CardHeader>
             <CardContent className="p-6">
               <dl className="flex flex-col gap-4 text-sm">
-                <SummaryRow label="Franchisee number" value={profile.data?.number ?? '—'} />
+                <SummaryRow
+                  label={
+                    <>
+                      Franchisee number
+                      <FieldHelp>
+                        Your unique instructor number. Customers can type it to open your medical
+                        form if they cannot scan the QR code.
+                      </FieldHelp>
+                    </>
+                  }
+                  value={profile.data?.number ?? '—'}
+                />
                 <SummaryRow
                   label="Status"
                   value={
@@ -270,7 +281,15 @@ export default function Profile() {
                   }
                 />
                 <SummaryRow
-                  label="VAT registered"
+                  label={
+                    <>
+                      VAT registered
+                      <FieldHelp>
+                        Whether your business is registered for VAT. HQ sets this. If it is wrong,
+                        contact your support team.
+                      </FieldHelp>
+                    </>
+                  }
                   value={profile.data?.vat_registered ? 'Yes' : 'No'}
                 />
               </dl>
@@ -307,10 +326,12 @@ function ordinalSuffix(n: number): string {
   return s[(v - 20) % 10] ?? s[v] ?? s[0];
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
+function SummaryRow({ label, value }: { label: ReactNode; value: string }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <dt className="text-daisy-muted text-xs font-bold tracking-[0.06em] uppercase">{label}</dt>
+      <dt className="text-daisy-muted flex items-center gap-1 text-xs font-bold tracking-[0.06em] uppercase">
+        {label}
+      </dt>
       <dd className="text-daisy-ink font-semibold">{value}</dd>
     </div>
   );

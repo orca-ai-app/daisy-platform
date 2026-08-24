@@ -25,6 +25,7 @@ import {
   DataTable,
   StatusPill,
   EmptyState,
+  FieldHelp,
   TerritoryMap,
   type TerritoryMapItem,
 } from '@/components/daisy';
@@ -60,7 +61,15 @@ export default function Territories() {
       {
         id: 'postcode_prefix',
         accessorKey: 'postcode_prefix',
-        header: 'Postcode',
+        meta: { mobileLabel: 'Postcode' },
+        header: () => (
+          <span className="inline-flex items-center gap-1">
+            Postcode
+            <FieldHelp>
+              This is the start of the postcodes customers search by to find your classes.
+            </FieldHelp>
+          </span>
+        ),
         cell: ({ row }) => (
           <span className="text-daisy-ink font-bold whitespace-nowrap">
             {row.original.postcode_prefix}
@@ -85,9 +94,15 @@ export default function Territories() {
         accessorKey: 'status',
         header: 'Status',
         cell: ({ row }) => (
-          <StatusPill variant={row.original.status}>
-            {STATUS_LABELS[row.original.status]}
-          </StatusPill>
+          <span className="inline-flex items-center gap-1.5">
+            <StatusPill variant={row.original.status}>
+              {STATUS_LABELS[row.original.status]}
+            </StatusPill>
+            <FieldHelp>
+              Active means this area is yours. Reserved is being held for you. Vacant is not yet
+              assigned.
+            </FieldHelp>
+          </span>
         ),
       },
       {

@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { PageHeader, StatusPill, EmptyState } from '@/components/daisy';
+import { PageHeader, StatusPill, EmptyState, FieldHelp } from '@/components/daisy';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -963,8 +963,12 @@ function BookingLinkCard({ bookingToken, courseName }: BookingLinkCardProps) {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="border-daisy-line bg-daisy-paper rounded-[8px] border px-3 py-2">
-          <p className="text-daisy-muted mb-1 text-[11px] font-bold tracking-wider uppercase">
-            Booking URL
+          <p className="mb-1 inline-flex items-center gap-1 text-[11px] font-bold tracking-wider uppercase">
+            <span className="text-daisy-muted">Booking URL</span>
+            <FieldHelp label="About the booking link">
+              This is the private link customers use to book this class. Share it with your invited
+              guests.
+            </FieldHelp>
           </p>
           <a
             href={url}

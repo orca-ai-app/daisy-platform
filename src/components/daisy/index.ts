@@ -23,3 +23,4 @@ export { TerritoryWarning } from './TerritoryWarning';
 export type { TerritoryWarningProps } from './TerritoryWarning';
 export { MonthCalendar } from './MonthCalendar';
 export type { MonthCalendarProps, MonthCalendarCourse } from './MonthCalendar';
+export { FieldHelp } from './FieldHelp';

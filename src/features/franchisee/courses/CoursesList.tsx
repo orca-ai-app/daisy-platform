@@ -20,7 +20,14 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, QrCode } from 'lucide-react';
-import { PageHeader, DataTable, StatusPill, EmptyState, MonthCalendar } from '@/components/daisy';
+import {
+  PageHeader,
+  DataTable,
+  StatusPill,
+  EmptyState,
+  MonthCalendar,
+  FieldHelp,
+} from '@/components/daisy';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -256,7 +263,10 @@ function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
       accessorFn: (row) => `${row.venue_name ?? ''} ${row.venue_postcode ?? ''}`,
       cell: ({ row }) =>
         row.original.venue_tbc && !row.original.venue_postcode ? (
-          <span className="text-daisy-muted text-[12px] font-semibold">Venue TBC</span>
+          <span className="inline-flex items-center gap-1">
+            <span className="text-daisy-muted text-[12px] font-semibold">Venue TBC</span>
+            <FieldHelp>Venue to be confirmed. You can add it later.</FieldHelp>
+          </span>
         ) : (
           <span className="flex flex-col">
             <span className="font-semibold">{row.original.venue_name ?? '-'}</span>
@@ -268,7 +278,13 @@ function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
     },
     {
       id: 'capacity',
-      header: 'Capacity',
+      meta: { mobileLabel: 'Capacity' },
+      header: () => (
+        <span className="inline-flex items-center gap-1">
+          Capacity
+          <FieldHelp>Left number is places booked, right number is the total class size.</FieldHelp>
+        </span>
+      ),
       accessorFn: (row) => row.capacity - row.spots_remaining,
       cell: ({ row }) => {
         const used = row.original.capacity - row.original.spots_remaining;
@@ -281,7 +297,13 @@ function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
     },
     {
       id: 'spots',
-      header: 'Spots remaining',
+      meta: { mobileLabel: 'Spots remaining' },
+      header: () => (
+        <span className="inline-flex items-center gap-1">
+          Spots remaining
+          <FieldHelp>Free places still available to book.</FieldHelp>
+        </span>
+      ),
       accessorFn: (row) => row.spots_remaining,
       cell: ({ row }) => (
         <span className="text-daisy-ink-soft font-mono text-[13px]">
@@ -291,7 +313,16 @@ function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
     },
     {
       accessorKey: 'price_pence',
-      header: 'Price',
+      meta: { mobileLabel: 'Price' },
+      header: () => (
+        <span className="inline-flex items-center gap-1">
+          Price
+          <FieldHelp>
+            From appears when a class has ticket types at different prices, so customers see the
+            lowest one.
+          </FieldHelp>
+        </span>
+      ),
       cell: ({ row }) => (
         <span className="font-semibold">
           {row.original.ticket_prices_differ && row.original.ticket_price_from != null
@@ -302,7 +333,15 @@ function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
     },
     {
       accessorKey: 'status',
-      header: 'Status',
+      meta: { mobileLabel: 'Status' },
+      header: () => (
+        <span className="inline-flex items-center gap-1">
+          Status
+          <FieldHelp>
+            Scheduled classes are open for booking. Completed have already run. Cancelled are off.
+          </FieldHelp>
+        </span>
+      ),
       cell: ({ row }) => (
         <StatusPill variant={statusVariant(row.original.status)}>{row.original.status}</StatusPill>
       ),
@@ -313,19 +352,23 @@ function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-2">
           {row.original.status !== 'cancelled' ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              title="Medical form QR (same for every class)"
-              onClick={(e) => {
-                e.stopPropagation();
-                onQrClick();
-              }}
-            >
-              <QrCode className="h-4 w-4" aria-hidden />
-              <span className="sr-only">Show my medical form QR</span>
-            </Button>
+            <span className="inline-flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onQrClick();
+                }}
+              >
+                <QrCode className="h-4 w-4" aria-hidden />
+                <span className="sr-only">Show my medical form QR</span>
+              </Button>
+              <FieldHelp label="About the medical form QR code">
+                Show your medical form QR code. Same code for every class.
+              </FieldHelp>
+            </span>
           ) : null}
           <Link
             to={`/franchisee/courses/${row.original.id}`}
@@ -634,6 +677,7 @@ export default function CoursesList() {
               <EmptyState
                 title="No courses found"
                 body="Try widening the date range or clearing the status filter. Schedule a new course using the button above."
+                cta={{ label: 'Schedule a course', href: '/franchisee/courses/new' }}
               />
             }
           />
