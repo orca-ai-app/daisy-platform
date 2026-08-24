@@ -421,25 +421,50 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: 'moving-from-bookwhen',
     title: 'Moving from BookWhen',
     summary:
-      'The four steps to switch over from BookWhen to the new Daisy booking system, and what to do on switchover day.',
+      'Bring your upcoming classes and their bookings across from BookWhen in one upload, then run it again on switchover morning to catch any new ones.',
     keywords: [
       'bookwhen',
       'migration',
       'switchover',
-      'move over',
+      'import',
+      'attendances',
+      'export',
       'carry over',
-      'attendees',
       'existing bookings',
       'cancel subscription',
     ],
     sections: [
       {
-        heading: 'The four steps before switchover day',
+        heading: 'Before you start',
         steps: [
           'Log in: use the invite email to access your portal. If you cannot log in, contact HQ straight away.',
           'Connect Stripe: go to Payments and click "Connect with Stripe". Card payments from customers cannot reach you until this is done.',
-          'Add your upcoming classes: go to Courses and click "Schedule a course" for each class currently listed on BookWhen. Use the same date, time, venue, and price.',
-          'Carry over existing bookings: for each person who has already paid through BookWhen, go to Bookings, click "Add booking", choose the class and ticket type, enter their details, save, then open the booking and click "Mark as paid". This keeps your spaces count accurate on the new system.',
+        ],
+      },
+      {
+        heading: 'Step 1: import your upcoming classes (do this once)',
+        steps: [
+          'In BookWhen, go to Bookings.',
+          'Set the Start date to today and the End date to about a month after switchover. These dates filter by the class date, not the booking date.',
+          'Set the status filter to Completed, then click Search.',
+          'Click Options, then Export attendances (CSV), and download the file. It must be Export attendances, not Export bookings, because only the attendances file has the class dates.',
+          'In your portal, open Import, upload that file, check the preview, and click Confirm. It creates your upcoming classes and everyone booked onto them, marked as paid.',
+        ],
+      },
+      {
+        heading: 'A couple of things to know',
+        body: [
+          'Any class with no bookings yet will not be in the file. Add those with "Schedule a course".',
+          'If the preview is not sure of a class type, pick the right one from the dropdown before you confirm.',
+          'Online classes come across without a venue. Set those up however you need.',
+        ],
+      },
+      {
+        heading: 'Step 2: do it again on switchover morning',
+        steps: [
+          'Between your first import and switchover, more people will book on BookWhen.',
+          'On the morning of switchover, run the exact same export and upload it again.',
+          'It will not create duplicates. Every BookWhen booking has its own reference, so anything already imported is skipped and only the new bookings are added. You can run the import as many times as you like.',
         ],
       },
       {
