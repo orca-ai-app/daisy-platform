@@ -10,6 +10,7 @@ import {
   CreditCard,
   UserCog,
   CircleHelp,
+  FileUp,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -64,6 +65,13 @@ export const franchiseeNavLinks: FranchiseeNavLink[] = [
     icon: CalendarCheck,
     ready: true,
     matchPrefix: '/franchisee/bookings',
+  },
+  {
+    label: 'Import',
+    path: '/franchisee/imports',
+    icon: FileUp,
+    ready: true,
+    matchPrefix: '/franchisee/imports',
   },
   {
     label: 'Clients',
