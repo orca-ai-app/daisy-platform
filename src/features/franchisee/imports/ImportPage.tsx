@@ -18,6 +18,13 @@ import { PageHeader, EmptyState } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useCourseTemplates } from '../courses/createCourseQueries';
 import { franchiseeKeys } from '../queryKeys';
 import { planFromCsv } from './bookwhenParse';
@@ -56,8 +63,8 @@ function londonToday(): string {
 // preview flags exactly the courses the importer will skip.
 // ---------------------------------------------------------------------------
 
-function courseBlocker(c: PlannedCourse): string | null {
-  if (c.template_match === 'unmatched' || !c.template_id) return 'No course type matched';
+function courseBlocker(c: PlannedCourse, effectiveTemplateId: string | null): string | null {
+  if (!effectiveTemplateId) return 'No course type matched';
   if (!c.event_date) return 'No date';
   if (!c.start_time) return 'No start time';
   if (!c.venue_postcode) return 'No venue postcode';
@@ -87,6 +94,10 @@ export default function ImportPage() {
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
 
+  // Per-course "course type" corrections, keyed by bookwhen_event_id → template_id.
+  // Lets the franchisee fix a guessed/unmatched type inline before importing.
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+
   // Map the wizard's template options down to the parser's TemplateLite shape.
   const templates: TemplateLite[] = useMemo(
     () =>
@@ -102,17 +113,23 @@ export default function ImportPage() {
 
   const templatesReady = !templatesLoading && templates.length > 0;
 
+  // The effective course type for a course = the franchisee's override if they
+  // picked one, otherwise the parser's matched/guessed template.
+  const effectiveTemplateId = (c: PlannedCourse): string | null =>
+    overrides[c.bookwhen_event_id] ?? c.template_id;
+
   // Courses that will be skipped by the importer (blocked) — flagged as
-  // "needs attention" in the preview.
+  // "needs attention" in the preview. Uses the effective (overridden) type so a
+  // corrected course is no longer flagged for "no course type".
   const blockers = useMemo(() => {
     const map = new Map<string, string>();
     if (!plan) return map;
     for (const c of plan.courses) {
-      const b = courseBlocker(c);
+      const b = courseBlocker(c, overrides[c.bookwhen_event_id] ?? c.template_id);
       if (b) map.set(c.bookwhen_event_id, b);
     }
     return map;
-  }, [plan]);
+  }, [plan, overrides]);
 
   const importableCount = plan ? plan.courses.length - blockers.size : 0;
 
@@ -120,6 +137,7 @@ export default function ImportPage() {
     setParseError(null);
     setResult(null);
     setPlan(null);
+    setOverrides({});
     setFileName(file.name);
 
     const reader = new FileReader();
@@ -149,6 +167,7 @@ export default function ImportPage() {
     setParseError(null);
     setFileName(null);
     setProgress(null);
+    setOverrides({});
   }
 
   async function confirmImport() {
@@ -157,7 +176,18 @@ export default function ImportPage() {
     setResult(null);
     setProgress({ done: 0, total: 0, label: 'Starting…' });
     try {
-      const res = await runImport(plan, { onProgress: (p) => setProgress(p) });
+      // Apply the franchisee's course-type corrections before importing: an
+      // overridden course carries the chosen template_id and counts as matched
+      // so the importer's blocker no longer skips it for "no course type".
+      const effectivePlan: ImportPlan = {
+        ...plan,
+        courses: plan.courses.map((c) => {
+          const override = overrides[c.bookwhen_event_id];
+          if (!override) return c;
+          return { ...c, template_id: override, template_match: 'matched' };
+        }),
+      };
+      const res = await runImport(effectivePlan, { onProgress: (p) => setProgress(p) });
       setResult(res);
       toast.success(
         `Import complete — ${res.coursesCreated} course${res.coursesCreated === 1 ? '' : 's'} and ${res.bookingsCreated} booking${res.bookingsCreated === 1 ? '' : 's'} created.`,
@@ -278,6 +308,7 @@ export default function ImportPage() {
                       <th className="px-4 py-3">Date</th>
                       <th className="px-4 py-3">Course</th>
                       <th className="px-4 py-3">Match</th>
+                      <th className="px-4 py-3">Course type</th>
                       <th className="px-4 py-3">Venue</th>
                       <th className="px-4 py-3 text-right">Bookings</th>
                       <th className="px-4 py-3">Notes</th>
@@ -306,6 +337,31 @@ export default function ImportPage() {
                           </td>
                           <td className="text-daisy-ink px-4 py-3 font-semibold">{c.title}</td>
                           <td className="px-4 py-3">{matchBadge(c.template_match)}</td>
+                          <td className="px-4 py-3">
+                            <Select
+                              value={effectiveTemplateId(c) ?? ''}
+                              onValueChange={(value) =>
+                                setOverrides((prev) => ({ ...prev, [c.bookwhen_event_id]: value }))
+                              }
+                              disabled={importing}
+                            >
+                              <SelectTrigger className="min-w-[180px]">
+                                <SelectValue placeholder="Choose a course type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {templates.map((t) => (
+                                  <SelectItem key={t.id} value={t.id}>
+                                    {t.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {c.template_match !== 'matched' && !overrides[c.bookwhen_event_id] ? (
+                              <span className="mt-1 block text-[12px] text-[#8A5A1A]">
+                                Please check this is the right type
+                              </span>
+                            ) : null}
+                          </td>
                           <td className="text-daisy-ink px-4 py-3">
                             {c.venue_name ?? <span className="text-daisy-muted">—</span>}
                             {c.venue_postcode ? (
@@ -416,8 +472,16 @@ export default function ImportPage() {
           <CardContent className="flex flex-col gap-4">
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <SummaryStat label="Courses created" value={result.coursesCreated} />
+              <SummaryStat
+                label="Classes already on the platform (reused)"
+                value={result.coursesReused}
+              />
               <SummaryStat label="Bookings created" value={result.bookingsCreated} />
               <SummaryStat label="Bookings marked paid" value={result.bookingsPaid} />
+              <SummaryStat
+                label="Bookings already imported (skipped)"
+                value={result.bookingsAlreadyImported}
+              />
             </dl>
 
             {result.coursesSkipped.length > 0 ? (
