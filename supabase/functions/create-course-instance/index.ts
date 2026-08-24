@@ -124,6 +124,8 @@ interface CreateCourseInstanceRequest {
    * a zero instance price or zero ticket price is rejected.
    */
   allow_free?: boolean;
+  /** BookWhen EventID when this course is created by the importer (migration 050). */
+  bookwhen_event_id?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -432,6 +434,8 @@ function validateBody(
       description_override:
         typeof b.description_override === 'string' ? b.description_override.trim() || null : null,
       allow_free: allowFree,
+      bookwhen_event_id:
+        typeof b.bookwhen_event_id === 'string' ? b.bookwhen_event_id.trim() || null : null,
     },
   };
 }
@@ -744,6 +748,8 @@ Deno.serve(async (req: Request) => {
     // Migration 045 (G1): franchisee-written customer-facing description.
     // NULL falls back to the template description on the booking page.
     description_override: input.description_override ?? null,
+    // Migration 050: BookWhen import idempotency key.
+    bookwhen_event_id: input.bookwhen_event_id ?? null,
   };
 
   const instanceInsert = await admin

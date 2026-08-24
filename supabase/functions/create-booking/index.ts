@@ -163,6 +163,8 @@ Deno.serve(async (req: Request) => {
   const phone = reqStr(c.phone);
   const postcode = reqStr(c.postcode);
   const notes = reqStr(body.notes);
+  // Migration 050: BookWhen import idempotency key (null for in-app bookings).
+  const bookwhenBookingId = reqStr(body.bookwhen_booking_id) || null;
 
   // --- Load course instance ------------------------------------------------
   const instanceResult = await admin
@@ -290,6 +292,7 @@ Deno.serve(async (req: Request) => {
       payment_status: 'pending',
       booking_status: 'confirmed',
       notes,
+      bookwhen_booking_id: bookwhenBookingId,
     })
     .select('id, booking_reference, payment_status')
     .single();
