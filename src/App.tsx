@@ -115,6 +115,13 @@ const FranchiseeClientsList = lazy(() => import('@/features/franchisee/clients/C
 const FranchiseeCustomersList = lazy(() => import('@/features/franchisee/customers/CustomersList'));
 
 /*
+ * BookWhen import: parse a BookWhen bookings CSV into an import plan and drive
+ * the existing create-course / create-booking edge functions. Lazy-loaded and
+ * currently unlinked from the nav (dormant) — reachable only by URL for now.
+ */
+const FranchiseeImportPage = lazy(() => import('@/features/franchisee/imports/ImportPage'));
+
+/*
  * Merchandise: franchisee book sales + the HQ product catalogue. Both are
  * simple DataTable + dialog pages; lazy-loaded to keep them off the
  * dashboard's critical path, matching the Wave 9 pages.
@@ -525,6 +532,16 @@ export default function App() {
                     element={
                       <LazyRoute>
                         <FranchiseeCustomersList />
+                      </LazyRoute>
+                    }
+                  />
+
+                  {/* BookWhen import (dormant — not in nav.ts, reachable by URL). */}
+                  <Route
+                    path="imports"
+                    element={
+                      <LazyRoute>
+                        <FranchiseeImportPage />
                       </LazyRoute>
                     }
                   />
