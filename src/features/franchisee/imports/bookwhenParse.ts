@@ -1,26 +1,29 @@
 // bookwhenParse.ts
 //
-// Pure, dependency-free parsing of a BookWhen "Export bookings (CSV)" file into
-// an import plan (upcoming courses + their paid bookings) for the Daisy platform.
+// Pure, dependency-free parsing of a BookWhen "Export attendances (CSV)" file
+// into an import plan (upcoming courses + their paid bookings) for the Daisy
+// platform. No React / Deno / Supabase imports, so it is unit-tested
+// (bookwhenParse.test.ts) and reused by the orchestration layer.
 //
-// This module is deliberately free of React / Deno / Supabase imports so it can
-// be unit-tested (bookwhenParse.test.ts) and reused by the orchestration layer.
+// WHY ATTENDANCES, NOT BOOKINGS: the bookings export is purely transactional and
+// carries NO event date, title or venue (verified on real exports). The
+// attendances export is the one with the class details. Its date filter is on
+// the EVENT date, so a franchisee sets Start date = today, End date = past
+// cutover, status = Completed, and gets their upcoming classes with the people
+// booked on them. Events with no bookings do not appear (franchisee adds those
+// by hand). Confirmed against BookWhen docs + a real franchisee export.
 //
-// SCAFFOLD STATUS (2026-08-24): the DETERMINISTIC mapping (customer identity,
-// money, paid/cancelled status, grouping by ScheduleID, idempotency ids) is
-// complete against the real export headers. THREE parsers depend on the internal
-// format of columns we have only seen the HEADER for, not populated cells. They
-// are isolated below and marked `TODO(hannah-export)`: parseScheduleDateTime,
-// parseTicketQuantity, and (loosely) matchTemplate. Finish = validate these
-// three against Hannah's real export, then wire the nav link in.
+// Grain: ONE ROW PER ATTENDEE. We group rows by EventID (one dated occurrence =
+// one course) and, within that, by BookingID (one booking = one customer with
+// quantity = number of attendee rows).
 //
-// Real headers (BookWhen bookings export):
-//   BookingID, Booking ref, Booking status, Created, Fields complete?,
-//   Payment complete?, Currency, Prices include tax?, Tax Pcnt, Cost, Payments,
-//   Owes, Franchise fees, Franchisee takings, Paid, Invoice, Payment type,
-//   Details, Tickets, Discounts, Fees, Total cost, Total tax, Booker email,
-//   Contact CustomerID, Contact name, Contact email, ScheduleID, Schedule,
-//   Additional Information:, Booker Name, Booker Phone Number, Class Address, ...
+// Stable core columns used (a real export also carries ~35 franchisee-specific
+// custom-question columns after these, which we treat as best-effort fallbacks):
+//   Event title, EventID, Event starts, Event ends, Event cancelled, Location,
+//   BookingID, Booking status, Booking cancelled, Booking cost,
+//   Booking payments, Booking owed amount, Ticket name, Ticket face value,
+//   Ticket cancelled, Attendance status, Attended?, Contact name, Contact email,
+//   Booker email, Attendee email, First name, Last name.
 
 export interface TemplateLite {
   id: string;
@@ -47,7 +50,7 @@ export interface PlannedBooking {
 }
 
 export interface PlannedCourse {
-  bookwhen_schedule_id: string;
+  bookwhen_event_id: string;
   title: string;
   template_id: string | null;
   template_match: TemplateMatch;
@@ -56,6 +59,7 @@ export interface PlannedCourse {
   end_time: string | null; // 'HH:MM'
   venue_name: string | null;
   venue_postcode: string | null;
+  online: boolean;
   price_pence: number;
   capacity: number;
   bookings: PlannedBooking[];
@@ -64,10 +68,12 @@ export interface PlannedCourse {
 
 export interface ImportPlan {
   courses: PlannedCourse[];
-  /** ScheduleIDs dropped because their event date is in the past. */
+  /** EventIDs dropped because the event date is in the past. */
   skippedPastCourses: number;
+  /** EventIDs dropped because the event is marked cancelled in BookWhen. */
+  skippedCancelledCourses: number;
   /** Rows/groups that could not be turned into a course (unparseable date, etc.). */
-  unresolved: Array<{ schedule: string; reason: string }>;
+  unresolved: Array<{ event: string; reason: string }>;
   warnings: string[];
   totals: {
     rows: number;
@@ -86,7 +92,6 @@ export function parseCsv(text: string): string[][] {
   let row: string[] = [];
   let field = '';
   let inQuotes = false;
-  // Strip a leading UTF-8 BOM if present.
   const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   for (let i = 0; i < src.length; i++) {
     const ch = src[i];
@@ -129,7 +134,6 @@ export function toRecords(grid: string[][]): Array<Record<string, string>> {
   const out: Array<Record<string, string>> = [];
   for (let r = 1; r < grid.length; r++) {
     const cells = grid[r];
-    // Skip fully-empty trailing lines.
     if (cells.every((c) => c.trim() === '')) continue;
     const rec: Record<string, string> = {};
     headers.forEach((h, i) => {
@@ -140,7 +144,7 @@ export function toRecords(grid: string[][]): Array<Record<string, string>> {
   return out;
 }
 
-// First non-empty value across a list of candidate header names.
+// First non-empty value across candidate header names.
 function pick(rec: Record<string, string>, names: string[]): string {
   for (const n of names) {
     const v = rec[n];
@@ -149,11 +153,28 @@ function pick(rec: Record<string, string>, names: string[]): string {
   return '';
 }
 
+// Phone / postcode live in franchisee-specific custom columns — scan a list.
+const PHONE_COLS = [
+  'Booker phone number',
+  'Phone number',
+  'Phone',
+  'Contact number',
+  'Contact number for home classes',
+  'School or Nursery phone number',
+  'School contact number',
+];
+const POSTCODE_COLS = [
+  'Postcode',
+  'School or Nursery postcode',
+  'School postcode',
+  'Class Address',
+];
+
 // ---------------------------------------------------------------------------
-// Deterministic field parsers (complete)
+// Field parsers
 // ---------------------------------------------------------------------------
 
-/** "£30.00", "30", "1,234.50", "GBP 30" -> integer pence. Returns null if unparseable. */
+/** "£30.00", "101.09", "1,234.50", "GBP 30" -> integer pence. Null if unparseable. */
 export function parseMoneyToPence(raw: string): number | null {
   if (!raw) return null;
   const cleaned = raw.replace(/[^0-9.,-]/g, '').replace(/,/g, '');
@@ -172,21 +193,24 @@ export function splitName(full: string): { first_name: string; last_name: string
   return { first_name: t.slice(0, idx), last_name: t.slice(idx + 1) };
 }
 
-const TRUEY = new Set(['yes', 'y', 'true', '1', 'paid', 'complete', 'completed']);
+const TRUEY = new Set(['yes', 'y', 'true', '1']);
 export function isTruthyFlag(raw: string): boolean {
   return TRUEY.has(raw.trim().toLowerCase());
 }
 
-/** Map BookWhen "Booking status" to our booking_status. Unknown -> 'confirmed'. */
-export function bookingStatusFrom(raw: string): 'confirmed' | 'attended' | 'cancelled' {
-  const s = raw.trim().toLowerCase();
-  if (s.includes('cancel') || s.includes('refund')) return 'cancelled';
-  if (s.includes('attend')) return 'attended';
-  return 'confirmed';
+/** Strip BookWhen title decoration (emoji like the ticks/laptops franchisees prefix) for matching + display. */
+export function cleanTitle(raw: string): string {
+  return raw
+    .replace(/\p{Extended_Pictographic}/gu, ' ')
+    .replace(/[\u2190-\u21FF\u2300-\u27BF]/g, ' ')
+    .replace(/\uFE0F/g, '')
+    .replace(/\u200D/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 const UK_POSTCODE_RE = /\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/i;
-/** Pull a venue name + postcode out of a free-text address. */
+/** Pull a venue name + postcode out of a free-text address (e.g. BookWhen "Location"). */
 export function parseAddress(raw: string): {
   venue_name: string | null;
   venue_postcode: string | null;
@@ -195,111 +219,27 @@ export function parseAddress(raw: string): {
   if (t === '') return { venue_name: null, venue_postcode: null };
   const m = t.match(UK_POSTCODE_RE);
   const postcode = m ? m[1].toUpperCase().replace(/\s+/g, ' ').trim() : null;
-  // Venue name = the first comma-separated chunk (usually the building/place).
   const venue = t.split(',')[0].trim() || null;
   return { venue_name: venue, venue_postcode: postcode };
 }
 
-// ---------------------------------------------------------------------------
-// TODO(hannah-export): format-dependent parsers — best-effort until validated
-// ---------------------------------------------------------------------------
-
-/**
- * TODO(hannah-export): the exact shape of the "Schedule" cell is unconfirmed.
- * Best-effort: find a date (various formats) and an optional HH:MM-HH:MM range.
- * Returns nulls (and the caller flags the course unresolved) when no date is found.
- */
-export function parseScheduleDateTime(schedule: string): {
-  event_date: string | null;
-  start_time: string | null;
-  end_time: string | null;
-  title: string;
-} {
-  const title = schedule.trim();
-  const date = findIsoDate(schedule);
-  const times = findTimeRange(schedule);
-  return {
-    event_date: date,
-    start_time: times.start,
-    end_time: times.end,
-    title,
-  };
-}
-
-const MONTHS: Record<string, number> = {
-  jan: 1,
-  feb: 2,
-  mar: 3,
-  apr: 4,
-  may: 5,
-  jun: 6,
-  jul: 7,
-  aug: 8,
-  sep: 9,
-  sept: 9,
-  oct: 10,
-  nov: 11,
-  dec: 12,
-};
-
-function pad(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-
-/** Extract 'YYYY-MM-DD' from common UK date renderings. Null if none found. */
-export function findIsoDate(s: string): string | null {
-  // 2026-09-06
-  let m = s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  // 06/09/2026 or 6-9-2026 (assume UK day-first)
-  m = s.match(/\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})\b/);
-  if (m) {
-    const d = Number(m[1]);
-    const mo = Number(m[2]);
-    let y = Number(m[3]);
-    if (y < 100) y += 2000;
-    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return `${y}-${pad(mo)}-${pad(d)}`;
+/** Parse a BookWhen datetime "2026-08-08 09:00:00 +0100" -> date + HH:MM. */
+export function parseBookwhenDateTime(s: string): { date: string | null; time: string | null } {
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) {
+    const d = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+    return { date: d ? `${d[1]}-${d[2]}-${d[3]}` : null, time: null };
   }
-  // 6 September 2026 / 6th Sep 2026 / Saturday 6 Sep 2026
-  m = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\.?\s+(\d{4})\b/);
-  if (m) {
-    const d = Number(m[1]);
-    const mo = MONTHS[m[2].slice(0, 4).toLowerCase()] ?? MONTHS[m[2].slice(0, 3).toLowerCase()];
-    const y = Number(m[3]);
-    if (mo && d >= 1 && d <= 31) return `${y}-${pad(mo)}-${pad(d)}`;
-  }
-  return null;
+  const date = `${m[1]}-${m[2]}-${m[3]}`;
+  const time = `${m[4]}:${m[5]}`;
+  // Midnight on an all-day event carries no real class time.
+  return { date, time: time === '00:00' ? null : time };
 }
 
-/** Extract an HH:MM start (and optional end) from a time range like "10:00-12:00" or "10am - 12:30pm". */
-export function findTimeRange(s: string): { start: string | null; end: string | null } {
-  const re = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/gi;
-  const found: string[] = [];
-  // Only look at a segment that plausibly holds times (after a comma or 'at').
-  const matches = [...s.matchAll(re)];
-  for (const m of matches) {
-    let h = Number(m[1]);
-    const min = m[2] ? Number(m[2]) : 0;
-    const ap = m[3]?.toLowerCase();
-    if (ap === 'pm' && h < 12) h += 12;
-    if (ap === 'am' && h === 12) h = 0;
-    // Ignore obvious non-times (e.g. a year or day number without am/pm and >23).
-    if (h > 23 || min > 59) continue;
-    if (!ap && !m[2]) continue; // a bare number with no colon and no am/pm is probably not a time
-    found.push(`${pad(h)}:${pad(min)}`);
-  }
-  return { start: found[0] ?? null, end: found[1] ?? null };
-}
-
-/**
- * TODO(hannah-export): the "Tickets" cell format is unconfirmed (could be
- * "2 x Baby Class", "2", or a multi-line list). Best-effort: the first integer
- * is the quantity; default 1.
- */
-export function parseTicketQuantity(tickets: string): number {
-  const m = tickets.match(/\d+/);
-  const n = m ? Number(m[0]) : 1;
-  return Number.isFinite(n) && n >= 1 ? n : 1;
+const ONLINE_RE = /online|distance|e-?learning|virtual|zoom|remote|webinar/i;
+export function looksOnline(title: string, location: string): boolean {
+  if (location.trim() === '') return true;
+  return ONLINE_RE.test(title) || ONLINE_RE.test(location);
 }
 
 const NON_WORD = /[^a-z0-9]+/g;
@@ -308,36 +248,31 @@ function normalise(s: string): string {
 }
 
 /**
- * Map a BookWhen "Select Class Type" (or Schedule title) to a course template.
- * Exact/substring match on template name or slug; otherwise best token overlap.
- * TODO(hannah-export): confirm the real Class Type strings and tighten scoring.
+ * Map a BookWhen event title (+ ticket name) to a Daisy course template.
+ * Exact/substring on template name/slug, else best token overlap.
  */
 export function matchTemplate(
-  classType: string,
+  text: string,
   templates: TemplateLite[],
 ): { template: TemplateLite | null; match: TemplateMatch } {
-  const q = normalise(classType);
+  const q = normalise(text);
   if (q === '' || templates.length === 0) return { template: null, match: 'unmatched' };
 
-  // 1. exact name/slug
   for (const t of templates) {
-    if (normalise(t.name) === q || t.slug === classType.trim().toLowerCase()) {
-      return { template: t, match: 'matched' };
-    }
+    if (normalise(t.name) === q) return { template: t, match: 'matched' };
   }
-  // 2. substring either direction
   for (const t of templates) {
     const tn = normalise(t.name);
     if (tn.includes(q) || q.includes(tn)) return { template: t, match: 'matched' };
   }
-  // 3. best token overlap (guessed)
   const qTokens = new Set(q.split(' ').filter(Boolean));
   let best: TemplateLite | null = null;
   let bestScore = 0;
   for (const t of templates) {
-    const tTokens = t.name.toLowerCase().replace(NON_WORD, ' ').split(' ').filter(Boolean);
+    const tTokens = normalise(t.name).split(' ').filter(Boolean);
     let score = 0;
     for (const tok of tTokens) if (qTokens.has(tok)) score++;
+    // Normalise slightly by template length so short template names aren't unfairly beaten.
     if (score > bestScore) {
       bestScore = score;
       best = t;
@@ -352,9 +287,21 @@ export function matchTemplate(
 // ---------------------------------------------------------------------------
 
 export interface BuildPlanOptions {
-  /** 'YYYY-MM-DD' in Europe/London — courses before this are skipped as past. */
+  /** 'YYYY-MM-DD' in Europe/London — events before this are skipped as past. */
   today: string;
   templates: TemplateLite[];
+}
+
+function bookingStatus(rec: Record<string, string>): 'confirmed' | 'attended' | 'cancelled' {
+  if (
+    pick(rec, ['Booking cancelled']) !== '' ||
+    isTruthyFlag(pick(rec, ['Ticket cancelled'])) ||
+    /cancel|refund/i.test(pick(rec, ['Booking status', 'Attendance status', 'Ticket status']))
+  ) {
+    return 'cancelled';
+  }
+  if (isTruthyFlag(pick(rec, ['Attended?']))) return 'attended';
+  return 'confirmed';
 }
 
 export function buildPlan(
@@ -362,112 +309,144 @@ export function buildPlan(
   opts: BuildPlanOptions,
 ): ImportPlan {
   const warnings: string[] = [];
-  const unresolved: Array<{ schedule: string; reason: string }> = [];
+  const unresolved: Array<{ event: string; reason: string }> = [];
   let cancelledBookings = 0;
-
-  // Group rows by ScheduleID (the BookWhen event id).
-  const groups = new Map<string, Array<Record<string, string>>>();
-  for (const rec of records) {
-    const scheduleId = pick(rec, ['ScheduleID']) || pick(rec, ['Schedule']);
-    if (!scheduleId) {
-      unresolved.push({ schedule: '(no ScheduleID)', reason: 'row has no ScheduleID/Schedule' });
-      continue;
-    }
-    const arr = groups.get(scheduleId) ?? [];
-    arr.push(rec);
-    groups.set(scheduleId, arr);
-  }
-
-  const courses: PlannedCourse[] = [];
   let skippedPastCourses = 0;
+  let skippedCancelledCourses = 0;
   let bookingCount = 0;
 
-  for (const [scheduleId, rows] of groups) {
-    const first = rows[0];
-    const scheduleText = pick(first, ['Schedule']) || scheduleId;
-    const sched = parseScheduleDateTime(scheduleText);
-
-    if (!sched.event_date) {
+  // Group attendee rows by EventID (one dated occurrence).
+  const events = new Map<string, Array<Record<string, string>>>();
+  for (const rec of records) {
+    const eventId = pick(rec, ['EventID']);
+    if (!eventId) {
       unresolved.push({
-        schedule: scheduleText,
-        reason: 'could not read a date from the Schedule cell',
+        event: pick(rec, ['Event title']) || '(no EventID)',
+        reason: 'row has no EventID',
       });
       continue;
     }
-    if (sched.event_date < opts.today) {
-      skippedPastCourses++;
+    const arr = events.get(eventId) ?? [];
+    arr.push(rec);
+    events.set(eventId, arr);
+  }
+
+  const courses: PlannedCourse[] = [];
+
+  for (const [eventId, rows] of events) {
+    const first = rows[0];
+    const rawTitle = pick(first, ['Event title']);
+    const title = cleanTitle(rawTitle) || rawTitle || eventId;
+
+    if (isTruthyFlag(pick(first, ['Event cancelled'])) || pick(first, ['Event cancelled']) !== '') {
+      skippedCancelledCourses++;
       continue;
     }
 
-    const classType = pick(first, ['Select Class Type']) || sched.title;
-    const { template, match } = matchTemplate(classType, opts.templates);
-    const addr = parseAddress(pick(first, ['Class Address']));
+    const starts = parseBookwhenDateTime(pick(first, ['Event starts']));
+    if (!starts.date) {
+      unresolved.push({ event: title, reason: 'could not read the Event starts date' });
+      continue;
+    }
+    if (starts.date < opts.today) {
+      skippedPastCourses++;
+      continue;
+    }
+    const ends = parseBookwhenDateTime(pick(first, ['Event ends']));
+
+    const location = pick(first, ['Location']);
+    const online = looksOnline(rawTitle, location);
+    const addr = parseAddress(location);
+    const venuePostcode =
+      addr.venue_postcode ??
+      pick(first, POSTCODE_COLS).match(UK_POSTCODE_RE)?.[1]?.toUpperCase() ??
+      null;
+
+    const ticketName = pick(first, ['Ticket name']);
+    const { template, match } = matchTemplate(`${title} ${ticketName}`, opts.templates);
 
     const courseWarnings: string[] = [];
     if (match !== 'matched') {
       courseWarnings.push(
         match === 'guessed'
-          ? `Course type guessed as "${template?.name}" from "${classType}" — check it.`
-          : `Could not match a course type for "${classType}" — pick one before importing.`,
+          ? `Course type guessed as "${template?.name}" — check it.`
+          : `Could not match a course type for "${title}" — pick one before importing.`,
       );
     }
-    if (!sched.start_time)
-      courseWarnings.push('No start time found in the Schedule cell — defaulting to 10:00.');
-    if (!addr.venue_postcode)
-      courseWarnings.push('No postcode found in the address — this class will need one.');
+    if (!starts.time) courseWarnings.push('No start time on the event — defaulting to 10:00.');
+    if (online)
+      courseWarnings.push('Looks like an online class — it has no venue; set this up as needed.');
+    else if (!venuePostcode)
+      courseWarnings.push('No postcode found for the venue — this class will need one.');
+
+    // Group this event's attendee rows into bookings by BookingID.
+    const byBooking = new Map<string, Array<Record<string, string>>>();
+    for (const rec of rows) {
+      const bid = pick(rec, ['BookingID', 'Booking ref']) || `${eventId}:${byBooking.size}`;
+      const arr = byBooking.get(bid) ?? [];
+      arr.push(rec);
+      byBooking.set(bid, arr);
+    }
 
     const bookings: PlannedBooking[] = [];
-    for (const rec of rows) {
-      const status = bookingStatusFrom(pick(rec, ['Booking status']));
-      const email = pick(rec, ['Contact email', 'Booker email']).toLowerCase();
-      const name = pick(rec, ['Contact name', 'Booker Name']);
-      const { first_name, last_name } = splitName(name);
-      const qty = parseTicketQuantity(pick(rec, ['Tickets']));
-      const totalPence = parseMoneyToPence(pick(rec, ['Total cost', 'Cost', 'Paid'])) ?? 0;
-      const paid =
-        isTruthyFlag(pick(rec, ['Payment complete?'])) ||
-        parseMoneyToPence(pick(rec, ['Paid'])) === totalPence;
-
-      const bWarnings: string[] = [];
-      if (!email) bWarnings.push('No email address — booking will import without a contact email.');
-      if (!name) bWarnings.push('No name found.');
-
+    for (const [bid, brows] of byBooking) {
+      const r = brows[0];
+      const status = bookingStatus(r);
       if (status === 'cancelled') cancelledBookings++;
 
+      const email = pick(r, [
+        'Contact email',
+        'Booker email',
+        'Attendee email',
+        'Email address',
+      ]).toLowerCase();
+      const name = pick(r, ['Contact name', 'Full name']);
+      let { first_name, last_name } = splitName(name);
+      if (!first_name) {
+        first_name = pick(r, ['First name']);
+        last_name = pick(r, ['Last name']);
+      }
+      const cost = parseMoneyToPence(pick(r, ['Booking cost', 'Booking payments']));
+      const face = parseMoneyToPence(pick(r, ['Ticket face value']));
+      const owed = parseMoneyToPence(pick(r, ['Booking owed amount'])) ?? 0;
+      const paid = /complete|paid/i.test(pick(r, ['Booking status'])) && owed <= 0;
+
+      const bWarnings: string[] = [];
+      if (!email) bWarnings.push('No email address on this booking.');
+
       bookings.push({
-        bookwhen_booking_id:
-          pick(rec, ['BookingID', 'Booking ref']) || `${scheduleId}:${bookings.length}`,
+        bookwhen_booking_id: bid,
         first_name,
         last_name,
         email,
-        phone: pick(rec, ['Booker Phone Number']) || null,
-        quantity: qty,
-        total_price_pence: totalPence,
+        phone: pick(r, PHONE_COLS) || null,
+        quantity: brows.length,
+        total_price_pence: cost ?? (face != null ? face * brows.length : 0),
         paid,
         status,
         warnings: bWarnings,
       });
-      bookingCount++;
+      bookingCount += 1;
     }
 
     const activeSeats = bookings
       .filter((b) => b.status !== 'cancelled')
       .reduce((sum, b) => sum + b.quantity, 0);
     const capacity = Math.max(template?.default_capacity ?? 12, activeSeats);
-
     const pricePence =
-      parseMoneyToPence(pick(first, ['Cost'])) ?? template?.default_price_pence ?? 0;
+      parseMoneyToPence(pick(first, ['Ticket face value'])) ?? template?.default_price_pence ?? 0;
 
     courses.push({
-      bookwhen_schedule_id: scheduleId,
-      title: sched.title,
+      bookwhen_event_id: eventId,
+      title,
       template_id: template?.id ?? null,
       template_match: match,
-      event_date: sched.event_date,
-      start_time: sched.start_time ?? '10:00',
-      end_time: sched.end_time ?? null,
-      venue_name: addr.venue_name,
-      venue_postcode: addr.venue_postcode,
+      event_date: starts.date,
+      start_time: starts.time ?? '10:00',
+      end_time: ends.time ?? null,
+      venue_name: online ? null : addr.venue_name,
+      venue_postcode: online ? null : venuePostcode,
+      online,
       price_pence: pricePence,
       capacity,
       bookings,
@@ -475,12 +454,12 @@ export function buildPlan(
     });
   }
 
-  // Stable sort by date for a readable preview.
   courses.sort((a, b) => (a.event_date ?? '').localeCompare(b.event_date ?? ''));
 
   return {
     courses,
     skippedPastCourses,
+    skippedCancelledCourses,
     unresolved,
     warnings,
     totals: {

@@ -5,11 +5,10 @@ import {
   parseMoneyToPence,
   splitName,
   isTruthyFlag,
-  bookingStatusFrom,
+  cleanTitle,
   parseAddress,
-  findIsoDate,
-  findTimeRange,
-  parseTicketQuantity,
+  parseBookwhenDateTime,
+  looksOnline,
   matchTemplate,
   buildPlan,
   type TemplateLite,
@@ -24,203 +23,315 @@ const TEMPLATES: TemplateLite[] = [
     default_price_pence: 3000,
   },
   {
-    id: 't-ana',
-    name: 'Anaphylaxis Awareness Class',
-    slug: 'anaphylaxis-awareness',
-    default_capacity: 12,
-    default_price_pence: 2000,
-  },
-  {
     id: 't-efaw',
     name: 'Emergency First Aid At Work',
     slug: 'emergency-first-aid-at-work',
     default_capacity: 12,
     default_price_pence: 9500,
   },
+  {
+    id: 't-baby-ess',
+    name: 'Baby First Aid Essentials Class',
+    slug: 'baby-first-aid-essentials',
+    default_capacity: 12,
+    default_price_pence: 2000,
+  },
 ];
 
 describe('parseCsv', () => {
   it('handles quoted fields, embedded commas, escaped quotes and CRLF', () => {
     const csv = 'a,b,c\r\n1,"x,y","he said ""hi"""\r\n2,z,w';
-    const grid = parseCsv(csv);
-    expect(grid).toEqual([
+    expect(parseCsv(csv)).toEqual([
       ['a', 'b', 'c'],
       ['1', 'x,y', 'he said "hi"'],
       ['2', 'z', 'w'],
     ]);
   });
-
   it('strips a leading BOM', () => {
-    const grid = parseCsv('﻿a,b\n1,2');
-    expect(grid[0]).toEqual(['a', 'b']);
-  });
-});
-
-describe('toRecords', () => {
-  it('keys cells by trimmed header and skips blank lines', () => {
-    const recs = toRecords(parseCsv('BookingID, Schedule \n7,Class\n\n8,Other\n'));
-    expect(recs).toEqual([
-      { BookingID: '7', Schedule: 'Class' },
-      { BookingID: '8', Schedule: 'Other' },
-    ]);
+    expect(parseCsv('﻿a,b\n1,2')[0]).toEqual(['a', 'b']);
   });
 });
 
 describe('parseMoneyToPence', () => {
   it.each([
-    ['£30.00', 3000],
-    ['30', 3000],
+    ['£99.00', 9900],
+    ['101.09', 10109],
+    ['18.00', 1800],
     ['1,234.50', 123450],
-    ['GBP 30', 3000],
-    ['£0.00', 0],
-  ])('parses %s -> %i', (input, expected) => {
+    ['', null],
+  ])('parses %s -> %s', (input, expected) => {
     expect(parseMoneyToPence(input)).toBe(expected);
-  });
-  it('returns null for junk', () => {
-    expect(parseMoneyToPence('')).toBeNull();
-    expect(parseMoneyToPence('n/a')).toBeNull();
   });
 });
 
 describe('splitName', () => {
   it('splits on the last space', () => {
-    expect(splitName('Sarah Jane Barnes')).toEqual({
-      first_name: 'Sarah Jane',
-      last_name: 'Barnes',
-    });
+    expect(splitName('Anna Gamester')).toEqual({ first_name: 'Anna', last_name: 'Gamester' });
     expect(splitName('Cher')).toEqual({ first_name: 'Cher', last_name: '' });
-    expect(splitName('  ')).toEqual({ first_name: '', last_name: '' });
   });
 });
 
-describe('status flags', () => {
-  it('reads truthy payment flags', () => {
-    expect(isTruthyFlag('Yes')).toBe(true);
+describe('isTruthyFlag', () => {
+  it('reads yes/true/1', () => {
     expect(isTruthyFlag('true')).toBe(true);
-    expect(isTruthyFlag('No')).toBe(false);
+    expect(isTruthyFlag('Yes')).toBe(true);
+    expect(isTruthyFlag('')).toBe(false);
+    expect(isTruthyFlag('no')).toBe(false);
   });
-  it('maps booking status', () => {
-    expect(bookingStatusFrom('Cancelled')).toBe('cancelled');
-    expect(bookingStatusFrom('Refunded')).toBe('cancelled');
-    expect(bookingStatusFrom('Attended')).toBe('attended');
-    expect(bookingStatusFrom('Booked')).toBe('confirmed');
-    expect(bookingStatusFrom('')).toBe('confirmed');
+});
+
+describe('cleanTitle', () => {
+  it('strips leading emoji decoration franchisees use', () => {
+    expect(cleanTitle('✅ Level 3 Emergency First Aid at Work - Hitchin')).toBe(
+      'Level 3 Emergency First Aid at Work - Hitchin',
+    );
+    expect(cleanTitle('💻LIVE ONLINE PUBLIC Class - 1 hour Baby Essentials')).toBe(
+      'LIVE ONLINE PUBLIC Class - 1 hour Baby Essentials',
+    );
   });
 });
 
 describe('parseAddress', () => {
-  it('extracts venue name and UK postcode', () => {
-    expect(parseAddress('The Church Hall, 5 High St, Sutton, SM1 1AA')).toEqual({
-      venue_name: 'The Church Hall',
-      venue_postcode: 'SM1 1AA',
-    });
+  it('splits BookWhen Location into venue + postcode', () => {
+    expect(parseAddress('Walsworth Community Centre, 88 Woolgrove Road, Hitchin, SG4 0BX')).toEqual(
+      {
+        venue_name: 'Walsworth Community Centre',
+        venue_postcode: 'SG4 0BX',
+      },
+    );
   });
-  it('returns nulls when nothing is present', () => {
+  it('returns nulls for empty (online)', () => {
     expect(parseAddress('')).toEqual({ venue_name: null, venue_postcode: null });
   });
 });
 
-describe('findIsoDate', () => {
-  it.each([
-    ['2026-09-06', '2026-09-06'],
-    ['06/09/2026', '2026-09-06'],
-    ['6-9-2026', '2026-09-06'],
-    ['Saturday 6 September 2026', '2026-09-06'],
-    ['6th Sep 2026', '2026-09-06'],
-  ])('reads %s', (input, expected) => {
-    expect(findIsoDate(input)).toBe(expected);
+describe('parseBookwhenDateTime', () => {
+  it('reads date + time', () => {
+    expect(parseBookwhenDateTime('2026-08-08 09:00:00 +0100')).toEqual({
+      date: '2026-08-08',
+      time: '09:00',
+    });
   });
-  it('returns null when no date', () => {
-    expect(findIsoDate('Baby Class, morning')).toBeNull();
-  });
-});
-
-describe('findTimeRange', () => {
-  it('reads 24h ranges', () => {
-    expect(findTimeRange('10:00-12:00')).toEqual({ start: '10:00', end: '12:00' });
-  });
-  it('reads am/pm ranges', () => {
-    expect(findTimeRange('10am - 12:30pm')).toEqual({ start: '10:00', end: '12:30' });
-  });
-  it('ignores bare day/year numbers', () => {
-    expect(findTimeRange('Baby Class 2026')).toEqual({ start: null, end: null });
+  it('treats midnight (all-day) as no time', () => {
+    expect(parseBookwhenDateTime('2026-08-10 00:00:00 +0100')).toEqual({
+      date: '2026-08-10',
+      time: null,
+    });
   });
 });
 
-describe('parseTicketQuantity', () => {
-  it('takes the first integer, defaulting to 1', () => {
-    expect(parseTicketQuantity('2 x Baby Class')).toBe(2);
-    expect(parseTicketQuantity('1')).toBe(1);
-    expect(parseTicketQuantity('')).toBe(1);
-    expect(parseTicketQuantity('Baby Class')).toBe(1);
+describe('looksOnline', () => {
+  it('true for empty location or online wording', () => {
+    expect(looksOnline('Baby Class', '')).toBe(true);
+    expect(looksOnline('LIVE ONLINE Baby Essentials', 'Distance learning')).toBe(true);
+  });
+  it('false for a physical venue', () => {
+    expect(looksOnline('Baby Class', 'Church Hall, Sutton, SM1 1AA')).toBe(false);
   });
 });
 
 describe('matchTemplate', () => {
-  it('matches exactly on name', () => {
-    const r = matchTemplate('Anaphylaxis Awareness Class', TEMPLATES);
-    expect(r.template?.id).toBe('t-ana');
-    expect(r.match).toBe('matched');
-  });
-  it('matches on substring', () => {
-    expect(matchTemplate('Baby and Child First Aid', TEMPLATES).template?.id).toBe('t-baby');
-  });
-  it('guesses on token overlap', () => {
-    const r = matchTemplate('Emergency First Aid (Work)', TEMPLATES);
+  it('matches EFAW from a decorated title + ticket', () => {
+    const r = matchTemplate(
+      'Level 3 Emergency First Aid at Work Emergency First Aid At Work',
+      TEMPLATES,
+    );
     expect(r.template?.id).toBe('t-efaw');
-    expect(['matched', 'guessed']).toContain(r.match);
   });
-  it('returns unmatched for nonsense', () => {
+  it('unmatched for nonsense', () => {
     expect(matchTemplate('Pottery Workshop', TEMPLATES).match).toBe('unmatched');
   });
 });
 
-describe('buildPlan', () => {
-  const HEADERS =
-    'BookingID,Booking status,Payment complete?,Cost,Tickets,Total cost,Booker email,Contact name,Contact email,ScheduleID,Schedule,Booker Phone Number,Class Address,Select Class Type';
+describe('buildPlan (attendances schema)', () => {
+  const H = [
+    'Event title',
+    'EventID',
+    'Event starts',
+    'Event ends',
+    'Event cancelled',
+    'Location',
+    'BookingID',
+    'Booking status',
+    'Booking cost',
+    'Booking owed amount',
+    'Ticket name',
+    'Ticket face value',
+    'Contact name',
+    'Contact email',
+    'Attended?',
+    'First name',
+    'Last name',
+    'Booker phone number',
+  ];
+  const row = (o: Record<string, string>) =>
+    H.map((h) => {
+      const v = o[h] ?? '';
+      return v.includes(',') ? `"${v}"` : v;
+    }).join(',');
 
   const rows = [
-    // Future course, two bookings (one cancelled)
-    '1,Booked,Yes,£30.00,1,£30.00,,Sarah Barnes,sarah@example.com,SCH-100,"Class, Saturday 6 September 2026, 10:00-12:00",07700 900001,"Church Hall, Sutton, SM1 1AA",Baby and Child First Aid Class',
-    '2,Cancelled,No,£30.00,2,£60.00,,Tom Lang,tom@example.com,SCH-100,"Class, Saturday 6 September 2026, 10:00-12:00",,"Church Hall, Sutton, SM1 1AA",Baby and Child First Aid Class',
-    // Past course -> skipped
-    '3,Booked,Yes,£20.00,1,£20.00,,Amy Doe,amy@example.com,SCH-050,"Class, 1 January 2020, 09:00-11:00",,"Hall, AB1 2CD",Anaphylaxis Awareness Class',
+    // Future in-person event EV1: booking BK1 = group of 2, BK2 = single, BK3 = cancelled
+    row({
+      'Event title': '✅ Baby and Child First Aid Class - Sutton',
+      EventID: 'EV1',
+      'Event starts': '2026-09-06 10:00:00 +0100',
+      'Event ends': '2026-09-06 12:00:00 +0100',
+      Location: 'Church Hall, Sutton, SM1 1AA',
+      BookingID: 'BK1',
+      'Booking status': 'complete',
+      'Booking cost': '60.00',
+      'Booking owed amount': '0.00',
+      'Ticket name': 'Baby & Child',
+      'Ticket face value': '30.00',
+      'Contact name': 'Sarah Barnes',
+      'Contact email': 'sarah@example.com',
+      'First name': 'Sarah',
+      'Last name': 'Barnes',
+      'Booker phone number': '07700 900001',
+    }),
+    row({
+      'Event title': '✅ Baby and Child First Aid Class - Sutton',
+      EventID: 'EV1',
+      'Event starts': '2026-09-06 10:00:00 +0100',
+      'Event ends': '2026-09-06 12:00:00 +0100',
+      Location: 'Church Hall, Sutton, SM1 1AA',
+      BookingID: 'BK1',
+      'Booking status': 'complete',
+      'Booking cost': '60.00',
+      'Booking owed amount': '0.00',
+      'Ticket name': 'Baby & Child',
+      'Ticket face value': '30.00',
+      'Contact name': 'Sarah Barnes',
+      'Contact email': 'sarah@example.com',
+      'First name': 'Ellie',
+      'Last name': 'Barnes',
+      'Booker phone number': '07700 900001',
+    }),
+    row({
+      'Event title': '✅ Baby and Child First Aid Class - Sutton',
+      EventID: 'EV1',
+      'Event starts': '2026-09-06 10:00:00 +0100',
+      'Event ends': '2026-09-06 12:00:00 +0100',
+      Location: 'Church Hall, Sutton, SM1 1AA',
+      BookingID: 'BK2',
+      'Booking status': 'complete',
+      'Booking cost': '30.00',
+      'Booking owed amount': '0.00',
+      'Ticket name': 'Baby & Child',
+      'Ticket face value': '30.00',
+      'Contact name': 'Tom Lang',
+      'Contact email': 'tom@example.com',
+      'First name': 'Tom',
+      'Last name': 'Lang',
+    }),
+    row({
+      'Event title': '✅ Baby and Child First Aid Class - Sutton',
+      EventID: 'EV1',
+      'Event starts': '2026-09-06 10:00:00 +0100',
+      'Event ends': '2026-09-06 12:00:00 +0100',
+      Location: 'Church Hall, Sutton, SM1 1AA',
+      BookingID: 'BK3',
+      'Booking status': 'cancelled',
+      'Booking cost': '30.00',
+      'Booking owed amount': '0.00',
+      'Ticket name': 'Baby & Child',
+      'Ticket face value': '30.00',
+      'Contact name': 'Gone Away',
+      'Contact email': 'gone@example.com',
+      'First name': 'Gone',
+      'Last name': 'Away',
+    }),
+    // Past event -> skipped
+    row({
+      'Event title': 'Old Class',
+      EventID: 'EV0',
+      'Event starts': '2020-01-01 09:00:00 +0000',
+      Location: 'Hall, AB1 2CD',
+      BookingID: 'BKX',
+      'Booking status': 'complete',
+      'Booking cost': '20.00',
+      'Booking owed amount': '0.00',
+      'Contact name': 'Amy Doe',
+      'Contact email': 'amy@example.com',
+      'First name': 'Amy',
+      'Last name': 'Doe',
+    }),
+    // Cancelled future event -> skipped
+    row({
+      'Event title': 'Cancelled Class',
+      EventID: 'EV2',
+      'Event starts': '2026-10-01 10:00:00 +0100',
+      'Event cancelled': 'true',
+      Location: 'Hall, CD3 4EF',
+      BookingID: 'BKC',
+      'Booking status': 'complete',
+      'Booking cost': '30.00',
+      'Booking owed amount': '0.00',
+      'Contact name': 'Nope Person',
+      'Contact email': 'nope@example.com',
+    }),
+    // Online future event -> no venue
+    row({
+      'Event title': '💻 LIVE ONLINE Baby Essentials',
+      EventID: 'EV3',
+      'Event starts': '2026-09-10 19:00:00 +0100',
+      'Event ends': '2026-09-10 20:00:00 +0100',
+      Location: '',
+      BookingID: 'BKO',
+      'Booking status': 'complete',
+      'Booking cost': '18.00',
+      'Booking owed amount': '0.00',
+      'Ticket name': 'Live online single',
+      'Ticket face value': '18.00',
+      'Contact name': 'Zoe Web',
+      'Contact email': 'zoe@example.com',
+      'First name': 'Zoe',
+      'Last name': 'Web',
+    }),
   ];
 
-  const plan = buildPlan(toRecords(parseCsv([HEADERS, ...rows].join('\n'))), {
+  const plan = buildPlan(toRecords(parseCsv([H.join(','), ...rows].join('\n'))), {
     today: '2026-08-24',
     templates: TEMPLATES,
   });
 
-  it('groups by ScheduleID and drops past courses', () => {
-    expect(plan.courses).toHaveLength(1);
+  it('keeps future events, skips past and cancelled', () => {
+    expect(plan.courses.map((c) => c.bookwhen_event_id).sort()).toEqual(['EV1', 'EV3']);
     expect(plan.skippedPastCourses).toBe(1);
+    expect(plan.skippedCancelledCourses).toBe(1);
   });
 
-  it('resolves the course date, time, venue, template and capacity', () => {
-    const c = plan.courses[0];
+  it('resolves the in-person course from Event starts / title / Location', () => {
+    const c = plan.courses.find((x) => x.bookwhen_event_id === 'EV1')!;
+    expect(c.title).toBe('Baby and Child First Aid Class - Sutton');
     expect(c.event_date).toBe('2026-09-06');
     expect(c.start_time).toBe('10:00');
     expect(c.end_time).toBe('12:00');
     expect(c.venue_postcode).toBe('SM1 1AA');
+    expect(c.online).toBe(false);
     expect(c.template_id).toBe('t-baby');
-    expect(c.template_match).toBe('matched');
     expect(c.capacity).toBeGreaterThanOrEqual(12);
   });
 
-  it('maps bookings including customer, quantity, paid and cancelled status', () => {
-    const c = plan.courses[0];
-    expect(c.bookings).toHaveLength(2);
-    const sarah = c.bookings.find((b) => b.email === 'sarah@example.com')!;
-    expect(sarah.first_name).toBe('Sarah');
-    expect(sarah.last_name).toBe('Barnes');
-    expect(sarah.paid).toBe(true);
-    expect(sarah.quantity).toBe(1);
-    expect(sarah.total_price_pence).toBe(3000);
-    expect(sarah.phone).toBe('07700 900001');
-    const tom = c.bookings.find((b) => b.email === 'tom@example.com')!;
-    expect(tom.status).toBe('cancelled');
-    expect(tom.quantity).toBe(2);
+  it('groups attendee rows by BookingID into bookings with the right quantity/paid/cancelled', () => {
+    const c = plan.courses.find((x) => x.bookwhen_event_id === 'EV1')!;
+    const bk1 = c.bookings.find((b) => b.bookwhen_booking_id === 'BK1')!;
+    expect(bk1.quantity).toBe(2); // group of two attendees on one booking
+    expect(bk1.first_name).toBe('Sarah');
+    expect(bk1.email).toBe('sarah@example.com');
+    expect(bk1.paid).toBe(true);
+    expect(bk1.total_price_pence).toBe(6000);
+    expect(bk1.phone).toBe('07700 900001');
+    const bk3 = c.bookings.find((b) => b.bookwhen_booking_id === 'BK3')!;
+    expect(bk3.status).toBe('cancelled');
     expect(plan.totals.cancelledBookings).toBe(1);
+  });
+
+  it('flags an online class with no venue', () => {
+    const c = plan.courses.find((x) => x.bookwhen_event_id === 'EV3')!;
+    expect(c.online).toBe(true);
+    expect(c.venue_postcode).toBeNull();
+    expect(c.start_time).toBe('19:00');
   });
 });

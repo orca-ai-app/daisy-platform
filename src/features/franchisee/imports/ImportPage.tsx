@@ -109,7 +109,7 @@ export default function ImportPage() {
     if (!plan) return map;
     for (const c of plan.courses) {
       const b = courseBlocker(c);
-      if (b) map.set(c.bookwhen_schedule_id, b);
+      if (b) map.set(c.bookwhen_event_id, b);
     }
     return map;
   }, [plan]);
@@ -244,6 +244,10 @@ export default function ImportPage() {
                   value={plan.totals.cancelledBookings}
                 />
                 <SummaryStat label="Past courses skipped" value={plan.skippedPastCourses} />
+                <SummaryStat
+                  label="Cancelled events skipped"
+                  value={plan.skippedCancelledCourses}
+                />
                 <SummaryStat label="Unresolved rows" value={plan.unresolved.length} />
               </dl>
 
@@ -281,10 +285,10 @@ export default function ImportPage() {
                   </thead>
                   <tbody>
                     {plan.courses.map((c) => {
-                      const blocker = blockers.get(c.bookwhen_schedule_id);
+                      const blocker = blockers.get(c.bookwhen_event_id);
                       return (
                         <tr
-                          key={c.bookwhen_schedule_id}
+                          key={c.bookwhen_event_id}
                           className={
                             blocker
                               ? 'border-daisy-line-soft border-b bg-[#FDEAE5]/25 align-top'
@@ -352,7 +356,7 @@ export default function ImportPage() {
                 <ul className="space-y-2 text-[13px]">
                   {plan.unresolved.map((u, i) => (
                     <li key={i} className="border-daisy-line-soft border-b pb-2 last:border-0">
-                      <span className="text-daisy-ink font-semibold">{u.schedule}</span>
+                      <span className="text-daisy-ink font-semibold">{u.event}</span>
                       <span className="text-daisy-muted"> — {u.reason}</span>
                     </li>
                   ))}
