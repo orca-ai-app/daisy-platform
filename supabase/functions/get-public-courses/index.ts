@@ -34,6 +34,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 
 const UK_POSTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
+// The outward half on its own ("SO31", "GU1", "RH10") — a district search.
+const OUTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?$/i;
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -342,9 +344,17 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'A postcode or town is required' }, 400);
   }
   const isPostcode = UK_POSTCODE_RE.test(searchTerm);
+  // A bare district ("SO31") is how plenty of people type their postcode.
+  // It's not a full postcode and it's not a place name, so it needs its own
+  // geocode route — and it IS the territory prefix, no derivation needed.
+  const isOutcode = !isPostcode && OUTCODE_RE.test(searchTerm.trim());
   // Only a real postcode has a territory prefix — a town search leaves the
   // territory lookup to the postcode resolved from the matched place.
-  let prefix = isPostcode ? postcodePrefix(searchTerm) : '';
+  let prefix = isPostcode
+    ? postcodePrefix(searchTerm)
+    : isOutcode
+      ? searchTerm.trim().toUpperCase()
+      : '';
 
   // franchisee_id accepts EITHER the internal UUID or the human franchisee
   // number ("0042") — the WordPress embeds use the number, so resolve it.
@@ -386,7 +396,29 @@ Deno.serve(async (req: Request) => {
   let lng = typeof body.lng === 'number' ? body.lng : NaN;
   let resolvedLocation: string | null = null;
   if (Number.isNaN(lat) || Number.isNaN(lng)) {
-    if (isPostcode) {
+    if (isOutcode) {
+      // District search: /outcodes/{outcode} -> the district's centroid.
+      try {
+        const geo = await fetch(`https://api.postcodes.io/outcodes/${encodeURIComponent(prefix)}`);
+        if (geo.status === 404) {
+          return jsonResponse({ error: `Could not locate ${searchTerm}` }, 404);
+        }
+        const payload = (await geo.json()) as any;
+        const result = payload?.result;
+        if (
+          !geo.ok ||
+          typeof result?.latitude !== 'number' ||
+          typeof result?.longitude !== 'number'
+        ) {
+          return jsonResponse({ error: `Could not locate ${searchTerm}` }, 404);
+        }
+        lat = result.latitude;
+        lng = result.longitude;
+      } catch (err) {
+        console.error('outcode geocode failed', err);
+        return jsonResponse({ error: 'Could not look up that postcode right now' }, 502);
+      }
+    } else if (isPostcode) {
       try {
         const geo = await fetch(
           `https://api.postcodes.io/postcodes/${encodeURIComponent(searchTerm)}`,
