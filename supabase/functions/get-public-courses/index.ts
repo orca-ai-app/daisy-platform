@@ -281,6 +281,63 @@ Deno.serve(async (req: Request) => {
   const searchTerm =
     (typeof body.location === 'string' ? body.location.trim() : '') ||
     (typeof body.postcode === 'string' ? body.postcode.trim() : '');
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // --- Franchisee schedule: franchisee_id with no search term ----------------
+  // The Book Online button on a trainer's page of the website opens the widget
+  // scoped to that trainer, and the visitor is already on the trainer's page —
+  // asking for a postcode before showing anything is friction with no purpose.
+  // So: no search term + franchisee_id = the trainer's upcoming public
+  // classes, soonest first. Sold-out classes are kept (G4), same as the search
+  // path. A call with neither search term nor franchisee_id still 400s below.
+  const franchiseeParam = typeof body.franchisee_id === 'string' ? body.franchisee_id.trim() : '';
+  if (!searchTerm && franchiseeParam) {
+    let fid = franchiseeParam;
+    if (!UUID_RE.test(fid)) {
+      const byNumber = await admin
+        .from('da_franchisees')
+        .select('id')
+        .eq('number', fid)
+        .maybeSingle();
+      if (!byNumber.data) {
+        // Unknown number → an empty schedule, never every franchisee's classes.
+        return jsonResponse(
+          { courses: [], territory_status: 'none', suggest_interest_form: false },
+          200,
+        );
+      }
+      fid = (byNumber.data as any).id;
+    }
+    const schedule = await admin
+      .from('da_course_instances')
+      .select(
+        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining,
+         template:da_course_templates ( name, slug, description, age_range ),
+         franchisee:da_franchisees ( name ),
+         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`,
+      )
+      .eq('franchisee_id', fid)
+      .eq('visibility', 'public')
+      .eq('status', 'scheduled')
+      .gte('event_date', londonToday())
+      .order('event_date', { ascending: true })
+      .order('start_time', { ascending: true })
+      .limit(50);
+    if (schedule.error) {
+      console.error('franchisee schedule lookup failed', schedule.error);
+      return jsonResponse({ error: 'Could not load classes right now' }, 500);
+    }
+    return jsonResponse(
+      {
+        courses: ((schedule.data ?? []) as any[]).map(toCard),
+        territory_status: 'none',
+        suggest_interest_form: false,
+      },
+      200,
+    );
+  }
+
   if (!searchTerm) {
     return jsonResponse({ error: 'A postcode or town is required' }, 400);
   }
@@ -292,7 +349,6 @@ Deno.serve(async (req: Request) => {
   // franchisee_id accepts EITHER the internal UUID or the human franchisee
   // number ("0042") — the WordPress embeds use the number, so resolve it.
   let franchiseeId = typeof body.franchisee_id === 'string' ? body.franchisee_id.trim() : null;
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (franchiseeId && !UUID_RE.test(franchiseeId)) {
     const byNumber = await admin
       .from('da_franchisees')
