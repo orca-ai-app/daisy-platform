@@ -55,6 +55,10 @@ export interface ProfileSelfUpdateFields {
    * customers receive (migration 046). Send null to clear it.
    */
   booking_email_message?: string | null;
+  /** Public object URL in franchisee-photos, or null to fall back to the logo. */
+  photo_url?: string | null;
+  /** The "about your trainer" bio shown in the booking widget. */
+  about_trainer?: string | null;
 }
 
 async function callUpdateFranchiseeSelf(

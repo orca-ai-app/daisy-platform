@@ -111,6 +111,10 @@ function toCard(r: any) {
     // website (Jenni, same thread; migration 051, backfilled from HQ's list).
     franchisee_business: r.franchisee_business ?? r.franchisee?.business_name ?? null,
     franchisee_website: r.franchisee_website ?? r.franchisee?.website_url ?? null,
+    // Trainer photo + bio for the class view's trainer block (migration 052;
+    // photo from the portal Profile, bio seeded from the trainer pages).
+    franchisee_photo: r.franchisee_photo ?? r.franchisee?.photo_url ?? null,
+    franchisee_about: r.franchisee_about ?? r.franchisee?.about_trainer ?? null,
     capacity: r.capacity,
     spots_remaining: r.spots_remaining,
     // Explicit so the widget never has to infer "full" from a number that could
@@ -194,7 +198,7 @@ Deno.serve(async (req: Request) => {
     const columns = (withOverride: boolean) =>
       `id, booking_token, display_name,${withOverride ? ' description_override,' : ''} event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
          template:da_course_templates ( name, slug, description, age_range ),
-         franchisee:da_franchisees ( name, business_name, website_url ),
+         franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`;
     let single = await admin
       .from('da_course_instances')
@@ -320,7 +324,7 @@ Deno.serve(async (req: Request) => {
       .select(
         `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining,
          template:da_course_templates ( name, slug, description, age_range ),
-         franchisee:da_franchisees ( name, business_name, website_url ),
+         franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`,
       )
       .eq('franchisee_id', fid)
@@ -491,7 +495,7 @@ Deno.serve(async (req: Request) => {
     ? await admin
         .from('da_territories')
         .select(
-          'status, franchisee:da_franchisees ( name, business_name, email, phone, website_url )',
+          'status, franchisee:da_franchisees ( name, business_name, email, phone, website_url, photo_url, about_trainer )',
         )
         .eq('postcode_prefix', prefix)
         .maybeSingle()
@@ -515,6 +519,8 @@ Deno.serve(async (req: Request) => {
         email: territoryFranchisee.email ?? null,
         phone: territoryFranchisee.phone ?? null,
         website_url: territoryFranchisee.website_url ?? null,
+        photo_url: territoryFranchisee.photo_url ?? null,
+        about_trainer: territoryFranchisee.about_trainer ?? null,
       }
     : null;
 
@@ -547,7 +553,7 @@ Deno.serve(async (req: Request) => {
   if (franchiseeIds.length > 0) {
     const fr = await admin
       .from('da_franchisees')
-      .select('id, business_name, website_url')
+      .select('id, business_name, website_url, photo_url, about_trainer')
       .in('id', franchiseeIds);
     const byId = new Map(((fr.data ?? []) as any[]).map((f) => [f.id, f]));
     for (const r of kept) {
@@ -555,6 +561,8 @@ Deno.serve(async (req: Request) => {
       if (f) {
         r.franchisee_business = f.business_name;
         r.franchisee_website = f.website_url;
+        r.franchisee_photo = f.photo_url;
+        r.franchisee_about = f.about_trainer;
       }
     }
   }

@@ -1,15 +1,16 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Building2, Lock } from 'lucide-react';
+import { Building2, Camera, Lock } from 'lucide-react';
 import { FieldHelp, PageHeader } from '@/components/daisy';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { supabase } from '@/lib/supabase';
 import { useOwnProfile, useUpdateOwnProfile, type ProfileSelfUpdateFields } from './profileQueries';
 import { MedicalQr } from './components/MedicalQr';
 
@@ -21,6 +22,9 @@ import { MedicalQr } from './components/MedicalQr';
 
 /** Mirrors the server cap in update-franchisee-self (migration 046). */
 const BOOKING_EMAIL_MESSAGE_MAX = 1500;
+
+/** Mirrors the server cap in update-franchisee-self (migration 052). */
+const ABOUT_TRAINER_MAX = 2500;
 
 const profileSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -40,6 +44,11 @@ const profileSchema = z.object({
       BOOKING_EMAIL_MESSAGE_MAX,
       `Your message must be ${BOOKING_EMAIL_MESSAGE_MAX} characters or fewer`,
     )
+    .optional(),
+  about_trainer: z
+    .string()
+    .trim()
+    .max(ABOUT_TRAINER_MAX, `Your bio must be ${ABOUT_TRAINER_MAX} characters or fewer`)
     .optional(),
 });
 
@@ -66,10 +75,12 @@ export default function Profile() {
       phone: '',
       business_name: '',
       booking_email_message: '',
+      about_trainer: '',
     },
   });
 
   const bookingEmailMessage = watch('booking_email_message') ?? '';
+  const aboutTrainer = watch('about_trainer') ?? '';
 
   // Populate form when profile loads (or reloads after save).
   useEffect(() => {
@@ -79,6 +90,7 @@ export default function Profile() {
         phone: profile.data.phone ?? '',
         business_name: profile.data.business_name ?? '',
         booking_email_message: profile.data.booking_email_message ?? '',
+        about_trainer: profile.data.about_trainer ?? '',
       });
     }
   }, [profile.data, reset]);
@@ -109,6 +121,11 @@ export default function Profile() {
     }
     if (emailMessageValue !== (profile.data.booking_email_message ?? null)) {
       fields.booking_email_message = emailMessageValue;
+    }
+    const trimmedAbout = values.about_trainer?.trim() ?? '';
+    const aboutValue = trimmedAbout.length > 0 ? trimmedAbout : null;
+    if (aboutValue !== (profile.data.about_trainer ?? null)) {
+      fields.about_trainer = aboutValue;
     }
 
     if (Object.keys(fields).length === 0) {
@@ -230,6 +247,31 @@ export default function Profile() {
                   ) : null}
                 </div>
 
+                {/* About your trainer — shown to customers in the booking
+                    window's trainer block (migration 052). */}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="profile-about-trainer">About you, for customers</Label>
+                  <textarea
+                    id="profile-about-trainer"
+                    rows={6}
+                    maxLength={ABOUT_TRAINER_MAX}
+                    className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+                    placeholder="e.g. Hi, I'm Sam and I've taught baby and child first aid across Sutton for eight years..."
+                    {...register('about_trainer')}
+                  />
+                  <p className="text-daisy-muted text-xs">
+                    Shown as "About your trainer" when customers book one of your classes, next to
+                    your photo. We pre-filled it from your page on the Daisy website where we could,
+                    so give it a read and make it yours.
+                  </p>
+                  <p className="text-daisy-muted text-xs tabular-nums">
+                    {aboutTrainer.length} / {ABOUT_TRAINER_MAX}
+                  </p>
+                  {errors.about_trainer ? (
+                    <p className="text-daisy-orange text-xs">{errors.about_trainer.message}</p>
+                  ) : null}
+                </div>
+
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="submit" disabled={isSubmitting || update.isPending || !isDirty}>
                     {isSubmitting || update.isPending ? 'Saving...' : 'Save changes'}
@@ -308,11 +350,130 @@ export default function Profile() {
         </div>
       )}
 
+      {/* Trainer photo — shown in the booking window; Daisy logo until set */}
+      {!profile.isLoading && profile.data ? <TrainerPhotoCard /> : null}
+
       {/* THE permanent medical form QR — one code, every class, forever */}
       {!profile.isLoading && profile.data?.number ? (
         <MedicalQr franchiseeNumber={profile.data.number} />
       ) : null}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Trainer photo (migration 052) — uploaded to the public franchisee-photos
+// bucket under the caller's auth uid, then saved to the profile through the
+// same constrained self-update EF as the text fields. Shown to customers in
+// the booking window; the widget falls back to the Daisy logo when unset.
+// ---------------------------------------------------------------------------
+
+const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+
+function TrainerPhotoCard() {
+  const profile = useOwnProfile();
+  const update = useUpdateOwnProfile();
+  const [busy, setBusy] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const photoUrl = profile.data?.photo_url ?? null;
+
+  const onFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file');
+      return;
+    }
+    if (file.size > PHOTO_MAX_BYTES) {
+      toast.error('Please choose an image under 5 MB');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData.session?.user.id;
+      if (!uid) throw new Error('You must be signed in to upload a photo.');
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      // A changing filename beats CDN/browser caching of the old photo.
+      const path = `${uid}/photo-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('franchisee-photos')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data: pub } = supabase.storage.from('franchisee-photos').getPublicUrl(path);
+      await update.mutateAsync({ photo_url: pub.publicUrl });
+      toast.success('Photo saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Photo upload failed');
+    } finally {
+      setBusy(false);
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  };
+
+  const onRemove = async () => {
+    setBusy(true);
+    try {
+      await update.mutateAsync({ photo_url: null });
+      toast.success('Photo removed — the Daisy logo will show instead');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove the photo');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint border-b px-5 py-4">
+        <CardTitle className="text-daisy-primary-deep text-[15px] font-extrabold tracking-[0.06em] uppercase">
+          Your photo
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-6">
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt="Your trainer photo"
+              className="border-daisy-line h-24 w-24 rounded-full border-2 object-cover"
+            />
+          ) : (
+            <div className="border-daisy-line text-daisy-muted flex h-24 w-24 items-center justify-center rounded-full border-2 border-dashed">
+              <Camera className="h-8 w-8" aria-hidden />
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <p className="text-daisy-muted text-sm">
+              Shown to customers next to "About your trainer" when they book one of your classes.
+              Until you add one, the Daisy logo shows instead. A friendly headshot works best.
+            </p>
+            <div className="flex gap-2">
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => void onFile(e.target.files?.[0])}
+              />
+              <Button type="button" disabled={busy} onClick={() => fileInput.current?.click()}>
+                {busy ? 'Working…' : photoUrl ? 'Replace photo' : 'Upload photo'}
+              </Button>
+              {photoUrl ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void onRemove()}
+                >
+                  Remove
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

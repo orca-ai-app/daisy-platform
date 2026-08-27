@@ -25,6 +25,10 @@ export interface Franchisee {
    * Optional because the column is absent until the migration has run.
    */
   booking_email_message?: string | null;
+  /** Trainer photo shown in the booking widget (migration 052). */
+  photo_url?: string | null;
+  /** "About your trainer" bio shown in the booking widget (migration 052). */
+  about_trainer?: string | null;
   created_at: string;
   updated_at: string;
 }

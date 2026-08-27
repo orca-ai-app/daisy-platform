@@ -38,10 +38,21 @@ const CORS_HEADERS = {
 // Whitelist: the ONLY fields a franchisee may change on their own row.
 // Any other key in the request body is rejected with 400.
 // ---------------------------------------------------------------------------
-const ALLOWED_SELF_FIELDS = new Set(['name', 'phone', 'business_name', 'booking_email_message']);
+const ALLOWED_SELF_FIELDS = new Set([
+  'name',
+  'phone',
+  'business_name',
+  'booking_email_message',
+  // Migration 052: the trainer block in the booking widget.
+  'photo_url',
+  'about_trainer',
+]);
 
 /** Cap on the franchisee's own confirmation-email message (migration 046). */
 const BOOKING_EMAIL_MESSAGE_MAX = 1500;
+
+/** Cap on the "about your trainer" bio shown in the booking widget. */
+const ABOUT_TRAINER_MAX = 2500;
 
 // ---------------------------------------------------------------------------
 // Explicitly-blocked fields to produce a clearer error message than the
@@ -225,6 +236,37 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // about_trainer — free text like booking_email_message; null/empty clears it.
+  if ('about_trainer' in requestedFields) {
+    const about = requestedFields.about_trainer;
+    if (about !== null && typeof about !== 'string') {
+      return jsonResponse({ error: 'about_trainer must be a string or null' }, 400);
+    }
+    if (typeof about === 'string' && about.trim().length > ABOUT_TRAINER_MAX) {
+      return jsonResponse(
+        { error: `about_trainer must be ${ABOUT_TRAINER_MAX} characters or fewer` },
+        400,
+      );
+    }
+  }
+
+  // photo_url — either null (fall back to the Daisy logo) or a public object
+  // URL in this project's franchisee-photos bucket. Nothing else: the widget
+  // renders this URL on the public booking page, so it must not be able to
+  // point anywhere we don't control.
+  if ('photo_url' in requestedFields) {
+    const photo = requestedFields.photo_url;
+    if (photo !== null && typeof photo !== 'string') {
+      return jsonResponse({ error: 'photo_url must be a string or null' }, 400);
+    }
+    if (typeof photo === 'string' && photo.trim().length > 0) {
+      const allowedPrefix = `${Deno.env.get('SUPABASE_URL')}/storage/v1/object/public/franchisee-photos/`;
+      if (!photo.startsWith(allowedPrefix)) {
+        return jsonResponse({ error: 'photo_url must be an uploaded profile photo' }, 400);
+      }
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Normalise text fields.
   // ---------------------------------------------------------------------------
@@ -254,6 +296,26 @@ Deno.serve(async (req: Request) => {
     } else {
       const trimmed = (msg as string).trim();
       updateFields.booking_email_message = trimmed.length === 0 ? null : trimmed;
+    }
+  }
+
+  if ('about_trainer' in requestedFields) {
+    const about = requestedFields.about_trainer;
+    if (about === null) {
+      updateFields.about_trainer = null;
+    } else {
+      const trimmed = (about as string).trim();
+      updateFields.about_trainer = trimmed.length === 0 ? null : trimmed;
+    }
+  }
+
+  if ('photo_url' in requestedFields) {
+    const photo = requestedFields.photo_url;
+    if (photo === null) {
+      updateFields.photo_url = null;
+    } else {
+      const trimmed = (photo as string).trim();
+      updateFields.photo_url = trimmed.length === 0 ? null : trimmed;
     }
   }
 
