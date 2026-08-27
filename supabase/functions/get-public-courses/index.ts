@@ -107,6 +107,10 @@ function toCard(r: any) {
     venue_postcode: r.venue_postcode,
     distance_miles: r.distance_miles == null ? null : Math.round(r.distance_miles * 10) / 10,
     franchisee_name: r.franchisee_name ?? r.franchisee?.name ?? null,
+    // Who the customer is booking with (Emma, 27 Aug) + their page on the
+    // website (Jenni, same thread; migration 051, backfilled from HQ's list).
+    franchisee_business: r.franchisee_business ?? r.franchisee?.business_name ?? null,
+    franchisee_website: r.franchisee_website ?? r.franchisee?.website_url ?? null,
     capacity: r.capacity,
     spots_remaining: r.spots_remaining,
     // Explicit so the widget never has to infer "full" from a number that could
@@ -190,7 +194,7 @@ Deno.serve(async (req: Request) => {
     const columns = (withOverride: boolean) =>
       `id, booking_token, display_name,${withOverride ? ' description_override,' : ''} event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
          template:da_course_templates ( name, slug, description, age_range ),
-         franchisee:da_franchisees ( name ),
+         franchisee:da_franchisees ( name, business_name, website_url ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`;
     let single = await admin
       .from('da_course_instances')
@@ -316,7 +320,7 @@ Deno.serve(async (req: Request) => {
       .select(
         `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining,
          template:da_course_templates ( name, slug, description, age_range ),
-         franchisee:da_franchisees ( name ),
+         franchisee:da_franchisees ( name, business_name, website_url ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`,
       )
       .eq('franchisee_id', fid)
@@ -486,7 +490,9 @@ Deno.serve(async (req: Request) => {
   const territory = prefix
     ? await admin
         .from('da_territories')
-        .select('status, franchisee:da_franchisees ( name, business_name, email, phone )')
+        .select(
+          'status, franchisee:da_franchisees ( name, business_name, email, phone, website_url )',
+        )
         .eq('postcode_prefix', prefix)
         .maybeSingle()
     : { data: null };
@@ -508,6 +514,7 @@ Deno.serve(async (req: Request) => {
         business_name: territoryFranchisee.business_name ?? null,
         email: territoryFranchisee.email ?? null,
         phone: territoryFranchisee.phone ?? null,
+        website_url: territoryFranchisee.website_url ?? null,
       }
     : null;
 
@@ -532,9 +539,29 @@ Deno.serve(async (req: Request) => {
       (!franchiseeId || r.franchisee_id === franchiseeId),
   );
 
+  // The RPC returns the trainer's personal name only — the cards also carry
+  // the business name and page link (Emma/Jenni, 27 Aug), so enrich the kept
+  // rows from da_franchisees in one query before shaping.
+  const kept = rows.slice(0, limit);
+  const franchiseeIds = [...new Set(kept.map((r) => r.franchisee_id).filter(Boolean))];
+  if (franchiseeIds.length > 0) {
+    const fr = await admin
+      .from('da_franchisees')
+      .select('id, business_name, website_url')
+      .in('id', franchiseeIds);
+    const byId = new Map(((fr.data ?? []) as any[]).map((f) => [f.id, f]));
+    for (const r of kept) {
+      const f = byId.get(r.franchisee_id);
+      if (f) {
+        r.franchisee_business = f.business_name;
+        r.franchisee_website = f.website_url;
+      }
+    }
+  }
+
   // toCard already resolves description_override, sold_out and the rounded
   // distance — the RPC's column names match the fields it reads.
-  const courses = rows.slice(0, limit).map(toCard);
+  const courses = kept.map(toCard);
 
   // Suggest the interest form when the searched area has no active franchisee
   // and the search found nothing bookable. A schedule made up entirely of
