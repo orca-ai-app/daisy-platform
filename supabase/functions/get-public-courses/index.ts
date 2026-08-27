@@ -454,7 +454,7 @@ Deno.serve(async (req: Request) => {
   const territory = prefix
     ? await admin
         .from('da_territories')
-        .select('status')
+        .select('status, franchisee:da_franchisees ( name, business_name, email, phone )')
         .eq('postcode_prefix', prefix)
         .maybeSingle()
     : { data: null };
@@ -463,6 +463,21 @@ Deno.serve(async (req: Request) => {
       ? 'active'
       : 'vacant'
     : 'none';
+  // The searched area's own franchisee (active territories only). The widget
+  // uses this when a search finds nothing: instead of a dead-end "check back
+  // soon", the customer gets the local trainer's contact details for a bespoke
+  // class. These are the trainer's public business details, the same ones on
+  // their page of the website.
+  const territoryFranchisee =
+    territoryStatus === 'active' ? ((territory.data as any).franchisee ?? null) : null;
+  const localFranchisee = territoryFranchisee
+    ? {
+        name: territoryFranchisee.name ?? null,
+        business_name: territoryFranchisee.business_name ?? null,
+        email: territoryFranchisee.email ?? null,
+        phone: territoryFranchisee.phone ?? null,
+      }
+    : null;
 
   // --- Nearest courses (PostGIS) --------------------------------------------
   const nearest = await admin.rpc('find_nearest_courses', {
@@ -503,6 +518,7 @@ Deno.serve(async (req: Request) => {
       territory_status: territoryStatus,
       suggest_interest_form: suggestInterestForm,
       ...(resolvedLocation ? { resolved_location: resolvedLocation } : {}),
+      ...(localFranchisee ? { local_franchisee: localFranchisee } : {}),
     },
     200,
   );
