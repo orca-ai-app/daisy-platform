@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 import { supabase } from '@/lib/supabase';
 import type { Franchisee } from '@/types/franchisee';
 import { useAuthStore } from '@/stores/authStore';
@@ -38,18 +39,32 @@ async function fetchFranchisee(userId: string): Promise<{
         return { row: null, notProvisioned: false, tableMissing: true };
       }
       // Real DB error — surface it via the not-provisioned path so the
-      // user gets a friendly screen instead of a crash.
+      // user gets a friendly screen instead of a crash. Ship the detail:
+      // "account not yet provisioned" reports are undiagnosable without it
+      // (Emma Miles, 28 Aug — data server-side was verifiably fine).
       console.error('RoleContext: failed to load franchisee row', error);
+      logger.error('provisioning check failed: franchisee query error', {
+        user_id: userId,
+        code: error.code ?? null,
+        db_message: error.message,
+      });
       return { row: null, notProvisioned: true, tableMissing: false };
     }
 
     if (!data) {
+      logger.warn('provisioning check: no franchisee row visible for signed-in user', {
+        user_id: userId,
+      });
       return { row: null, notProvisioned: true, tableMissing: false };
     }
 
     return { row: data as Franchisee, notProvisioned: false, tableMissing: false };
   } catch (err) {
     console.error('RoleContext: unexpected error fetching franchisee', err);
+    logger.error('provisioning check failed: unexpected error', {
+      user_id: userId,
+      detail: String(err),
+    });
     return { row: null, notProvisioned: true, tableMissing: false };
   }
 }
