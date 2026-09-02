@@ -53,7 +53,7 @@ import type { Visibility } from './types';
 const UK_POSTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 const UK_OUTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?$/i;
 
-function buildEditSchema(visibility: Visibility) {
+function buildEditSchema(visibility: Visibility, isOnline: boolean) {
   return z
     .object({
       event_date: z
@@ -101,12 +101,14 @@ function buildEditSchema(visibility: Visibility) {
       }
 
       const pc = vals.venue_postcode.trim();
-      if (visibility === 'public') {
-        if (!UK_POSTCODE_RE.test(pc)) {
+      if (isOnline) {
+        // Online classes have no venue; no postcode rules.
+      } else if (visibility === 'public') {
+        if (!UK_POSTCODE_RE.test(pc) && !UK_OUTCODE_RE.test(pc)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['venue_postcode'],
-            message: 'Enter a valid UK postcode',
+            message: 'Enter a valid UK postcode or district (e.g. SM1)',
           });
         }
       } else if (pc) {
@@ -245,7 +247,7 @@ function EditCourseForm({
     price_pence: number;
     /** Customer-facing description override (migration 045). */
     description_override?: string | null;
-    template?: { name: string; description?: string | null } | null;
+    template?: { name: string; description?: string | null; is_online?: boolean } | null;
   };
   bookingsCount: number;
   navigate: ReturnType<typeof useNavigate>;
@@ -260,7 +262,9 @@ function EditCourseForm({
     setValue,
     formState: { errors, isSubmitting, isDirty, dirtyFields },
   } = useForm<EditFormValues>({
-    resolver: zodResolver(buildEditSchema(instance.visibility)),
+    resolver: zodResolver(
+      buildEditSchema(instance.visibility, instance.template?.is_online === true),
+    ),
     defaultValues: {
       event_date: instance.event_date,
       start_time: instance.start_time.slice(0, 5),

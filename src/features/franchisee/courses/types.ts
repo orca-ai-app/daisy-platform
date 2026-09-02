@@ -189,6 +189,8 @@ export interface CourseTemplateOption {
   certification: Certification;
   description: string | null;
   is_active: boolean;
+  /** Online templates (migration 053): classes have no venue or postcode. */
+  is_online?: boolean;
   default_ticket_types: DefaultTicketType[];
 }
 

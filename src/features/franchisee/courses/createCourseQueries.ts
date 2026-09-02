@@ -45,6 +45,7 @@ async function fetchCourseTemplates(): Promise<CourseTemplateOption[]> {
        certification,
        description,
        is_active,
+       is_online,
        default_ticket_types`,
     )
     .eq('is_active', true)

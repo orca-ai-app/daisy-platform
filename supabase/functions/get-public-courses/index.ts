@@ -579,6 +579,36 @@ Deno.serve(async (req: Request) => {
   const bookable = courses.filter((c) => !c.sold_out);
   const suggestInterestForm = bookable.length === 0 && territoryStatus !== 'active';
 
+  // --- Online classes (migration 053) ---------------------------------------
+  // Online templates have no venue, so they match every search regardless of
+  // distance and are appended after the local results. The interest-form
+  // suggestion above deliberately ignores them: it is about LOCAL provision,
+  // and an online class is not a local trainer.
+  const online = await admin
+    .from('da_course_instances')
+    .select(
+      `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, franchisee_id,
+       template:da_course_templates!inner ( name, slug, description, age_range, is_online ),
+       franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
+       ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`,
+    )
+    .eq('template.is_online', true)
+    .eq('visibility', 'public')
+    .eq('status', 'scheduled')
+    .gte('event_date', londonToday())
+    .order('event_date', { ascending: true })
+    .order('start_time', { ascending: true })
+    .limit(20);
+  if (online.error) {
+    // Additive — a failure here must never break the local search.
+    console.error('online classes lookup failed', online.error);
+  } else {
+    const onlineRows = ((online.data ?? []) as any[]).filter(
+      (r) => !franchiseeId || r.franchisee_id === franchiseeId,
+    );
+    courses.push(...onlineRows.map(toCard));
+  }
+
   return jsonResponse(
     {
       courses,

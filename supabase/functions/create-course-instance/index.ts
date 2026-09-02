@@ -279,15 +279,22 @@ function validateBody(
     return { ok: false, error: 'visibility must be "public" or "private"' };
   }
 
-  // Postcode rules (migration 040 / NTH-9):
-  //   public  — a full UK postcode is REQUIRED (unchanged behaviour).
-  //   private — a full postcode, an outcode only (e.g. 'GU1'), or nothing
-  //             when the venue is TBC.
+  // Postcode rules (migration 040 / NTH-9; districts-for-public + online
+  // templates added Sep 2026 for Jenni's HQ home/online classes):
+  //   public  — a full postcode OR an outcode only (e.g. 'SM1' for a home
+  //             class where the exact address is shared after booking).
+  //             The postcode-presence requirement is enforced after the
+  //             template loads, because online templates need none at all.
+  //   private — a full postcode, an outcode only, or nothing when the venue
+  //             is TBC.
   const venueTbc = b.venue_tbc === true;
   const rawPostcode = typeof b.venue_postcode === 'string' ? b.venue_postcode.trim() : '';
   if (b.visibility === 'public') {
-    if (!rawPostcode || !UK_POSTCODE_RE.test(rawPostcode)) {
-      return { ok: false, error: 'venue_postcode must be a valid UK postcode' };
+    if (rawPostcode && !UK_POSTCODE_RE.test(rawPostcode) && !UK_OUTCODE_RE.test(rawPostcode)) {
+      return {
+        ok: false,
+        error: 'venue_postcode must be a valid UK postcode or district (e.g. SM1)',
+      };
     }
     if (venueTbc) {
       return { ok: false, error: 'venue_tbc is only allowed for private courses' };
@@ -299,12 +306,9 @@ function validateBody(
         error: 'venue_postcode must be a valid UK postcode or district (e.g. GU1)',
       };
     }
-  } else if (!venueTbc) {
-    return {
-      ok: false,
-      error: 'venue_postcode is required unless the venue is marked as to be confirmed',
-    };
   }
+  // Postcode PRESENCE for both visibilities is enforced after the template
+  // loads (online templates legitimately have none).
   if (typeof b.capacity !== 'number' || !Number.isInteger(b.capacity) || b.capacity < 1) {
     return { ok: false, error: 'capacity must be a positive integer' };
   }
@@ -554,7 +558,7 @@ Deno.serve(async (req: Request) => {
   // ----------------------------------------------------------
   const templateResult = await admin
     .from('da_course_templates')
-    .select('id, name, default_ticket_types')
+    .select('id, name, default_ticket_types, is_online')
     .eq('id', input.template_id)
     .eq('is_active', true)
     .maybeSingle();
@@ -571,7 +575,28 @@ Deno.serve(async (req: Request) => {
     id: string;
     name: string;
     default_ticket_types: DefaultTicketType[];
+    is_online?: boolean;
   };
+
+  // Online templates (migration 053) have no venue at all: no postcode, no
+  // geocode, no territory gate — the class exists everywhere. Any postcode
+  // the caller sent is dropped, and the venue name defaults to "Live online"
+  // so every listing and email reads sensibly.
+  const isOnline = templateRow.is_online === true;
+  if (isOnline) {
+    input.venue_postcode = null;
+    if (!input.venue_name) input.venue_name = 'Live online';
+  } else if (input.visibility === 'public' && !input.venue_postcode) {
+    return jsonResponse(
+      { error: 'venue_postcode is required for public courses (a district like SM1 is fine)' },
+      400,
+    );
+  } else if (input.visibility !== 'public' && !input.venue_postcode && input.venue_tbc !== true) {
+    return jsonResponse(
+      { error: 'venue_postcode is required unless the venue is marked as to be confirmed' },
+      400,
+    );
+  }
 
   // ----------------------------------------------------------
   // Server-side geocode (ignores any client-supplied lat/lng)

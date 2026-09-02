@@ -327,7 +327,7 @@ Deno.serve(async (req: Request) => {
   // ---------------------------------------------------------------------
   const before = await admin
     .from('da_course_instances')
-    .select('*')
+    .select('*, template:da_course_templates ( is_online )')
     .eq('id', body.id)
     .maybeSingle();
 
@@ -390,9 +390,21 @@ Deno.serve(async (req: Request) => {
       'venue_tbc' in updateFields ? updateFields.venue_tbc : beforeRow.venue_tbc
     ) as boolean;
 
-    if (visibility === 'public') {
-      if (!effectivePostcode || !UK_POSTCODE_RE.test(effectivePostcode)) {
-        return jsonResponse({ error: 'Public courses require a full venue postcode' }, 400);
+    // Online-template instances (migration 053) have no venue at all, so the
+    // postcode rules don't apply to them.
+    const isOnline =
+      ((beforeRow.template as { is_online?: boolean } | null)?.is_online ?? false) === true;
+    if (isOnline) {
+      // No postcode requirements either way.
+    } else if (visibility === 'public') {
+      if (
+        !effectivePostcode ||
+        (!UK_POSTCODE_RE.test(effectivePostcode) && !UK_OUTCODE_RE.test(effectivePostcode))
+      ) {
+        return jsonResponse(
+          { error: 'Public courses require a venue postcode or district (e.g. SM1)' },
+          400,
+        );
       }
       if (effectiveTbc) {
         return jsonResponse({ error: 'venue_tbc is only allowed for private courses' }, 400);

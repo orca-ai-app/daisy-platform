@@ -34,7 +34,7 @@
  * event_date left empty.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -150,6 +150,8 @@ const schema = z
     venue_postcode: z.string().trim().toUpperCase(),
     /** Venue not yet confirmed — private courses only (NTH-9). */
     venue_tbc: z.boolean(),
+    /** Hidden mirror of the selected template's is_online (migration 053). */
+    template_is_online: z.boolean().default(false),
     /** Customer-facing class name override — private courses (NTH-9). */
     display_name: z.string(),
     visibility: z.enum(['public', 'private']),
@@ -209,15 +211,19 @@ const schema = z
       }
     }
 
-    // Postcode rules (NTH-9): public needs a full postcode; private accepts a
-    // full postcode, an outcode (e.g. GU1), or nothing when venue TBC.
+    // Postcode rules (NTH-9, districts-for-public Sep 2026): public and
+    // private both accept a full postcode or an outcode (e.g. SM1 for a home
+    // class); private may also leave it empty when venue TBC. Online
+    // templates skip the venue entirely.
     const pc = vals.venue_postcode.trim();
-    if (vals.visibility === 'public') {
-      if (!FULL_POSTCODE_RE.test(pc)) {
+    if (vals.template_is_online) {
+      // No venue rules for online classes.
+    } else if (vals.visibility === 'public') {
+      if (!FULL_POSTCODE_RE.test(pc) && !OUTCODE_RE.test(pc)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['venue_postcode'],
-          message: 'Enter a valid UK postcode',
+          message: 'Enter a valid UK postcode or district (e.g. SM1)',
         });
       }
     } else if (pc) {
@@ -631,6 +637,7 @@ function Step3Venue({
   const confirmed = watch('out_of_territory_confirmed');
   const visibility = watch('visibility');
   const venueTbc = watch('venue_tbc');
+  const isOnlineTemplate = watch('template_is_online');
   const startTime = watch('start_time');
   const endTime = watch('end_time');
 
@@ -760,117 +767,130 @@ function Step3Venue({
         </div>
       </div>
 
-      {/* Venue TBC (private courses only, NTH-9) */}
-      {visibility === 'private' ? (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={venueTbc}
-            onChange={(e) => {
-              setValue('venue_tbc', e.target.checked, { shouldDirty: true, shouldValidate: true });
-            }}
-            className="accent-daisy-primary h-4 w-4"
-          />
-          <span className="text-daisy-ink font-semibold">Venue to be confirmed</span>
-          <span className="text-daisy-muted">— you can add the venue later</span>
-        </label>
-      ) : null}
-
-      {/* Previously used venues (G6) — fills all three venue fields at once.
-          Typing a venue by hand works exactly as before. */}
-      {!venueTbc && recentVenues.length > 0 ? (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="recent-venue">
-            Use a previous venue <span className="text-daisy-muted font-normal">(optional)</span>
-          </Label>
-          <Select
-            value=""
-            onValueChange={(v) => {
-              const venue = recentVenues[Number(v)];
-              if (!venue) return;
-              setValue('venue_name', venue.venue_name, { shouldDirty: true });
-              setValue('venue_address', venue.venue_address, { shouldDirty: true });
-              setValue('venue_postcode', venue.venue_postcode, {
-                shouldDirty: true,
-                shouldValidate: true,
-              });
-              onPostcodeBlur();
-            }}
-          >
-            <SelectTrigger id="recent-venue">
-              <span className="block min-w-0 flex-1 truncate text-left">
-                <SelectValue placeholder="Choose one of your venues..." />
-              </span>
-            </SelectTrigger>
-            <SelectContent className="max-w-[min(28rem,calc(100vw-2rem))]">
-              {recentVenues.map((v, i) => (
-                <SelectItem key={`${v.venue_name}-${v.venue_postcode}-${i}`} value={String(i)}>
-                  {v.venue_name} ({v.venue_postcode})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-daisy-muted text-xs">
-            Fills the venue name, address and postcode below. You can still edit them.
-          </p>
+      {isOnlineTemplate ? (
+        <div className="bg-daisy-primary-tint text-daisy-ink-soft rounded-[8px] px-4 py-3 text-sm">
+          Online class — no venue needed. It shows as "Live online" and customers anywhere can find
+          and book it.
         </div>
-      ) : null}
+      ) : (
+        <>
+          {/* Venue TBC (private courses only, NTH-9) */}
+          {visibility === 'private' ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={venueTbc}
+                onChange={(e) => {
+                  setValue('venue_tbc', e.target.checked, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
+                className="accent-daisy-primary h-4 w-4"
+              />
+              <span className="text-daisy-ink font-semibold">Venue to be confirmed</span>
+              <span className="text-daisy-muted">— you can add the venue later</span>
+            </label>
+          ) : null}
 
-      {/* Venue */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="venue-name">Venue name</Label>
-        <Input
-          id="venue-name"
-          type="text"
-          placeholder="e.g. Sutton Community Centre"
-          disabled={venueTbc}
-          {...register('venue_name')}
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="venue-address">Address</Label>
-        <Input
-          id="venue-address"
-          type="text"
-          placeholder="e.g. 12 High Street, Sutton"
-          disabled={venueTbc}
-          {...register('venue_address')}
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="venue-postcode">
-          {visibility === 'private'
-            ? 'Postcode or district (e.g. GU1) — optional if venue TBC'
-            : 'Postcode'}
-        </Label>
-        <Input
-          id="venue-postcode"
-          type="text"
-          placeholder={visibility === 'private' ? 'e.g. SM1 1AB or GU1' : 'e.g. SM1 1AB'}
-          disabled={venueTbc}
-          {...register('venue_postcode', {
-            onBlur: onPostcodeBlur,
-          })}
-          className="uppercase"
-        />
-        {visibility === 'private' ? (
-          <p className="text-daisy-muted text-xs">
-            A district is just the first part of a postcode, like GU1. Use it when you do not have
-            the full address yet.
-          </p>
-        ) : null}
-        {errors.venue_postcode ? (
-          <p className="text-daisy-orange text-xs">{errors.venue_postcode.message}</p>
-        ) : null}
-        {territoryPreview.status === 'loading' ? (
-          <p className="text-daisy-muted text-xs">Checking territory...</p>
-        ) : null}
-        {territoryPreview.status === 'error' ? (
-          <p className="text-daisy-muted text-xs">
-            Territory check unavailable. Postcode will be verified when you save.
-          </p>
-        ) : null}
-      </div>
+          {/* Previously used venues (G6) — fills all three venue fields at once.
+          Typing a venue by hand works exactly as before. */}
+          {!venueTbc && recentVenues.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="recent-venue">
+                Use a previous venue{' '}
+                <span className="text-daisy-muted font-normal">(optional)</span>
+              </Label>
+              <Select
+                value=""
+                onValueChange={(v) => {
+                  const venue = recentVenues[Number(v)];
+                  if (!venue) return;
+                  setValue('venue_name', venue.venue_name, { shouldDirty: true });
+                  setValue('venue_address', venue.venue_address, { shouldDirty: true });
+                  setValue('venue_postcode', venue.venue_postcode, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                  onPostcodeBlur();
+                }}
+              >
+                <SelectTrigger id="recent-venue">
+                  <span className="block min-w-0 flex-1 truncate text-left">
+                    <SelectValue placeholder="Choose one of your venues..." />
+                  </span>
+                </SelectTrigger>
+                <SelectContent className="max-w-[min(28rem,calc(100vw-2rem))]">
+                  {recentVenues.map((v, i) => (
+                    <SelectItem key={`${v.venue_name}-${v.venue_postcode}-${i}`} value={String(i)}>
+                      {v.venue_name} ({v.venue_postcode})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-daisy-muted text-xs">
+                Fills the venue name, address and postcode below. You can still edit them.
+              </p>
+            </div>
+          ) : null}
+
+          {/* Venue */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="venue-name">Venue name</Label>
+            <Input
+              id="venue-name"
+              type="text"
+              placeholder="e.g. Sutton Community Centre"
+              disabled={venueTbc}
+              {...register('venue_name')}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="venue-address">Address</Label>
+            <Input
+              id="venue-address"
+              type="text"
+              placeholder="e.g. 12 High Street, Sutton"
+              disabled={venueTbc}
+              {...register('venue_address')}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="venue-postcode">
+              {visibility === 'private'
+                ? 'Postcode or district (e.g. GU1) — optional if venue TBC'
+                : 'Postcode'}
+            </Label>
+            <Input
+              id="venue-postcode"
+              type="text"
+              placeholder={visibility === 'private' ? 'e.g. SM1 1AB or GU1' : 'e.g. SM1 1AB'}
+              disabled={venueTbc}
+              {...register('venue_postcode', {
+                onBlur: onPostcodeBlur,
+              })}
+              className="uppercase"
+            />
+            {visibility === 'private' ? (
+              <p className="text-daisy-muted text-xs">
+                A district is just the first part of a postcode, like GU1. Use it when you do not
+                have the full address yet.
+              </p>
+            ) : null}
+            {errors.venue_postcode ? (
+              <p className="text-daisy-orange text-xs">{errors.venue_postcode.message}</p>
+            ) : null}
+            {territoryPreview.status === 'loading' ? (
+              <p className="text-daisy-muted text-xs">Checking territory...</p>
+            ) : null}
+            {territoryPreview.status === 'error' ? (
+              <p className="text-daisy-muted text-xs">
+                Territory check unavailable. Postcode will be verified when you save.
+              </p>
+            ) : null}
+          </div>
+        </>
+      )}
 
       {/* Territory warning (preview) */}
       {previewWarning !== 'none' ? (
@@ -1362,6 +1382,7 @@ export default function CreateCourse() {
           venue_name: duplicate.venue_name ?? '',
           venue_address: duplicate.venue_address ?? '',
           venue_postcode: duplicate.venue_postcode ?? '',
+          template_is_online: false,
           venue_tbc: duplicate.venue_tbc,
           display_name: duplicate.display_name ?? '',
           visibility: duplicate.visibility,
@@ -1393,6 +1414,7 @@ export default function CreateCourse() {
           venue_name: '',
           venue_address: '',
           venue_postcode: '',
+          template_is_online: false,
           venue_tbc: false,
           display_name: '',
           visibility: 'public',
@@ -1455,6 +1477,14 @@ export default function CreateCourse() {
     },
     [templates, form],
   );
+
+  // Keep the hidden online flag in sync with the selected template (covers
+  // direct selection, duplication seeds and back-navigation).
+  const watchedTemplateId = form.watch('template_id');
+  useEffect(() => {
+    const t = templates.find((x) => x.id === watchedTemplateId);
+    form.setValue('template_is_online', t?.is_online === true);
+  }, [watchedTemplateId, templates, form]);
 
   // Territory preview on postcode blur (full postcodes only — outcodes and
   // TBC venues are resolved server-side).

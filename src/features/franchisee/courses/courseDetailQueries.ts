@@ -83,7 +83,13 @@ async function callEdgeFunction<T>(
 // ---------------------------------------------------------------------------
 
 export interface CourseInstanceWithTemplate extends CourseInstance {
-  template: { id: string; name: string; slug: string; description: string | null } | null;
+  template: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    is_online?: boolean;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +134,7 @@ export function useCourseInstance(id: string | undefined) {
            display_name,
            venue_tbc,
            description_override,
-           template:da_course_templates ( id, name, slug, description )`,
+           template:da_course_templates ( id, name, slug, description, is_online )`,
         )
         .eq('id', id)
         .maybeSingle();
