@@ -495,11 +495,14 @@ Deno.serve(async (req: Request) => {
     ? await admin
         .from('da_territories')
         .select(
-          'status, franchisee:da_franchisees ( name, business_name, email, phone, website_url, photo_url, about_trainer )',
+          'status, franchisee_id, franchisee:da_franchisees ( name, business_name, email, phone, website_url, photo_url, about_trainer )',
         )
         .eq('postcode_prefix', prefix)
         .maybeSingle()
     : { data: null };
+  // Who owns the searched area, regardless of status: a franchisee for active
+  // territories, the HQ holding row for vacant ones. Scopes online classes.
+  const territoryOwnerId: string | null = (territory.data as any)?.franchisee_id ?? null;
   const territoryStatus: 'active' | 'vacant' | 'none' = territory.data
     ? (territory.data as any).status === 'active'
       ? 'active'
@@ -579,34 +582,38 @@ Deno.serve(async (req: Request) => {
   const bookable = courses.filter((c) => !c.sold_out);
   const suggestInterestForm = bookable.length === 0 && territoryStatus !== 'active';
 
-  // --- Online classes (migration 053) ---------------------------------------
-  // Online templates have no venue, so they match every search regardless of
-  // distance and are appended after the local results. The interest-form
-  // suggestion above deliberately ignores them: it is about LOCAL provision,
-  // and an online class is not a local trainer.
-  const online = await admin
-    .from('da_course_instances')
-    .select(
-      `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, franchisee_id,
-       template:da_course_templates!inner ( name, slug, description, age_range, is_online ),
-       franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
-       ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`,
-    )
-    .eq('template.is_online', true)
-    .eq('visibility', 'public')
-    .eq('status', 'scheduled')
-    .gte('event_date', londonToday())
-    .order('event_date', { ascending: true })
-    .order('start_time', { ascending: true })
-    .limit(20);
-  if (online.error) {
-    // Additive — a failure here must never break the local search.
-    console.error('online classes lookup failed', online.error);
-  } else {
-    const onlineRows = ((online.data ?? []) as any[]).filter(
-      (r) => !franchiseeId || r.franchisee_id === franchiseeId,
-    );
-    courses.push(...onlineRows.map(toCard));
+  // --- Online classes (migration 053, territory-scoped per Jenni 2 Sep) -----
+  // Online classes have no venue, but they are NOT national: a franchisee's
+  // online class belongs to their patch, so it only appears in searches whose
+  // territory THEY own (and on their own franchisee-scoped surfaces). In
+  // vacant areas the owner is the HQ holding row, so HQ's online classes show
+  // there. No owner resolvable → no online classes. The interest-form
+  // suggestion above deliberately ignores them either way: it is about LOCAL
+  // in-person provision.
+  const onlineOwnerId = franchiseeId ?? territoryOwnerId;
+  if (onlineOwnerId) {
+    const online = await admin
+      .from('da_course_instances')
+      .select(
+        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, franchisee_id,
+         template:da_course_templates!inner ( name, slug, description, age_range, is_online ),
+         franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
+         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`,
+      )
+      .eq('template.is_online', true)
+      .eq('franchisee_id', onlineOwnerId)
+      .eq('visibility', 'public')
+      .eq('status', 'scheduled')
+      .gte('event_date', londonToday())
+      .order('event_date', { ascending: true })
+      .order('start_time', { ascending: true })
+      .limit(20);
+    if (online.error) {
+      // Additive — a failure here must never break the local search.
+      console.error('online classes lookup failed', online.error);
+    } else {
+      courses.push(...((online.data ?? []) as any[]).map(toCard));
+    }
   }
 
   return jsonResponse(
