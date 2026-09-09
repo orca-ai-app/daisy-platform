@@ -268,6 +268,7 @@ export default function CourseDetail() {
                         sort_order: tt.sort_order,
                         session_label: tt.session_label,
                         vat_rate: tt.vat_rate,
+                        vat_exclusive: tt.vat_exclusive === true,
                       })),
                     };
                     void navigate('/franchisee/courses/new', { state: { duplicate } });

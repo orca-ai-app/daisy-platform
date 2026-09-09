@@ -306,6 +306,8 @@ export interface TicketTypeInput {
   vat_rate?: number | null;
   /** Per-ticket session details shown to customers, or null. */
   session_label?: string | null;
+  /** Migration 055: displayed ex-VAT + VAT; price stays gross. */
+  vat_exclusive?: boolean;
 }
 
 interface CreateTicketTypeArgs {

@@ -107,6 +107,7 @@ export interface DuplicateCourseState {
     sort_order: number | null;
     session_label: string | null;
     vat_rate: number | null;
+    vat_exclusive?: boolean;
   }>;
 }
 
