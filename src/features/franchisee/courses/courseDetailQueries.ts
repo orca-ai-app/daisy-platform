@@ -183,6 +183,8 @@ export function useCourseTicketTypes(courseInstanceId: string | undefined) {
 // ---------------------------------------------------------------------------
 
 export interface CourseInstanceUpdateFields {
+  /** Unpublish/publish (Sep 2026): private hides from the finder, public re-lists. */
+  visibility?: 'public' | 'private';
   event_date?: string;
   start_time?: string;
   end_time?: string;
@@ -298,6 +300,10 @@ export interface TicketTypeInput {
   price_pence: number;
   seats_consumed: number;
   max_available: number | null;
+  /** VAT rate the price includes (e.g. 20), or null for none. */
+  vat_rate?: number | null;
+  /** Per-ticket session details shown to customers, or null. */
+  session_label?: string | null;
 }
 
 interface CreateTicketTypeArgs {
@@ -379,4 +385,39 @@ export function courseInstanceStatusVariant(
   if (s === 'cancelled') return 'terminated';
   if (s === 'completed') return 'paid';
   return 'active';
+}
+
+// ---------------------------------------------------------------------------
+// useCourseDeclarations — medical declarations for one class (Lucy, Sep 2026)
+//
+// NEVER selects declaration_data (encrypted, HQ-only). The trainer sees who
+// filled the form, photo consent, and the non-sensitive medical_flagged
+// indicator ("speak to the attendee") computed at submission.
+// ---------------------------------------------------------------------------
+
+export interface CourseDeclarationRow {
+  id: string;
+  created_at: string;
+  attendee_name: string;
+  photo_consent: boolean | null;
+  medical_flagged: boolean | null;
+}
+
+export function useCourseDeclarations(courseInstanceId: string | undefined) {
+  return useQuery<CourseDeclarationRow[]>({
+    enabled: !!courseInstanceId,
+    queryKey: [...franchiseeKeys.course(courseInstanceId ?? ''), 'declarations'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('da_medical_declarations')
+        .select('id, created_at, attendee_name, photo_consent, medical_flagged')
+        .eq('course_instance_id', courseInstanceId!)
+        .order('created_at', { ascending: true });
+      if (error) {
+        if (error.code === '42P01' || error.code === 'PGRST205') return [];
+        throw error;
+      }
+      return (data ?? []) as CourseDeclarationRow[];
+    },
+  });
 }

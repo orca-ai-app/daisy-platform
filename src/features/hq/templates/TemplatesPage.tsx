@@ -66,6 +66,7 @@ const editSchema = z.object({
     .number({ invalid_type_error: 'Duration must be a number' })
     .positive('Duration must be greater than zero'),
   certification: z.enum(['yes', 'no', 'if_requested']).default('no'),
+  is_online: z.boolean().default(false),
   default_ticket_types: z.array(ticketTypeSchema).min(1, 'At least one ticket type is required'),
 });
 
@@ -282,6 +283,7 @@ function TemplateDialog({ mode, open, onClose }: TemplateDialogProps) {
         default_capacity: 1,
         duration_hours: 1,
         certification: 'no',
+        is_online: false,
         default_ticket_types: DEFAULT_TICKET_TYPES,
       }
     : {
@@ -292,6 +294,7 @@ function TemplateDialog({ mode, open, onClose }: TemplateDialogProps) {
         default_capacity: mode.template.default_capacity,
         duration_hours: Number(mode.template.duration_hours),
         certification: (mode.template.certification ?? 'no') as EditFormValues['certification'],
+        is_online: mode.template.is_online === true,
         default_ticket_types:
           mode.template.default_ticket_types?.length > 0
             ? mode.template.default_ticket_types
@@ -333,6 +336,7 @@ function TemplateDialog({ mode, open, onClose }: TemplateDialogProps) {
           description: description.length > 0 ? description : null,
           default_ticket_types: ticketTypes,
           is_active: true,
+          is_online: values.is_online,
         });
         toast.success(`${values.name.trim()} created`);
       } else {
@@ -345,6 +349,7 @@ function TemplateDialog({ mode, open, onClose }: TemplateDialogProps) {
             default_capacity: values.default_capacity,
             certification: values.certification,
             default_ticket_types: ticketTypes,
+            is_online: values.is_online,
           },
         });
         toast.success(`${values.name.trim()} saved`);
@@ -483,6 +488,19 @@ function TemplateDialog({ mode, open, onClose }: TemplateDialogProps) {
               <p className="text-daisy-orange text-xs">{errors.certification.message}</p>
             ) : null}
           </div>
+
+          {/* Migration 053: online templates — no venue, shown in every
+              search within each franchisee's own territory. */}
+          <label className="flex items-start gap-2">
+            <input type="checkbox" className="mt-1" {...register('is_online')} />
+            <span className="text-sm">
+              <span className="text-daisy-ink font-semibold">This is an online class</span>
+              <span className="text-daisy-muted block text-xs">
+                Classes from this template have no venue or postcode. They show as "Live online" and
+                appear in course finder searches across the franchisee's own territory.
+              </span>
+            </span>
+          </label>
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">

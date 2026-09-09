@@ -12,6 +12,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
+import { toast } from 'sonner';
+import { exportBookingsCsv } from '../exportCsv';
 import { PageHeader, DataTable, StatusPill, EmptyState, FieldHelp } from '@/components/daisy';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -246,6 +248,17 @@ export default function BookingsList() {
             <Badge variant="primary">{totalCount} total</Badge>
             <Button size="sm" onClick={() => setAddOpen(true)}>
               Add booking
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void exportBookingsCsv()
+                  .then((n) => toast.success(`Downloaded ${n} bookings as CSV`))
+                  .catch(() => toast.error('Export failed — please try again'));
+              }}
+            >
+              Download CSV
             </Button>
           </div>
         }

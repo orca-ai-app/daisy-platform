@@ -35,6 +35,8 @@ const ALLOWED_FIELDS = new Set([
   'is_active',
   'certification',
   'default_ticket_types',
+  // Migration 053: online templates - classes have no venue or postcode.
+  'is_online',
 ]);
 
 const ALLOWED_CERTIFICATIONS = new Set(['yes', 'no', 'if_requested']);
@@ -212,6 +214,9 @@ Deno.serve(async (req: Request) => {
   }
   if ('is_active' in updateFields && typeof updateFields.is_active !== 'boolean') {
     return jsonResponse({ error: 'is_active must be a boolean' }, 400);
+  }
+  if ('is_online' in updateFields && typeof updateFields.is_online !== 'boolean') {
+    return jsonResponse({ error: 'is_online must be a boolean' }, 400);
   }
   if (
     'name' in updateFields &&

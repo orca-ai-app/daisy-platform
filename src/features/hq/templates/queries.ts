@@ -38,6 +38,8 @@ export interface CourseTemplate {
   description: string | null;
   default_ticket_types: TemplateTicketType[];
   is_active: boolean;
+  /** Migration 053: online templates — classes have no venue or postcode. */
+  is_online?: boolean;
 }
 
 export interface TemplateUpdate {
@@ -48,6 +50,7 @@ export interface TemplateUpdate {
   certification?: TemplateCertification;
   default_ticket_types?: TemplateTicketType[];
   is_active?: boolean;
+  is_online?: boolean;
 }
 
 export interface TemplateCreate {
@@ -61,6 +64,7 @@ export interface TemplateCreate {
   description?: string | null;
   default_ticket_types?: TemplateTicketType[];
   is_active?: boolean;
+  is_online?: boolean;
 }
 
 export const TEMPLATES_QUERY_KEY = ['course-templates'] as const;

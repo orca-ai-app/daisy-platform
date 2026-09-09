@@ -18,6 +18,8 @@ import {
   Plus,
   Trash2,
   Edit2,
+  Eye,
+  EyeOff,
   Copy,
   CopyPlus,
   MessageCircle,
@@ -56,6 +58,8 @@ import {
   useCourseInstance,
   useCourseTicketTypes,
   useCancelCourseInstance,
+  useUpdateCourseInstance,
+  useCourseDeclarations,
   useCourseBookingsCount,
   useCreateTicketType,
   useUpdateTicketType,
@@ -128,6 +132,12 @@ function buildTicketTypeSchema(capacity: number | undefined) {
         .int()
         .positive('Must be positive')
         .nullable(),
+      vat_rate: z
+        .number({ invalid_type_error: 'VAT rate must be a number' })
+        .min(0, 'VAT rate cannot be negative')
+        .max(100, 'VAT rate cannot exceed 100')
+        .nullable(),
+      session_label: z.string().max(200, 'Keep session details under 200 characters'),
       /** Explicit confirmation that a £0.00 ticket is intentional (F6). */
       allow_free: z.boolean(),
     })
@@ -165,6 +175,7 @@ export default function CourseDetail() {
   const [deletingTicket, setDeletingTicket] = useState<TicketType | null>(null);
 
   const { data: instance, isLoading, error } = useCourseInstance(id);
+  const updateInstance = useUpdateCourseInstance();
   const { data: ticketTypes = [], isLoading: ticketTypesLoading } = useCourseTicketTypes(id);
   const { data: ownProfile } = useOwnProfile();
   const activity = useActivityLog({ entityType: 'course_instance', entityId: id, limit: 25 });
@@ -266,6 +277,39 @@ export default function CourseDetail() {
                 <Button variant="outline" size="sm" onClick={() => setRecordingSale(true)}>
                   <ShoppingBag aria-hidden className="h-4 w-4" />
                   Record book sale
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isCancelled || updateInstance.isPending}
+                  title={
+                    instance.visibility === 'public'
+                      ? 'Take this class out of the public course finder without cancelling it. Existing bookings and the booking link keep working.'
+                      : 'List this class in the public course finder.'
+                  }
+                  onClick={() => {
+                    const next = instance.visibility === 'public' ? 'private' : 'public';
+                    updateInstance.mutate(
+                      { id: instance.id, fields: { visibility: next } },
+                      {
+                        onSuccess: () =>
+                          toast.success(
+                            next === 'private'
+                              ? 'Unpublished — hidden from the course finder. Bookings and the booking link still work.'
+                              : 'Published — now listed in the course finder.',
+                          ),
+                        onError: (err) =>
+                          toast.error(err instanceof Error ? err.message : 'Could not update'),
+                      },
+                    );
+                  }}
+                >
+                  {instance.visibility === 'public' ? (
+                    <EyeOff aria-hidden className="h-4 w-4" />
+                  ) : (
+                    <Eye aria-hidden className="h-4 w-4" />
+                  )}
+                  {instance.visibility === 'public' ? 'Unpublish' : 'Publish'}
                 </Button>
                 <Button
                   variant="destructive"
@@ -477,6 +521,11 @@ export default function CourseDetail() {
                   courseName={instance.display_name ?? instance.template?.name ?? 'Course'}
                 />
               ) : null}
+
+              {/* Medical declarations for THIS class (Lucy, Sep 2026): who
+                  filled the form, photo consent, and a speak-to-attendee flag.
+                  Health detail stays encrypted and HQ-only. */}
+              {!isCancelled ? <CourseDeclarationsCard courseInstanceId={instance.id} /> : null}
 
               {/* THE permanent medical QR — same code for every class (one-QR model) */}
               {!isCancelled && ownProfile?.number ? (
@@ -692,6 +741,8 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
     price_pounds: mode === 'edit' ? props.ticketType.price_pence / 100 : 0,
     seats_consumed: mode === 'edit' ? props.ticketType.seats_consumed : 1,
     max_available: mode === 'edit' ? props.ticketType.max_available : null,
+    vat_rate: mode === 'edit' ? (props.ticketType.vat_rate ?? null) : null,
+    session_label: mode === 'edit' ? (props.ticketType.session_label ?? '') : '',
     // Pre-tick for a ticket already saved as free, so editing an unrelated
     // field on an existing free ticket is not blocked (F6).
     allow_free: mode === 'edit' && props.ticketType.price_pence === 0,
@@ -718,6 +769,8 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
       price_pence: Math.round(values.price_pounds * 100),
       seats_consumed: values.seats_consumed,
       max_available: values.max_available,
+      vat_rate: values.vat_rate,
+      session_label: values.session_label.trim() || null,
     };
 
     try {
@@ -816,6 +869,45 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
               />
               {errors.max_available ? (
                 <p className="text-daisy-orange text-xs">{errors.max_available.message}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="tt-vat">VAT rate % (optional)</Label>
+              <Input
+                id="tt-vat"
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                placeholder="e.g. 20"
+                {...register('vat_rate', {
+                  setValueAs: (v: string) => (v === '' || v === null ? null : Number(v)),
+                })}
+              />
+              <p className="text-daisy-muted text-xs">
+                The price includes VAT at this rate — customers see "incl. VAT". Leave blank if not
+                VAT registered. Tickets already sold are unaffected.
+              </p>
+              {errors.vat_rate ? (
+                <p className="text-daisy-orange text-xs">{errors.vat_rate.message}</p>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="tt-session">Session details (optional)</Label>
+              <Input
+                id="tt-session"
+                placeholder='e.g. "6-hour, 9:30-15:30"'
+                {...register('session_label')}
+              />
+              <p className="text-daisy-muted text-xs">
+                Shown under this ticket so customers can see exactly what they're buying.
+              </p>
+              {errors.session_label ? (
+                <p className="text-daisy-orange text-xs">{errors.session_label.message}</p>
               ) : null}
             </div>
           </div>
@@ -919,6 +1011,54 @@ function DeleteTicketTypeDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CourseDeclarationsCard — medical form submissions for this class
+// ---------------------------------------------------------------------------
+
+function CourseDeclarationsCard({ courseInstanceId }: { courseInstanceId: string }) {
+  const { data: declarations = [], isLoading } = useCourseDeclarations(courseInstanceId);
+  if (isLoading || declarations.length === 0) return null;
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint border-b px-5 py-4">
+        <CardTitle className="text-daisy-primary-deep text-[15px] font-extrabold tracking-[0.06em] uppercase">
+          Medical declarations ({declarations.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2 p-5">
+        {declarations.map((d) => (
+          <div key={d.id} className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-daisy-ink font-semibold">{d.attendee_name}</span>
+            {d.photo_consent === true ? (
+              <Badge variant="default" className="text-[11px]">
+                photos OK
+              </Badge>
+            ) : d.photo_consent === false ? (
+              <Badge variant="destructive" className="text-[11px]">
+                no photos
+              </Badge>
+            ) : null}
+            {d.medical_flagged === true ? (
+              <Badge variant="destructive" className="text-[11px]">
+                please speak to attendee
+              </Badge>
+            ) : d.medical_flagged === false ? (
+              <Badge variant="default" className="text-[11px]">
+                nothing flagged
+              </Badge>
+            ) : null}
+          </div>
+        ))}
+        <p className="text-daisy-muted mt-2 text-xs">
+          "Please speak to attendee" means they flagged a condition or requirement on the medical
+          form. The detail itself is encrypted and only HQ can unlock it — ask the attendee directly
+          at the start of class.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -16,10 +16,12 @@
  * Reads via anon client + RLS. No client-side franchisee_id filter.
  */
 
+import { toast } from 'sonner';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, QrCode } from 'lucide-react';
+import { exportCoursesCsv } from '../exportCsv';
 import {
   PageHeader,
   DataTable,
@@ -533,6 +535,17 @@ export default function CoursesList() {
             <Badge variant="primary">{totalCount} total</Badge>
             <Button asChild variant="default" size="sm">
               <Link to="/franchisee/courses/new">Schedule a course</Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void exportCoursesCsv()
+                  .then((n) => toast.success(`Downloaded ${n} classes as CSV`))
+                  .catch(() => toast.error('Export failed — please try again'));
+              }}
+            >
+              Download CSV
             </Button>
             {/* View toggle */}
             <div className="border-daisy-line-soft flex overflow-hidden rounded-full border">

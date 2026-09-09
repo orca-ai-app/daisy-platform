@@ -261,6 +261,13 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Could not securely store your declaration' }, 500);
   }
 
+  // Non-sensitive trainer indicator (migration 054): THAT something was
+  // flagged, never what. Computed from the raw payload before encryption.
+  const dd = body.declaration_data as Record<string, unknown>;
+  const flaggedConditions =
+    Array.isArray(dd.conditions) && dd.conditions.some((c) => c && c !== 'none');
+  const medicalFlagged = flaggedConditions || dd.special_requirements_advised === 'yes';
+
   const attendeeEmail = reqStr(body.attendee_email)?.toLowerCase() ?? null;
   const emailOptIn = body.email_opt_in === true;
   const photoConsent =
@@ -301,6 +308,7 @@ Deno.serve(async (req: Request) => {
       attendee_email: attendeeEmail,
       email_opt_in: emailOptIn,
       photo_consent: photoConsent,
+      medical_flagged: medicalFlagged,
       booker_reference: bookerReference,
       declaration_data: encrypted,
       consent_given: true,

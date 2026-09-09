@@ -1,3 +1,4 @@
+import { MedicalQr } from '@/features/franchisee/components/MedicalQr';
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -267,6 +268,17 @@ function ProfileCard({ franchisee }: ProfileCardProps) {
           <Field label="HQ admin" value={franchisee.is_hq ? 'Yes' : 'No'} />
           <Field label="Notes" value={franchisee.notes ? franchisee.notes : '-'} full />
         </dl>
+
+        {/* HQ copy of the franchisee's one permanent medical-form QR (Jenni,
+            Sep 2026) — retrievable here whenever a franchisee cannot download
+            their own. Identical to the code in their portal. */}
+        <div className="mt-6">
+          <MedicalQr
+            compact
+            franchiseeNumber={franchisee.number}
+            title={`Medical form QR — ${franchisee.name}`}
+          />
+        </div>
       </CardContent>
     </Card>
   );

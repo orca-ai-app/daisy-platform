@@ -27,6 +27,11 @@ const ALLOWED_FIELDS = new Set([
   'seats_consumed',
   'max_available',
   'sort_order',
+  // Sep 2026 (Hannah, VAT before go-live): VAT rate + per-ticket session
+  // details are editable on existing classes, not just at creation. Neither
+  // affects tickets already sold — a sale records its own price at the time.
+  'vat_rate',
+  'session_label',
 ]);
 
 function jsonResponse(body: unknown, status: number): Response {
@@ -174,6 +179,22 @@ Deno.serve(async (req: Request) => {
         },
         400,
       );
+    }
+  }
+  if ('vat_rate' in updateFields) {
+    const v = updateFields.vat_rate;
+    if (v !== null && (typeof v !== 'number' || v < 0 || v > 100)) {
+      return jsonResponse({ error: 'vat_rate must be a number between 0 and 100, or null' }, 400);
+    }
+  }
+  if ('session_label' in updateFields) {
+    const v = updateFields.session_label;
+    if (v !== null && typeof v !== 'string') {
+      return jsonResponse({ error: 'session_label must be a string or null' }, 400);
+    }
+    if (typeof v === 'string') {
+      const trimmed = v.trim();
+      updateFields.session_label = trimmed.length === 0 ? null : trimmed.slice(0, 200);
     }
   }
   if ('max_available' in updateFields) {

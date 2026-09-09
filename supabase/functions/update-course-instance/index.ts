@@ -46,6 +46,10 @@ const ALLOWED_FIELDS = new Set([
   // Migration 045 (G1): franchisee-written customer-facing description.
   // NULL falls back to the template description on the booking page.
   'description_override',
+  // Sep 2026 (Hannah): unpublish without cancelling. public -> private takes
+  // a class out of the finder while keeping it bookable via its link;
+  // private -> public re-lists it (venue rules re-checked below).
+  'visibility',
 ]);
 
 // Changes to any of these trigger the course_updated email when
@@ -281,6 +285,13 @@ Deno.serve(async (req: Request) => {
   if ('venue_tbc' in updateFields && typeof updateFields.venue_tbc !== 'boolean') {
     return jsonResponse({ error: 'venue_tbc must be a boolean' }, 400);
   }
+  if (
+    'visibility' in updateFields &&
+    updateFields.visibility !== 'public' &&
+    updateFields.visibility !== 'private'
+  ) {
+    return jsonResponse({ error: "visibility must be 'public' or 'private'" }, 400);
+  }
   if ('display_name' in updateFields) {
     const v = updateFields.display_name;
     if (v !== null && typeof v !== 'string') {
@@ -382,7 +393,9 @@ Deno.serve(async (req: Request) => {
   //   public  — full postcode required, venue_tbc not allowed.
   //   private — full postcode, outcode, or null (null only while venue_tbc).
   {
-    const visibility = beforeRow.visibility as string;
+    const visibility = (
+      'visibility' in updateFields ? updateFields.visibility : beforeRow.visibility
+    ) as string;
     const effectivePostcode = (
       'venue_postcode' in updateFields ? updateFields.venue_postcode : beforeRow.venue_postcode
     ) as string | null;

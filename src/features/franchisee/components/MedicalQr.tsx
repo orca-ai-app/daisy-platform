@@ -56,10 +56,26 @@ export function MedicalQr({ franchiseeNumber, compact = false, title, blurb }: M
 
   const handleDownload = () => {
     if (!dataUrl) return;
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = `medical-form-qr-${franchiseeNumber}.png`;
-    a.click();
+    // iOS Safari silently drops `download` on data: URLs (Dani, Sep 2026:
+    // "progress bar starts then stops") — go via a Blob object URL, which
+    // downloads properly on iPhone/iPad, and attach the anchor to the DOM
+    // for the browsers that require it.
+    void fetch(dataUrl)
+      .then((r) => r.blob())
+      .then((blob) => {
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = `medical-form-qr-${franchiseeNumber}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
+      })
+      .catch(() => {
+        // Last resort: open the image itself; long-press saves it on mobile.
+        window.open(dataUrl, '_blank');
+      });
   };
 
   if (compact) {
@@ -80,7 +96,7 @@ export function MedicalQr({ franchiseeNumber, compact = false, title, blurb }: M
             </div>
           )}
           <div className="flex flex-col gap-1.5">
-            <p className="text-daisy-ink text-sm font-bold">My medical form QR</p>
+            <p className="text-daisy-ink text-sm font-bold">{title ?? 'My medical form QR'}</p>
             <p className="text-daisy-muted text-xs">
               One QR for every class you run. Print it once.
             </p>

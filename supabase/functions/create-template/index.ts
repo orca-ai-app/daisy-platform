@@ -46,6 +46,7 @@ interface CreateRequestBody {
   description?: unknown;
   default_ticket_types?: unknown;
   is_active?: unknown;
+  is_online?: unknown;
 }
 
 interface ErrorResponse {
@@ -108,6 +109,7 @@ interface ValidatedInput {
   description: string | null;
   default_ticket_types: Array<Record<string, unknown>>;
   is_active: boolean;
+  is_online: boolean;
 }
 
 function validate(
@@ -179,6 +181,9 @@ function validate(
   if (body.is_active !== undefined && typeof body.is_active !== 'boolean') {
     return { ok: false, error: 'is_active must be a boolean' };
   }
+  if (body.is_online !== undefined && typeof body.is_online !== 'boolean') {
+    return { ok: false, error: 'is_online must be a boolean' };
+  }
 
   return {
     ok: true,
@@ -202,6 +207,7 @@ function validate(
         ? (body.default_ticket_types as Array<Record<string, unknown>>)
         : DEFAULT_TICKET_TYPES,
       is_active: body.is_active === undefined ? true : (body.is_active as boolean),
+      is_online: body.is_online === true,
     },
   };
 }
@@ -302,6 +308,8 @@ Deno.serve(async (req: Request) => {
     description: input.description,
     default_ticket_types: input.default_ticket_types,
     is_active: input.is_active,
+    // Migration 053: online templates - classes have no venue or postcode.
+    is_online: input.is_online,
   };
 
   const inserted = await admin
