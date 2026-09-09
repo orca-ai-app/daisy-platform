@@ -425,3 +425,37 @@ export function useCourseDeclarations(courseInstanceId: string | undefined) {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// useCourseBookings — who's booked on ONE class (Feola, Sep 2026)
+// ---------------------------------------------------------------------------
+
+export interface CourseBookingRow {
+  id: string;
+  booking_reference: string;
+  quantity: number;
+  payment_status: string;
+  booking_status: string;
+  customer: { first_name: string; last_name: string; email: string | null } | null;
+  ticket_type: { name: string } | null;
+}
+
+export function useCourseBookings(courseInstanceId: string | undefined) {
+  return useQuery<CourseBookingRow[]>({
+    enabled: !!courseInstanceId,
+    queryKey: [...franchiseeKeys.course(courseInstanceId ?? ''), 'bookings-list'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('da_bookings')
+        .select(
+          `id, booking_reference, quantity, payment_status, booking_status,
+           customer:da_customers ( first_name, last_name, email ),
+           ticket_type:da_ticket_types ( name )`,
+        )
+        .eq('course_instance_id', courseInstanceId!)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as CourseBookingRow[];
+    },
+  });
+}

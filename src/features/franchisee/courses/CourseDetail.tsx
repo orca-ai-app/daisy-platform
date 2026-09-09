@@ -60,6 +60,7 @@ import {
   useCancelCourseInstance,
   useUpdateCourseInstance,
   useCourseDeclarations,
+  useCourseBookings,
   useCourseBookingsCount,
   useCreateTicketType,
   useUpdateTicketType,
@@ -528,6 +529,10 @@ export default function CourseDetail() {
               {/* Medical declarations for THIS class (Lucy, Sep 2026): who
                   filled the form, photo consent, and a speak-to-attendee flag.
                   Health detail stays encrypted and HQ-only. */}
+              {/* Who's booked on this class (Feola, Sep 2026) — the class
+                  register, so nobody trawls the global bookings list. */}
+              <CourseBookingsCard courseInstanceId={instance.id} />
+
               {!isCancelled ? <CourseDeclarationsCard courseInstanceId={instance.id} /> : null}
 
               {/* THE permanent medical QR — same code for every class (one-QR model) */}
@@ -1023,6 +1028,60 @@ function DeleteTicketTypeDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CourseBookingsCard — the class register: everyone booked on this class
+// ---------------------------------------------------------------------------
+
+function CourseBookingsCard({ courseInstanceId }: { courseInstanceId: string }) {
+  const { data: bookings = [], isLoading } = useCourseBookings(courseInstanceId);
+  if (isLoading || bookings.length === 0) return null;
+  const places = bookings
+    .filter((b) => b.booking_status !== 'cancelled')
+    .reduce((sum, b) => sum + (b.quantity || 1), 0);
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint border-b px-5 py-4">
+        <CardTitle className="text-daisy-primary-deep text-[15px] font-extrabold tracking-[0.06em] uppercase">
+          Who's booked ({places} place{places === 1 ? '' : 's'})
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2 p-5">
+        {bookings.map((b) => (
+          <Link
+            key={b.id}
+            to={`/franchisee/bookings/${b.id}`}
+            className="hover:bg-daisy-primary-tint -mx-2 flex flex-wrap items-center gap-2 rounded-[6px] px-2 py-1 text-sm"
+          >
+            <span className="text-daisy-ink font-semibold">
+              {`${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim() ||
+                b.booking_reference}
+            </span>
+            {b.ticket_type?.name ? (
+              <Badge variant="default" className="text-[11px]">
+                {b.ticket_type.name}
+                {b.quantity > 1 ? ` ×${b.quantity}` : ''}
+              </Badge>
+            ) : null}
+            {b.booking_status === 'cancelled' ? (
+              <Badge variant="danger" className="text-[11px]">
+                cancelled
+              </Badge>
+            ) : b.payment_status === 'pending' ? (
+              <Badge variant="warning" className="text-[11px]">
+                payment pending
+              </Badge>
+            ) : null}
+          </Link>
+        ))}
+        <p className="text-daisy-muted mt-2 text-xs">
+          Click a name to open the booking. The person named is whoever made the booking — their
+          ticket may cover more than one attendee.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -287,7 +287,26 @@ export function useOwnBookings(filters: OwnBookingsFilters = {}) {
       const trimmed = search.trim();
       if (trimmed.length > 0) {
         const escaped = trimmed.replace(/[%,()]/g, '');
-        qb = qb.ilike('booking_reference', `%${escaped}%`);
+        // Search by reference OR customer name/email (Feola, 9 Sep: name
+        // search silently found nothing — it only ever matched references).
+        // PostgREST can't OR across a joined table, so resolve matching
+        // customers first and fold their ids into the OR.
+        const words = escaped.split(/\s+/).filter(Boolean);
+        const nameOr = [
+          `first_name.ilike.%${escaped}%`,
+          `last_name.ilike.%${escaped}%`,
+          `email.ilike.%${escaped}%`,
+          // "Denisa Kastrati" — first word against first name, rest against last.
+          ...(words.length > 1
+            ? [`and(first_name.ilike.%${words[0]}%,last_name.ilike.%${words.slice(1).join(' ')}%)`]
+            : []),
+        ].join(',');
+        const matches = await supabase.from('da_customers').select('id').or(nameOr).limit(500);
+        const ids = ((matches.data ?? []) as Array<{ id: string }>).map((c) => c.id);
+        qb =
+          ids.length > 0
+            ? qb.or(`booking_reference.ilike.%${escaped}%,customer_id.in.(${ids.join(',')})`)
+            : qb.ilike('booking_reference', `%${escaped}%`);
       }
 
       const from = page * pageSize;

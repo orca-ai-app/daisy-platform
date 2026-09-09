@@ -276,7 +276,7 @@ export default function BookingsList() {
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search booking reference…"
+          placeholder="Search name, email or reference…"
           className="h-10 max-w-sm flex-1 rounded-full"
           aria-label="Search bookings"
         />
