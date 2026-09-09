@@ -1033,16 +1033,16 @@ function CourseDeclarationsCard({ courseInstanceId }: { courseInstanceId: string
           <div key={d.id} className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-daisy-ink font-semibold">{d.attendee_name}</span>
             {d.photo_consent === true ? (
-              <Badge variant="default" className="text-[11px]">
+              <Badge variant="success" className="text-[11px]">
                 photos OK
               </Badge>
             ) : d.photo_consent === false ? (
-              <Badge variant="destructive" className="text-[11px]">
+              <Badge variant="danger" className="text-[11px]">
                 no photos
               </Badge>
             ) : null}
             {d.medical_flagged === true ? (
-              <Badge variant="destructive" className="text-[11px]">
+              <Badge variant="danger" className="text-[11px]">
                 please speak to attendee
               </Badge>
             ) : d.medical_flagged === false ? (
