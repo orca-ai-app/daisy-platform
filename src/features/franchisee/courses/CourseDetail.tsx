@@ -376,7 +376,7 @@ export default function CourseDetail() {
                       />
                     ) : null}
                     {instance.bespoke_details ? (
-                      <Field label="Notes" value={instance.bespoke_details} full />
+                      <Field label="Private notes" value={instance.bespoke_details} full />
                     ) : null}
                   </dl>
                 </CardContent>

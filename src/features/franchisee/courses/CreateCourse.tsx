@@ -579,17 +579,6 @@ function Step2Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
             </p>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bespoke-details">Bespoke details</Label>
-            <textarea
-              id="bespoke-details"
-              rows={4}
-              placeholder="Describe the private arrangement, special instructions, or client notes..."
-              className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
-              {...register('bespoke_details')}
-            />
-          </div>
-
           {/* Wave 9C — private client dropdown (wired) */}
           <div className="flex flex-col gap-1.5" data-wiring="private-client-id">
             <Label htmlFor="private-client-id">
@@ -607,6 +596,20 @@ function Step2Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
           </div>
         </>
       ) : null}
+
+      {/* Private notes — for ALL classes (Jenni, Sep 2026): freelancer
+          name/fee, venue contacts, anything operational. Never shown to
+          customers; the public search never selects this column. */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="bespoke-details">Private notes (never shown to customers)</Label>
+        <textarea
+          id="bespoke-details"
+          rows={3}
+          placeholder="e.g. freelancer name and fee, venue contact, key-safe code..."
+          className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+          {...register('bespoke_details')}
+        />
+      </div>
     </div>
   );
 }

@@ -80,6 +80,8 @@ function buildEditSchema(visibility: Visibility, isOnline: boolean) {
       price_pounds: poundsSchema,
       /** Optional customer-facing class description (G1 / migration 045). */
       description_override: z.string(),
+      /** Private operational notes (Sep 2026) — never shown to customers. */
+      bespoke_details: z.string().max(2000, 'Keep notes under 2000 characters'),
       /** Explicit confirmation that a £0.00 class is intentional (F6). */
       allow_free: z.boolean(),
       notify_attendees: z.boolean(),
@@ -247,6 +249,8 @@ function EditCourseForm({
     price_pence: number;
     /** Customer-facing description override (migration 045). */
     description_override?: string | null;
+    /** Private operational notes — never shown to customers. */
+    bespoke_details?: string | null;
     template?: { name: string; description?: string | null; is_online?: boolean } | null;
   };
   bookingsCount: number;
@@ -279,6 +283,7 @@ function EditCourseForm({
       // G1: pre-fill from the saved override, falling back to the template's
       // description so the box shows the wording customers currently see.
       description_override: instance.description_override ?? instance.template?.description ?? '',
+      bespoke_details: instance.bespoke_details ?? '',
       // Pre-tick for a class that is already saved as free, so editing an
       // unrelated field on an existing free class is not blocked.
       allow_free: instance.price_pence === 0,
@@ -327,6 +332,7 @@ function EditCourseForm({
       price_pence: Math.round(values.price_pounds * 100),
       // G1 (migration 045): null falls back to the template description.
       description_override: values.description_override.trim() || null,
+      bespoke_details: values.bespoke_details.trim() || null,
     };
     if (isPrivate) {
       fields.venue_tbc = tbc;
@@ -544,6 +550,18 @@ function EditCourseForm({
                 Starts from the standard description for this course type. Edit it to describe this
                 particular class, or clear it to use the standard wording.
               </p>
+            </div>
+
+            {/* Private notes (Jenni, Sep 2026) — operational, never public */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ec-bespoke">Private notes (never shown to customers)</Label>
+              <textarea
+                id="ec-bespoke"
+                rows={3}
+                placeholder="e.g. freelancer name and fee, venue contact, key-safe code..."
+                className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+                {...register('bespoke_details')}
+              />
             </div>
 
             {/* Notify booked customers (NTH-14) */}

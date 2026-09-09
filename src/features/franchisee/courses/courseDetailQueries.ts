@@ -185,6 +185,8 @@ export function useCourseTicketTypes(courseInstanceId: string | undefined) {
 export interface CourseInstanceUpdateFields {
   /** Unpublish/publish (Sep 2026): private hides from the finder, public re-lists. */
   visibility?: 'public' | 'private';
+  /** Private operational notes (Sep 2026) — never shown to customers. */
+  bespoke_details?: string | null;
   event_date?: string;
   start_time?: string;
   end_time?: string;

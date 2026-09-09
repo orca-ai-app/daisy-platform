@@ -50,6 +50,9 @@ const ALLOWED_FIELDS = new Set([
   // a class out of the finder while keeping it bookable via its link;
   // private -> public re-lists it (venue rules re-checked below).
   'visibility',
+  // Sep 2026 (Jenni): private operational notes (freelancer name/fee etc).
+  // Never selected by the public search.
+  'bespoke_details',
 ]);
 
 // Changes to any of these trigger the course_updated email when
@@ -291,6 +294,16 @@ Deno.serve(async (req: Request) => {
     updateFields.visibility !== 'private'
   ) {
     return jsonResponse({ error: "visibility must be 'public' or 'private'" }, 400);
+  }
+  if ('bespoke_details' in updateFields) {
+    const v = updateFields.bespoke_details;
+    if (v !== null && typeof v !== 'string') {
+      return jsonResponse({ error: 'bespoke_details must be a string or null' }, 400);
+    }
+    if (typeof v === 'string') {
+      const trimmed = v.trim();
+      updateFields.bespoke_details = trimmed.length === 0 ? null : trimmed.slice(0, 2000);
+    }
   }
   if ('display_name' in updateFields) {
     const v = updateFields.display_name;
