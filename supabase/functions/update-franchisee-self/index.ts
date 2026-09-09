@@ -46,6 +46,9 @@ const ALLOWED_SELF_FIELDS = new Set([
   // Migration 052: the trainer block in the booking widget.
   'photo_url',
   'about_trainer',
+  // Migration 055: shown on B2B VAT displays and the confirmation email's
+  // VAT block, so business customers can reclaim.
+  'vat_number',
 ]);
 
 /** Cap on the franchisee's own confirmation-email message (migration 046). */
@@ -236,6 +239,16 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  if ('vat_number' in requestedFields) {
+    const v = requestedFields.vat_number;
+    if (v !== null && typeof v !== 'string') {
+      return jsonResponse({ error: 'vat_number must be a string or null' }, 400);
+    }
+    if (typeof v === 'string' && v.trim().length > 20) {
+      return jsonResponse({ error: 'vat_number must be 20 characters or fewer' }, 400);
+    }
+  }
+
   // about_trainer — free text like booking_email_message; null/empty clears it.
   if ('about_trainer' in requestedFields) {
     const about = requestedFields.about_trainer;
@@ -316,6 +329,16 @@ Deno.serve(async (req: Request) => {
     } else {
       const trimmed = (photo as string).trim();
       updateFields.photo_url = trimmed.length === 0 ? null : trimmed;
+    }
+  }
+
+  if ('vat_number' in requestedFields) {
+    const v = requestedFields.vat_number;
+    if (v === null) {
+      updateFields.vat_number = null;
+    } else {
+      const trimmed = (v as string).trim().toUpperCase();
+      updateFields.vat_number = trimmed.length === 0 ? null : trimmed;
     }
   }
 

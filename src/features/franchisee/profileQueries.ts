@@ -59,6 +59,8 @@ export interface ProfileSelfUpdateFields {
   photo_url?: string | null;
   /** The "about your trainer" bio shown in the booking widget. */
   about_trainer?: string | null;
+  /** VAT number for the confirmation-email VAT receipt (migration 055). */
+  vat_number?: string | null;
 }
 
 async function callUpdateFranchiseeSelf(

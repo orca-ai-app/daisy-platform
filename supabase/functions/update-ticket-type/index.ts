@@ -32,6 +32,8 @@ const ALLOWED_FIELDS = new Set([
   // affects tickets already sold — a sale records its own price at the time.
   'vat_rate',
   'session_label',
+  // Migration 055: entered/displayed as ex-VAT + VAT; price_pence stays gross.
+  'vat_exclusive',
 ]);
 
 function jsonResponse(body: unknown, status: number): Response {
@@ -186,6 +188,9 @@ Deno.serve(async (req: Request) => {
     if (v !== null && (typeof v !== 'number' || v < 0 || v > 100)) {
       return jsonResponse({ error: 'vat_rate must be a number between 0 and 100, or null' }, 400);
     }
+  }
+  if ('vat_exclusive' in updateFields && typeof updateFields.vat_exclusive !== 'boolean') {
+    return jsonResponse({ error: 'vat_exclusive must be a boolean' }, 400);
   }
   if ('session_label' in updateFields) {
     const v = updateFields.session_label;

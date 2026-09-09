@@ -82,6 +82,8 @@ interface CreateCourseTicketTypeInput {
   session_label?: string | null;
   /** Optional VAT rate percentage the price includes, e.g. 20 (migration 040). */
   vat_rate?: number | null;
+  /** Migration 055: displayed as "ex-VAT + VAT"; price_pence stays gross. */
+  vat_exclusive?: boolean;
 }
 
 interface DefaultTicketType {
@@ -799,6 +801,7 @@ Deno.serve(async (req: Request) => {
     max_available: tt.max_available ?? null,
     sort_order: tt.sort_order ?? 0,
     session_label: typeof tt.session_label === 'string' ? tt.session_label.trim() || null : null,
+    vat_exclusive: tt.vat_exclusive === true,
     vat_rate: typeof tt.vat_rate === 'number' ? tt.vat_rate : null,
   }));
 

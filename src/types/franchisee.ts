@@ -29,6 +29,8 @@ export interface Franchisee {
   photo_url?: string | null;
   /** "About your trainer" bio shown in the booking widget (migration 052). */
   about_trainer?: string | null;
+  /** VAT number for VAT receipts (migration 055). */
+  vat_number?: string | null;
   created_at: string;
   updated_at: string;
 }

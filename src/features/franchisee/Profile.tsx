@@ -50,6 +50,7 @@ const profileSchema = z.object({
     .trim()
     .max(ABOUT_TRAINER_MAX, `Your bio must be ${ABOUT_TRAINER_MAX} characters or fewer`)
     .optional(),
+  vat_number: z.string().trim().max(20, 'VAT number must be 20 characters or fewer').optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -76,6 +77,7 @@ export default function Profile() {
       business_name: '',
       booking_email_message: '',
       about_trainer: '',
+      vat_number: '',
     },
   });
 
@@ -91,6 +93,7 @@ export default function Profile() {
         business_name: profile.data.business_name ?? '',
         booking_email_message: profile.data.booking_email_message ?? '',
         about_trainer: profile.data.about_trainer ?? '',
+        vat_number: profile.data.vat_number ?? '',
       });
     }
   }, [profile.data, reset]);
@@ -126,6 +129,11 @@ export default function Profile() {
     const aboutValue = trimmedAbout.length > 0 ? trimmedAbout : null;
     if (aboutValue !== (profile.data.about_trainer ?? null)) {
       fields.about_trainer = aboutValue;
+    }
+    const trimmedVat = values.vat_number?.trim().toUpperCase() ?? '';
+    const vatValue = trimmedVat.length > 0 ? trimmedVat : null;
+    if (vatValue !== (profile.data.vat_number ?? null)) {
+      fields.vat_number = vatValue;
     }
 
     if (Object.keys(fields).length === 0) {
@@ -215,6 +223,23 @@ export default function Profile() {
                   </p>
                   {errors.business_name ? (
                     <p className="text-daisy-orange text-xs">{errors.business_name.message}</p>
+                  ) : null}
+                </div>
+
+                {/* VAT number (migration 055) — only relevant if VAT registered */}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="profile-vat-number">VAT number (if VAT registered)</Label>
+                  <Input
+                    id="profile-vat-number"
+                    placeholder="e.g. GB123456789"
+                    {...register('vat_number')}
+                  />
+                  <p className="text-daisy-muted text-xs">
+                    Shown on the VAT receipt customers get when they buy a ticket with a VAT rate
+                    set. Leave blank if you are not VAT registered.
+                  </p>
+                  {errors.vat_number ? (
+                    <p className="text-daisy-orange text-xs">{errors.vat_number.message}</p>
                   ) : null}
                 </div>
 

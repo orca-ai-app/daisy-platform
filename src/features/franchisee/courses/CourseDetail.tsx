@@ -137,6 +137,8 @@ function buildTicketTypeSchema(capacity: number | undefined) {
         .min(0, 'VAT rate cannot be negative')
         .max(100, 'VAT rate cannot exceed 100')
         .nullable(),
+      /** Migration 055: shown as "ex-VAT + VAT"; the entered price stays gross. */
+      vat_exclusive: z.boolean().default(false),
       session_label: z.string().max(200, 'Keep session details under 200 characters'),
       /** Explicit confirmation that a £0.00 ticket is intentional (F6). */
       allow_free: z.boolean(),
@@ -742,6 +744,7 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
     seats_consumed: mode === 'edit' ? props.ticketType.seats_consumed : 1,
     max_available: mode === 'edit' ? props.ticketType.max_available : null,
     vat_rate: mode === 'edit' ? (props.ticketType.vat_rate ?? null) : null,
+    vat_exclusive: mode === 'edit' ? props.ticketType.vat_exclusive === true : false,
     session_label: mode === 'edit' ? (props.ticketType.session_label ?? '') : '',
     // Pre-tick for a ticket already saved as free, so editing an unrelated
     // field on an existing free ticket is not blocked (F6).
@@ -770,6 +773,7 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
       seats_consumed: values.seats_consumed,
       max_available: values.max_available,
       vat_rate: values.vat_rate,
+      vat_exclusive: values.vat_exclusive,
       session_label: values.session_label.trim() || null,
     };
 
@@ -894,6 +898,13 @@ function TicketTypeFormDialog(props: TicketTypeFormDialogProps) {
               {errors.vat_rate ? (
                 <p className="text-daisy-orange text-xs">{errors.vat_rate.message}</p>
               ) : null}
+              <label className="flex items-start gap-2 text-xs">
+                <input type="checkbox" className="mt-0.5" {...register('vat_exclusive')} />
+                <span className="text-daisy-muted">
+                  Business ticket: show as "price + VAT". Enter the price INCLUDING VAT above;
+                  customers see the ex-VAT split and get a VAT receipt on their confirmation.
+                </span>
+              </label>
             </div>
 
             <div className="flex flex-col gap-1.5">

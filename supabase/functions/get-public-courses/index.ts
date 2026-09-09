@@ -199,7 +199,7 @@ Deno.serve(async (req: Request) => {
       `id, booking_token, display_name,${withOverride ? ' description_override,' : ''} event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
          template:da_course_templates ( name, slug, description, age_range ),
          franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
-         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`;
+         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`;
     let single = await admin
       .from('da_course_instances')
       .select(columns(true))
@@ -325,7 +325,7 @@ Deno.serve(async (req: Request) => {
         `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining,
          template:da_course_templates ( name, slug, description, age_range ),
          franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
-         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`,
+         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`,
       )
       .eq('franchisee_id', fid)
       .eq('visibility', 'public')
@@ -598,7 +598,7 @@ Deno.serve(async (req: Request) => {
         `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, franchisee_id,
          template:da_course_templates!inner ( name, slug, description, age_range, is_online ),
          franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
-         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate )`,
+         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`,
       )
       .eq('template.is_online', true)
       .eq('franchisee_id', onlineOwnerId)

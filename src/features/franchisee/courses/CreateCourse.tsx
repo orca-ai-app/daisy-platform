@@ -133,6 +133,8 @@ const ticketTypeSchema = z.object({
   session_label: z.string(),
   /** Optional VAT rate percentage; null = not recorded (NTH-11). */
   vat_rate: z.union([z.literal(0), z.literal(5), z.literal(20)]).nullable(),
+  /** Migration 055: the price is entered/displayed ex VAT (B2B tickets). */
+  vat_exclusive: z.boolean().default(false),
 });
 
 const schema = z
@@ -988,6 +990,7 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
                 sort_order: fields.length,
                 session_label: '',
                 vat_rate: null,
+                vat_exclusive: false,
               })
             }
           >
@@ -1130,6 +1133,24 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
                   <p className="text-daisy-muted text-xs">
                     Only set this if you are VAT registered. Leave as None if you are not sure.
                   </p>
+                  <Controller
+                    name={`ticket_types.${i}.vat_exclusive`}
+                    control={control}
+                    render={({ field: exField }) => (
+                      <label className="flex items-start gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={exField.value === true}
+                          onChange={(e) => exField.onChange(e.target.checked)}
+                        />
+                        <span className="text-daisy-muted">
+                          Business ticket: show as "price + VAT". Enter the price INCLUDING VAT
+                          above; customers see the ex-VAT split and get a VAT receipt.
+                        </span>
+                      </label>
+                    )}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -1401,6 +1422,7 @@ export default function CreateCourse() {
             max_available: tt.max_available,
             sort_order: tt.sort_order ?? i,
             session_label: tt.session_label ?? '',
+            vat_exclusive: tt.vat_exclusive === true,
             vat_rate: (VAT_RATES as readonly number[]).includes(tt.vat_rate ?? -1)
               ? (tt.vat_rate as 0 | 5 | 20)
               : null,
@@ -1435,6 +1457,7 @@ export default function CreateCourse() {
               sort_order: 0,
               session_label: '',
               vat_rate: null,
+              vat_exclusive: false,
             },
           ],
           out_of_territory_confirmed: false,
@@ -1463,6 +1486,7 @@ export default function CreateCourse() {
                 sort_order: i,
                 session_label: '',
                 vat_rate: null,
+                vat_exclusive: false,
               }))
             : [
                 {
@@ -1473,6 +1497,7 @@ export default function CreateCourse() {
                   sort_order: 0,
                   session_label: '',
                   vat_rate: null,
+                  vat_exclusive: false,
                 },
               ];
         form.setValue('ticket_types', seeded);
@@ -1559,6 +1584,7 @@ export default function CreateCourse() {
         sort_order: tt.sort_order ?? i,
         session_label: tt.session_label.trim() || null,
         vat_rate: tt.vat_rate,
+        vat_exclusive: tt.vat_exclusive,
       })),
       out_of_territory_confirmed: values.out_of_territory_confirmed,
       // Only include private_client_id when set; send null to clear any

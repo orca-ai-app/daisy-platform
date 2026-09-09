@@ -57,6 +57,10 @@ interface TicketTypeInput {
   seats_consumed?: unknown;
   max_available?: unknown;
   sort_order?: unknown;
+  vat_rate?: unknown;
+  session_label?: unknown;
+  /** Migration 055: entered/displayed as ex-VAT + VAT; price_pence stays gross. */
+  vat_exclusive?: unknown;
 }
 
 interface RequestBody {
@@ -81,6 +85,9 @@ function validateTicketTypeInput(
         seats_consumed: number;
         max_available: number | null;
         sort_order: number;
+        vat_rate: number | null;
+        session_label: string | null;
+        vat_exclusive: boolean;
       };
     }
   | { ok: false; error: string } {
@@ -124,6 +131,24 @@ function validateTicketTypeInput(
   }
   const sort_order =
     tt.sort_order !== undefined && typeof tt.sort_order === 'number' ? tt.sort_order : 0;
+  if (
+    tt.vat_rate !== null &&
+    tt.vat_rate !== undefined &&
+    (typeof tt.vat_rate !== 'number' || tt.vat_rate < 0 || tt.vat_rate > 100)
+  ) {
+    return { ok: false, error: 'ticket_type.vat_rate must be a number between 0 and 100, or null' };
+  }
+  if (
+    tt.session_label !== null &&
+    tt.session_label !== undefined &&
+    typeof tt.session_label !== 'string'
+  ) {
+    return { ok: false, error: 'ticket_type.session_label must be a string or null' };
+  }
+  const sessionLabel =
+    typeof tt.session_label === 'string' && tt.session_label.trim().length > 0
+      ? tt.session_label.trim().slice(0, 200)
+      : null;
 
   return {
     ok: true,
@@ -133,6 +158,9 @@ function validateTicketTypeInput(
       seats_consumed: tt.seats_consumed as number,
       max_available: tt.max_available != null ? (tt.max_available as number) : null,
       sort_order,
+      vat_rate: typeof tt.vat_rate === 'number' ? tt.vat_rate : null,
+      session_label: sessionLabel,
+      vat_exclusive: tt.vat_exclusive === true,
     },
   };
 }
@@ -261,6 +289,9 @@ Deno.serve(async (req: Request) => {
       seats_consumed: input.seats_consumed,
       max_available: input.max_available,
       sort_order: input.sort_order,
+      vat_rate: input.vat_rate,
+      session_label: input.session_label,
+      vat_exclusive: input.vat_exclusive,
     })
     .select('*')
     .single();

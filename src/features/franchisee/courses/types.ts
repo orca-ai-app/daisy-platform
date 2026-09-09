@@ -153,6 +153,8 @@ export interface TicketType {
   session_label: string | null;
   /** Optional VAT rate percentage the price includes (migration 040), e.g. 20. */
   vat_rate: number | null;
+  /** Migration 055: displayed ex-VAT + VAT; price stays gross. */
+  vat_exclusive?: boolean;
 }
 
 /**
@@ -242,6 +244,8 @@ export interface CreateCourseTicketTypeInput {
   session_label?: string | null;
   /** Optional VAT rate percentage (migration 040). */
   vat_rate?: number | null;
+  /** Migration 055: displayed as "ex-VAT + VAT"; price_pence stays gross. */
+  vat_exclusive?: boolean;
 }
 
 // ---------------------------------------------------------------------------

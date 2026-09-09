@@ -37,6 +37,46 @@ export interface TemplateContext {
    * string, which would let an apostrophe or angle bracket break the HTML.
    */
   booking_email_message?: string;
+  /**
+   * Pre-rendered VAT receipt block (migration 055). Built in index.ts from the
+   * booking's ticket + franchisee; empty string when the ticket has no VAT
+   * rate. Already-escaped HTML, appended after the franchisee message.
+   */
+  vat_block_html?: string;
+}
+
+/**
+ * VAT receipt block for VAT-rated tickets (migration 055): gross, ex-VAT and
+ * VAT amounts plus the franchisee's VAT number, so a business customer's
+ * accountant can reclaim from the confirmation email alone.
+ */
+export function buildVatBlockHtml(input: {
+  totalPricePence: unknown;
+  vatRate: unknown;
+  businessName: string;
+  vatNumber: string | null;
+  bookingReference: string;
+}): string {
+  const gross = typeof input.totalPricePence === 'number' ? input.totalPricePence : null;
+  const rate = typeof input.vatRate === 'number' && input.vatRate > 0 ? input.vatRate : null;
+  if (gross == null || rate == null) return '';
+  const ex = Math.round(gross / (1 + rate / 100));
+  const vat = gross - ex;
+  const gbp = (p: number) => `£${(p / 100).toFixed(2)}`;
+  const vatNoLine = input.vatNumber
+    ? `<tr><td style="padding:2px 12px 2px 0;color:#5a7a8f">VAT number</td><td style="padding:2px 0;color:#1a4359">${escapeHtml(input.vatNumber)}</td></tr>`
+    : '';
+  return `<div style="border-top:1px solid #e2edf3;margin-top:24px;padding-top:16px">
+      <p style="color:#5a7a8f;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin:0 0 8px">VAT receipt</p>
+      <table style="font-size:13px;border-collapse:collapse">
+        <tr><td style="padding:2px 12px 2px 0;color:#5a7a8f">Supplier</td><td style="padding:2px 0;color:#1a4359">${escapeHtml(input.businessName)}</td></tr>
+        ${vatNoLine}
+        <tr><td style="padding:2px 12px 2px 0;color:#5a7a8f">Reference</td><td style="padding:2px 0;color:#1a4359">${escapeHtml(input.bookingReference)}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#5a7a8f">Amount ex VAT</td><td style="padding:2px 0;color:#1a4359">${gbp(ex)}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#5a7a8f">VAT @ ${rate}%</td><td style="padding:2px 0;color:#1a4359">${gbp(vat)}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#5a7a8f;font-weight:700">Total paid</td><td style="padding:2px 0;color:#1a4359;font-weight:700">${gbp(gross)}</td></tr>
+      </table>
+    </div>`;
 }
 
 function fill(s: string, ctx: TemplateContext): string {
@@ -291,7 +331,10 @@ export function renderTemplate(
   // run on the template so the message text is never treated as a template
   // itself (a customer-visible "{{" would otherwise blank out).
   const wantsFranchiseeMessage = key === 'booking_confirmation';
-  const messageHtml = wantsFranchiseeMessage ? franchiseeMessageHtml(ctx) : '';
+  // VAT receipt (migration 055) rides on the confirmation too, after the
+  // franchisee's message. Pre-rendered + escaped in index.ts; '' when no VAT.
+  const vatHtml = wantsFranchiseeMessage ? (ctx.vat_block_html ?? '') : '';
+  const messageHtml = (wantsFranchiseeMessage ? franchiseeMessageHtml(ctx) : '') + vatHtml;
   const messageText = wantsFranchiseeMessage ? franchiseeMessageText(ctx) : '';
 
   return {

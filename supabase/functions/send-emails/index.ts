@@ -22,7 +22,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
-import { renderTemplate, type TemplateContext } from './templates.ts';
+import { buildVatBlockHtml, renderTemplate, type TemplateContext } from './templates.ts';
 import { renderBlocks, fillMerge, type EmailBlock } from '../_shared/emailBlocks.ts';
 import { buildUnsubscribeUrl } from '../_shared/unsubscribeToken.ts';
 import { processBroadcast } from '../_shared/broadcastSender.ts';
@@ -262,13 +262,14 @@ Deno.serve(async (req: Request) => {
         const booking = await admin
           .from('da_bookings')
           .select(
-            `booking_reference, booking_status,
+            `booking_reference, booking_status, total_price_pence, quantity,
            customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
              event_date, start_time, venue_name, venue_postcode, status,
              template:da_course_templates ( name )
            ),
-           franchisee:da_franchisees ( name, email, booking_email_message )`,
+           ticket_type:da_ticket_types ( name, vat_rate, vat_exclusive ),
+           franchisee:da_franchisees ( name, business_name, email, booking_email_message, vat_number )`,
           )
           .eq('id', row.booking_id)
           .maybeSingle();
@@ -328,6 +329,17 @@ Deno.serve(async (req: Request) => {
           // own — it is not a {{merge}} field, by design (free customer-visible
           // text must be escaped, not substituted).
           booking_email_message: toFranchisee ? '' : (b.franchisee?.booking_email_message ?? ''),
+          // VAT receipt block (migration 055) — only when the ticket carries a
+          // VAT rate. Lets business customers reclaim without chasing invoices.
+          vat_block_html: toFranchisee
+            ? ''
+            : buildVatBlockHtml({
+                totalPricePence: b.total_price_pence,
+                vatRate: b.ticket_type?.vat_rate ?? null,
+                businessName: b.franchisee?.business_name ?? b.franchisee?.name ?? '',
+                vatNumber: b.franchisee?.vat_number ?? null,
+                bookingReference: b.booking_reference,
+              }),
         };
 
         let tmpl: { subject: string; html: string; text: string } | null;
