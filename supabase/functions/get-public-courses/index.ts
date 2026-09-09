@@ -582,6 +582,53 @@ Deno.serve(async (req: Request) => {
   const bookable = courses.filter((c) => !c.sold_out);
   const suggestInterestForm = bookable.length === 0 && territoryStatus !== 'active';
 
+  // --- The territory owner's own classes, whatever the distance -------------
+  // (Hannah, 9 Sep: her patch is ~790 sq miles, so a customer 20 miles from
+  // her venue but INSIDE her territory saw an empty finder.) A search in a
+  // claimed territory always lists that owner's public classes, appended
+  // after the radius results with their real distance. Only the owner's own
+  // classes, only in their own patch — the 15-mile radius and everyone
+  // else's protection are unchanged. ACTIVE territories only: the vacant pool
+  // is one HQ row holding ~1,900 districts, and boosting HQ's in-person
+  // classes there put a Bromley class in a Caithness search (502 miles).
+  if (territoryStatus === 'active' && territoryOwnerId && !franchiseeId) {
+    const seen = new Set(courses.map((c: any) => c.id));
+    const own = await admin
+      .from('da_course_instances')
+      .select(
+        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, lat, lng,
+         template:da_course_templates!inner ( name, slug, description, age_range, is_online ),
+         franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
+         ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`,
+      )
+      .eq('franchisee_id', territoryOwnerId)
+      .eq('visibility', 'public')
+      .eq('status', 'scheduled')
+      .eq('template.is_online', false)
+      .gte('event_date', londonToday())
+      .order('event_date', { ascending: true })
+      .limit(30);
+    if (own.error) {
+      console.error('territory-owner classes lookup failed', own.error);
+    } else {
+      for (const r of (own.data ?? []) as any[]) {
+        if (seen.has(r.id)) continue;
+        // Real distance from the searched point (haversine) so the customer
+        // can judge the trip; null when the class has no coordinates.
+        if (typeof r.lat === 'number' && typeof r.lng === 'number') {
+          const rad = (d: number) => (d * Math.PI) / 180;
+          const dLat = rad(r.lat - lat);
+          const dLng = rad(r.lng - lng);
+          const a =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos(rad(lat)) * Math.cos(rad(r.lat)) * Math.sin(dLng / 2) ** 2;
+          r.distance_miles = 2 * 6371 * Math.asin(Math.sqrt(a)) * 0.621371;
+        }
+        courses.push(toCard(r));
+      }
+    }
+  }
+
   // --- Online classes (migration 053, territory-scoped per Jenni 2 Sep) -----
   // Online classes have no venue, but they are NOT national: a franchisee's
   // online class belongs to their patch, so it only appears in searches whose
