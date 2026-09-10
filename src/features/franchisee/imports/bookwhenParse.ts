@@ -31,6 +31,8 @@ export interface TemplateLite {
   slug: string;
   default_capacity: number;
   default_price_pence: number;
+  /** Migration 053: classes from this template have no venue or postcode. */
+  is_online?: boolean;
 }
 
 export type TemplateMatch = 'matched' | 'guessed' | 'unmatched';

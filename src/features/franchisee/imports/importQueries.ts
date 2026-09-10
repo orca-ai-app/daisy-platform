@@ -72,11 +72,13 @@ function addHours(start: string, n: number): string {
   return `${hh < 10 ? '0' : ''}${hh}:${mm < 10 ? '0' : ''}${mm}`;
 }
 
-function courseBlocker(c: PlannedCourse): string | null {
+function courseBlocker(c: PlannedCourse, onlineIds: Set<string>): string | null {
   if (!c.template_id) return 'no course type matched — pick one first';
   if (!c.event_date) return 'no date';
   if (!c.start_time) return 'no start time';
-  if (!c.venue_postcode) return 'no venue postcode';
+  // Online-template classes (migration 053) have no venue at all — Zoom
+  // classes import without a postcode (Caroline, 10 Sep).
+  if (!c.venue_postcode && !onlineIds.has(c.template_id)) return 'no venue postcode';
   return null;
 }
 
@@ -121,10 +123,10 @@ async function loadAlreadyImported(): Promise<{
 }
 
 /** Count the units of work for the progress bar (importable courses + active bookings). */
-function totalUnits(plan: ImportPlan): number {
+function totalUnits(plan: ImportPlan, onlineIds: Set<string>): number {
   let n = 0;
   for (const c of plan.courses) {
-    if (courseBlocker(c)) continue;
+    if (courseBlocker(c, onlineIds)) continue;
     n += 1;
     n += c.bookings.filter((b) => b.status !== 'cancelled' && b.email).length;
   }
@@ -133,8 +135,9 @@ function totalUnits(plan: ImportPlan): number {
 
 export async function runImport(
   plan: ImportPlan,
-  opts: { onProgress?: (p: ImportProgress) => void } = {},
+  opts: { onProgress?: (p: ImportProgress) => void; onlineTemplateIds?: Set<string> } = {},
 ): Promise<ImportResult> {
+  const onlineIds = opts.onlineTemplateIds ?? new Set<string>();
   const result: ImportResult = {
     coursesCreated: 0,
     coursesReused: 0,
@@ -145,14 +148,14 @@ export async function runImport(
     bookingsSkipped: [],
     errors: [],
   };
-  const total = totalUnits(plan);
+  const total = totalUnits(plan, onlineIds);
   let done = 0;
   const tick = (label: string) => opts.onProgress?.({ done, total, label });
 
   const { courseByEvent, bookingIds } = await loadAlreadyImported();
 
   for (const course of plan.courses) {
-    const blocker = courseBlocker(course);
+    const blocker = courseBlocker(course, onlineIds);
     if (blocker) {
       result.coursesSkipped.push({ title: course.title, reason: blocker });
       continue;
@@ -169,13 +172,15 @@ export async function runImport(
       result.coursesReused += 1;
     } else {
       try {
+        const isOnline = onlineIds.has(course.template_id ?? '');
         const resp = await callFn<CreateInstanceResponse>('create-course-instance', {
           template_id: course.template_id,
           event_date: course.event_date,
           start_time: course.start_time,
           end_time: course.end_time ?? addHours(course.start_time as string, 2),
-          venue_name: course.venue_name,
-          venue_postcode: course.venue_postcode,
+          // Online classes: no venue — the server names it "Live online".
+          venue_name: isOnline ? null : course.venue_name,
+          venue_postcode: isOnline ? null : course.venue_postcode,
           visibility: 'public',
           capacity: course.capacity,
           price_pence: course.price_pence,

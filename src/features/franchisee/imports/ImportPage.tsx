@@ -63,11 +63,16 @@ function londonToday(): string {
 // preview flags exactly the courses the importer will skip.
 // ---------------------------------------------------------------------------
 
-function courseBlocker(c: PlannedCourse, effectiveTemplateId: string | null): string | null {
+function courseBlocker(
+  c: PlannedCourse,
+  effectiveTemplateId: string | null,
+  onlineIds: Set<string>,
+): string | null {
   if (!effectiveTemplateId) return 'No course type matched';
   if (!c.event_date) return 'No date';
   if (!c.start_time) return 'No start time';
-  if (!c.venue_postcode) return 'No venue postcode';
+  // Online-template classes need no venue (migration 053).
+  if (!c.venue_postcode && !onlineIds.has(effectiveTemplateId)) return 'No venue postcode';
   return null;
 }
 
@@ -107,11 +112,17 @@ export default function ImportPage() {
         slug: t.slug,
         default_capacity: t.default_capacity,
         default_price_pence: t.default_price_pence,
+        is_online: t.is_online === true,
       })),
     [templateOptions],
   );
 
   const templatesReady = !templatesLoading && templates.length > 0;
+
+  const onlineTemplateIds = useMemo(
+    () => new Set(templates.filter((t) => t.is_online).map((t) => t.id)),
+    [templates],
+  );
 
   // The effective course type for a course = the franchisee's override if they
   // picked one, otherwise the parser's matched/guessed template.
@@ -125,11 +136,15 @@ export default function ImportPage() {
     const map = new Map<string, string>();
     if (!plan) return map;
     for (const c of plan.courses) {
-      const b = courseBlocker(c, overrides[c.bookwhen_event_id] ?? c.template_id);
+      const b = courseBlocker(
+        c,
+        overrides[c.bookwhen_event_id] ?? c.template_id,
+        onlineTemplateIds,
+      );
       if (b) map.set(c.bookwhen_event_id, b);
     }
     return map;
-  }, [plan, overrides]);
+  }, [plan, overrides, onlineTemplateIds]);
 
   const importableCount = plan ? plan.courses.length - blockers.size : 0;
 
@@ -187,7 +202,10 @@ export default function ImportPage() {
           return { ...c, template_id: override, template_match: 'matched' };
         }),
       };
-      const res = await runImport(effectivePlan, { onProgress: (p) => setProgress(p) });
+      const res = await runImport(effectivePlan, {
+        onProgress: (p) => setProgress(p),
+        onlineTemplateIds,
+      });
       setResult(res);
       toast.success(
         `Import complete — ${res.coursesCreated} course${res.coursesCreated === 1 ? '' : 's'} and ${res.bookingsCreated} booking${res.bookingsCreated === 1 ? '' : 's'} created.`,
