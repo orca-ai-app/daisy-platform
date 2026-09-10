@@ -423,7 +423,7 @@ function TrainerPhotoCard() {
       const path = `${uid}/photo-${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from('franchisee-photos')
-        .upload(path, file, { upsert: true, contentType: file.type });
+        .upload(path, file, { contentType: file.type });
       if (uploadError) throw uploadError;
       const { data: pub } = supabase.storage.from('franchisee-photos').getPublicUrl(path);
       await update.mutateAsync({ photo_url: pub.publicUrl });

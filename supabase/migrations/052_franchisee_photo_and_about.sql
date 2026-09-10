@@ -21,9 +21,20 @@ CREATE POLICY "franchisee photo upload" ON storage.objects
   WITH CHECK (bucket_id = 'franchisee-photos' AND (storage.foldername(name))[1] = auth.uid()::text);
 
 DROP POLICY IF EXISTS "franchisee photo update" ON storage.objects;
+-- WITH CHECK matters: the storage API's upsert path exercises UPDATE even for
+-- brand-new objects, and without it every upload failed with "new row
+-- violates row-level security" (Caroline, 10 Sep).
 CREATE POLICY "franchisee photo update" ON storage.objects
   FOR UPDATE TO authenticated
-  USING (bucket_id = 'franchisee-photos' AND (storage.foldername(name))[1] = auth.uid()::text);
+  USING (bucket_id = 'franchisee-photos' AND (storage.foldername(name))[1] = auth.uid()::text)
+  WITH CHECK (bucket_id = 'franchisee-photos' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+-- The API also needs read access for its upsert existence check; the bucket
+-- is public anyway, so an authenticated bucket-wide SELECT changes nothing.
+DROP POLICY IF EXISTS "franchisee photo read" ON storage.objects;
+CREATE POLICY "franchisee photo read" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (bucket_id = 'franchisee-photos');
 
 DROP POLICY IF EXISTS "franchisee photo delete" ON storage.objects;
 CREATE POLICY "franchisee photo delete" ON storage.objects
