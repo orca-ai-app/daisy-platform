@@ -341,12 +341,29 @@ function buildColumns(onQrClick: () => void): ColumnDef<OwnCourseListRow>[] {
           Status
           <FieldHelp>
             Scheduled classes are open for booking. Completed have already run. Cancelled are off.
+            Hidden means the class is unpublished, so it is not shown in the course finder, though
+            its booking link still works.
           </FieldHelp>
         </span>
       ),
-      cell: ({ row }) => (
-        <StatusPill variant={statusVariant(row.original.status)}>{row.original.status}</StatusPill>
-      ),
+      cell: ({ row }) => {
+        // Unpublished = a public class hidden from the finder. Genuine
+        // private-client classes are also visibility:'private' but carry a
+        // private_client_id, so they are excluded here (they are private by
+        // design, not an oversight). Only relevant while scheduled.
+        const isUnpublished =
+          row.original.status === 'scheduled' &&
+          row.original.visibility === 'private' &&
+          !row.original.private_client_id;
+        return (
+          <span className="inline-flex flex-wrap items-center gap-1">
+            <StatusPill variant={statusVariant(row.original.status)}>
+              {row.original.status}
+            </StatusPill>
+            {isUnpublished ? <StatusPill variant="paused">Hidden</StatusPill> : null}
+          </span>
+        );
+      },
     },
     {
       id: 'action',

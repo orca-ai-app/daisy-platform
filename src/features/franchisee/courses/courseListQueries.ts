@@ -17,7 +17,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { franchiseeKeys } from '@/features/franchisee/queryKeys';
-import type { CourseInstanceStatus } from './types';
+import type { CourseInstanceStatus, Visibility } from './types';
 import type { MonthCalendarCourse } from '@/components/daisy/MonthCalendar';
 
 // ---------------------------------------------------------------------------
@@ -76,6 +76,10 @@ export interface OwnCourseListRow {
   ticket_price_from: number | null;
   /** True when >1 ticket type with differing prices (NTH-2). */
   ticket_prices_differ: boolean;
+  /** 'public' = listed in the finder; 'private' = unpublished/hidden, or a private-client class. */
+  visibility: Visibility;
+  /** Set only for genuine private-client classes; null for an unpublished public class. */
+  private_client_id: string | null;
 }
 
 export interface OwnCoursesResult {
@@ -136,6 +140,8 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
            template_id,
            display_name,
            booking_token,
+           visibility,
+           private_client_id,
            template:da_course_templates ( id, name ),
            ticket_types:da_ticket_types ( price_pence )`,
           { count: 'exact' },
@@ -198,6 +204,8 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
           template_id: row.template_id,
           display_name: row.display_name,
           booking_token: row.booking_token,
+          visibility: row.visibility,
+          private_client_id: row.private_client_id,
           template_name: row.template?.name ?? '-',
           ticket_price_from: ticketPrices.length > 0 ? Math.min(...ticketPrices) : null,
           ticket_prices_differ: ticketPrices.length > 1 && new Set(ticketPrices).size > 1,
