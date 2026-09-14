@@ -70,12 +70,17 @@ async function fetchDashboardStats(): Promise<FranchiseeDashboardStats> {
 
   // RLS restricts all queries to rows belonging to the signed-in franchisee.
   const [bookingsRes, coursesRes, merchRes] = await Promise.all([
-    // Bookings MTD — no franchisee_id filter; RLS handles scoping.
+    // Bookings MTD — no franchisee_id filter; RLS handles scoping. Failed
+    // payments and cancelled bookings are excluded so the headline never
+    // counts money that will not arrive (Vicky, go-live day); unpaid-but-live
+    // bookings still count, keeping it a gross booked figure.
     supabase
       .from('da_bookings')
       .select('total_price_pence')
       .gte('created_at', mtd.startIso)
-      .lt('created_at', mtd.endIso),
+      .lt('created_at', mtd.endIso)
+      .neq('payment_status', 'failed')
+      .neq('booking_status', 'cancelled'),
 
     // Scheduled course instances in the next 30 days.
     supabase

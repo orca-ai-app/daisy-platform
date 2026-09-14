@@ -502,6 +502,16 @@ export default function CoursesList() {
   const courseTypeGroups = useMemo(() => buildCourseTypeGroups(templates), [templates]);
   const selectedGroup = courseTypeGroups.find((g) => g.id === templateFilter);
 
+  // List pagination (20 per page). Without this, anyone with more than one
+  // page of classes silently saw only the first 20 (Hannah, go-live day).
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 20;
+  // Any filter change starts back at page 1 so results aren't stranded on a
+  // page that no longer exists.
+  useEffect(() => {
+    setPage(0);
+  }, [status, from, to, templateFilter, sortDir]);
+
   const listFilters: OwnCoursesFilters = {
     status,
     from,
@@ -510,9 +520,12 @@ export default function CoursesList() {
     templateId: selectedGroup ? 'all' : templateFilter,
     templateIds: selectedGroup?.templateIds,
     sortDir,
+    page,
+    pageSize: PAGE_SIZE,
   };
 
   const { rows, totalCount, isLoading, error } = useOwnCourses(listFilters);
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const {
     courses: calCourses,
     isLoading: calLoading,
@@ -711,6 +724,36 @@ export default function CoursesList() {
               />
             }
           />
+
+          {totalCount > PAGE_SIZE ? (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-daisy-muted text-sm">
+                Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of{' '}
+                {totalCount}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                >
+                  Previous
+                </Button>
+                <span className="text-daisy-muted text-sm">
+                  Page {page + 1} of {pageCount}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                  disabled={page >= pageCount - 1}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </>
       ) : null}
 

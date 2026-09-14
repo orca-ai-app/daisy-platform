@@ -163,7 +163,8 @@ export default function Dashboard() {
                 <>
                   Bookings this month{' '}
                   <FieldHelp>
-                    Every booking made for your classes this month, whether paid yet or not.
+                    Every live booking made for your classes this month, whether paid yet or not.
+                    Failed payments and cancellations are not counted.
                   </FieldHelp>
                 </>
               }
