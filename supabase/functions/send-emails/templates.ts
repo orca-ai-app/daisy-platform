@@ -130,6 +130,7 @@ function wrap(
   ctx: TemplateContext,
   reason?: string,
   extraHtml = '',
+  signoffHtml?: string,
 ): string {
   return `<!doctype html><html><body style="margin:0;background:#f5f9fb;font-family:Poppins,Arial,sans-serif;color:#1a4359">
   <div style="max-width:560px;margin:0 auto;padding:24px">
@@ -137,7 +138,7 @@ function wrap(
       <h1 style="font-family:Quicksand,Arial,sans-serif;color:${DAISY_BLUE};font-size:22px;margin:0 0 16px">${title}</h1>
       ${bodyHtml}
       ${extraHtml}
-      <p style="color:#5a7a8f;font-size:13px;margin-top:24px">With love,<br/>${ctx.franchisee_name} &amp; the Daisy First Aid team</p>
+      <p style="color:#5a7a8f;font-size:13px;margin-top:24px">${signoffHtml ?? `With love,<br/>${ctx.franchisee_name} &amp; the Daisy First Aid team`}</p>
     </div>
     <p style="color:#9bb0bd;font-size:11px;text-align:center;margin-top:16px">
       ${reason ?? "You're receiving this because you booked a Daisy First Aid class."}
@@ -337,6 +338,11 @@ export function renderTemplate(
   const messageHtml = (wantsFranchiseeMessage ? franchiseeMessageHtml(ctx) : '') + vatHtml;
   const messageText = wantsFranchiseeMessage ? franchiseeMessageText(ctx) : '';
 
+  // The franchisee's own business alert should not be signed "With love" from
+  // themselves (Danielle, go-live day) — a plain professional sign-off instead.
+  const signoff =
+    key === 'new_booking_notification' ? 'Kind regards,<br/>Daisy First Aid' : undefined;
+
   return {
     subject: fill(t.subject, ctx),
     html: wrap(
@@ -345,6 +351,7 @@ export function renderTemplate(
       ctx,
       undefined,
       messageHtml,
+      signoff,
     ),
     text: fill(t.text, ctx) + messageText,
   };
