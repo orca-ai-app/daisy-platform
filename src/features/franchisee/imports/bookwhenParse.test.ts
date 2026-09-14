@@ -141,6 +141,29 @@ describe('matchTemplate', () => {
   it('unmatched for nonsense', () => {
     expect(matchTemplate('Pottery Workshop', TEMPLATES).match).toBe('unmatched');
   });
+  it('prefers the closest template on a tie (full Level 3, not Emergency)', () => {
+    const L3: TemplateLite[] = [
+      {
+        id: 't-l3-emergency',
+        name: 'Level 3 Emergency Paediatric First Aid Course',
+        slug: 'l3-emergency',
+        default_capacity: 12,
+        default_price_pence: 8500,
+      },
+      {
+        id: 't-l3-full',
+        name: 'Level 3 Paediatric First Aid Course',
+        slug: 'l3-full',
+        default_capacity: 12,
+        default_price_pence: 9500,
+      },
+    ];
+    // A full-course title must not fall onto Emergency just because it is listed first.
+    expect(matchTemplate('Level 3 Paediatric First Aid', L3).template?.id).toBe('t-l3-full');
+    expect(matchTemplate('Level 3 Paediatric First Aid', [...L3].reverse()).template?.id).toBe(
+      't-l3-full',
+    );
+  });
 });
 
 describe('buildPlan (attendances schema)', () => {

@@ -270,13 +270,20 @@ export function matchTemplate(
   const qTokens = new Set(q.split(' ').filter(Boolean));
   let best: TemplateLite | null = null;
   let bestScore = 0;
+  let bestExtra = Infinity;
   for (const t of templates) {
     const tTokens = normalise(t.name).split(' ').filter(Boolean);
     let score = 0;
     for (const tok of tTokens) if (qTokens.has(tok)) score++;
-    // Normalise slightly by template length so short template names aren't unfairly beaten.
-    if (score > bestScore) {
+    // Extra = template tokens NOT present in the query. On an equal overlap,
+    // prefer the closer template (fewest extra words), so a "Level 3 Paediatric"
+    // title maps to the full course, not the Emergency one whose only difference
+    // is the extra "emergency" token. (Previously ties were broken by list order,
+    // which silently mis-mapped full Level 3 classes onto Emergency on import.)
+    const extra = tTokens.length - score;
+    if (score > bestScore || (score === bestScore && extra < bestExtra)) {
       bestScore = score;
+      bestExtra = extra;
       best = t;
     }
   }
