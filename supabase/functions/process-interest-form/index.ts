@@ -55,6 +55,7 @@ function reqStr(v: unknown): string | null {
 
 interface RequestBody {
   postcode?: unknown;
+  franchisee_id?: unknown;
   num_attendees?: unknown;
   contact_name?: unknown;
   contact_email?: unknown;
@@ -96,11 +97,16 @@ Deno.serve(async (req: Request) => {
   }
 
   const postcode = reqStr(body.postcode);
+  const franchiseeId = reqStr(body.franchisee_id);
   const contactName = reqStr(body.contact_name);
   const contactEmailRaw = reqStr(body.contact_email);
   const numAttendees = body.num_attendees;
 
-  if (!postcode) return jsonResponse({ error: 'postcode is required' }, 400);
+  // A franchisee-page "Request a class" enquiry has a franchisee but no postcode;
+  // a vacant-area enquiry has a postcode but no franchisee. One of the two is required.
+  if (!postcode && !franchiseeId) {
+    return jsonResponse({ error: 'postcode or franchisee_id is required' }, 400);
+  }
   if (!contactName) return jsonResponse({ error: 'contact_name is required' }, 400);
   if (!contactEmailRaw || !EMAIL_RE.test(contactEmailRaw)) {
     return jsonResponse({ error: 'a valid contact_email is required' }, 400);
@@ -114,7 +120,8 @@ Deno.serve(async (req: Request) => {
   const insert = await admin
     .from('da_interest_forms')
     .insert({
-      postcode: postcode.toUpperCase(),
+      postcode: postcode ? postcode.toUpperCase() : null,
+      franchisee_id: franchiseeId,
       num_attendees: numAttendees,
       contact_name: contactName,
       contact_email: contactEmailRaw.toLowerCase(),
@@ -134,54 +141,81 @@ Deno.serve(async (req: Request) => {
   }
   const id = (insert.data as { id: string }).id;
 
-  // --- HQ notification email (best-effort, never blocks the submission) -----
-  // Sent inline via Postmark on the transactional 'outbound' stream — an
-  // enquiry has no booking/customer, so it can't ride da_email_sequences.
-  // Recipient comes from da_settings.hq_notification_email (HQ-editable).
-  // NOTE: while the Postmark account is in test mode, only confirmed sender-
-  // signature addresses receive mail; other recipients are rejected by
-  // Postmark (recorded as hq_notified=false in the activity metadata).
+  // --- Notification email (best-effort, never blocks the submission) --------
+  // A franchisee-page "Request a class" enquiry emails that TRAINER (reply-to the
+  // customer) so they can arrange a class; a vacant-area enquiry emails HQ's
+  // queue. Sent inline via Postmark 'outbound' stream — an enquiry has no
+  // booking/customer, so it can't ride da_email_sequences.
   let hqNotified = false;
   try {
     const postmarkToken = Deno.env.get('POSTMARK_SERVER_TOKEN') ?? '';
     const fromEmail = Deno.env.get('POSTMARK_FROM_EMAIL') ?? '';
-    const setting = await admin
-      .from('da_settings')
-      .select('value')
-      .eq('key', 'hq_notification_email')
-      .maybeSingle();
-    const hqEmail = ((setting.data as any)?.value ?? '').trim();
+    const esc = (s: string | null) =>
+      (s ?? '').replace(
+        /[&<>"']/g,
+        (c) =>
+          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
+      );
 
-    if (postmarkToken && fromEmail && hqEmail) {
+    let recipient = '';
+    let subject = '';
+    let heading = '';
+    let intro = '';
+    let ctaHtml = '';
+    let ctaText = '';
+
+    if (franchiseeId) {
+      const fr = await admin
+        .from('da_franchisees')
+        .select('email')
+        .eq('id', franchiseeId)
+        .maybeSingle();
+      recipient = ((fr.data as any)?.email ?? '').trim();
+      subject = `New class request from ${contactName}`;
+      heading = 'New class request';
+      intro =
+        'A customer used the Book Online button on your Daisy page and would like a class. Just reply to this email to reach them directly.';
+    } else {
+      const setting = await admin
+        .from('da_settings')
+        .select('value')
+        .eq('key', 'hq_notification_email')
+        .maybeSingle();
+      recipient = ((setting.data as any)?.value ?? '').trim();
       const portalUrl = Deno.env.get('PORTAL_URL') ?? 'https://daisy-crm-platform.netlify.app';
-      const esc = (s: string | null) =>
-        (s ?? '').replace(
-          /[&<>"']/g,
-          (c) =>
-            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
-        );
-      const rowsHtml = [
-        ['Postcode', postcode.toUpperCase()],
-        ['Group size', String(numAttendees)],
-        ['Name', contactName],
-        ['Email', contactEmailRaw.toLowerCase()],
-        ['Phone', reqStr(body.contact_phone) ?? '-'],
-        ['Preferred dates', reqStr(body.preferred_dates) ?? '-'],
-        ['Notes', reqStr(body.notes) ?? '-'],
-      ]
-        .map(
-          ([k, v]) =>
-            `<tr><td style="padding:6px 12px 6px 0;color:#5A7A8F;font-size:13px;white-space:nowrap">${k}</td><td style="padding:6px 0;color:#1A4359;font-size:14px;font-weight:600">${esc(v)}</td></tr>`,
-        )
-        .join('');
+      const pc = (postcode ?? '').toUpperCase();
+      subject = `New class enquiry — ${pc} (${numAttendees} people)`;
+      heading = `New class enquiry — ${esc(pc)}`;
+      intro = 'Someone searched an area with no trainer and left their details.';
+      ctaHtml = `<p style="margin:20px 0 0"><a href="${portalUrl}/hq/interest-forms" style="display:inline-block;background:#006FAC;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;font-size:14px">Open the enquiries queue</a></p>`;
+      ctaText = `\n\nQueue: ${portalUrl}/hq/interest-forms`;
+    }
+
+    const rows: Array<[string, string]> = [
+      ...(postcode ? ([['Postcode', postcode.toUpperCase()]] as Array<[string, string]>) : []),
+      ['Group size', String(numAttendees)],
+      ['Name', contactName],
+      ['Email', contactEmailRaw.toLowerCase()],
+      ['Phone', reqStr(body.contact_phone) ?? '-'],
+      ['Preferred dates', reqStr(body.preferred_dates) ?? '-'],
+      ['Notes', reqStr(body.notes) ?? '-'],
+    ];
+    const rowsHtml = rows
+      .map(
+        ([k, v]) =>
+          `<tr><td style="padding:6px 12px 6px 0;color:#5A7A8F;font-size:13px;white-space:nowrap">${k}</td><td style="padding:6px 0;color:#1A4359;font-size:14px;font-weight:600">${esc(v)}</td></tr>`,
+      )
+      .join('');
+
+    if (postmarkToken && fromEmail && recipient) {
       const html = `<!doctype html><html><body style="margin:0;background:#f5f9fb;font-family:Poppins,Arial,sans-serif;color:#1a4359">
         <div style="max-width:560px;margin:0 auto;padding:24px"><div style="background:#fff;border-radius:14px;padding:28px">
-        <h1 style="font-family:Quicksand,Arial,sans-serif;color:#006FAC;font-size:20px;margin:0 0 12px">New class enquiry — ${esc(postcode.toUpperCase())}</h1>
-        <p style="font-size:14px;margin:0 0 16px">Someone searched an area with no trainer and left their details.</p>
+        <h1 style="font-family:Quicksand,Arial,sans-serif;color:#006FAC;font-size:20px;margin:0 0 12px">${heading}</h1>
+        <p style="font-size:14px;margin:0 0 16px">${intro}</p>
         <table style="border-collapse:collapse">${rowsHtml}</table>
-        <p style="margin:20px 0 0"><a href="${portalUrl}/hq/interest-forms" style="display:inline-block;background:#006FAC;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;font-size:14px">Open the enquiries queue</a></p>
+        ${ctaHtml}
         </div></div></body></html>`;
-      const text = `New class enquiry — ${postcode.toUpperCase()}\n\nPostcode: ${postcode.toUpperCase()}\nGroup size: ${numAttendees}\nName: ${contactName}\nEmail: ${contactEmailRaw.toLowerCase()}\nPhone: ${reqStr(body.contact_phone) ?? '-'}\nPreferred dates: ${reqStr(body.preferred_dates) ?? '-'}\nNotes: ${reqStr(body.notes) ?? '-'}\n\nQueue: ${portalUrl}/hq/interest-forms`;
+      const text = `${heading}\n\n${intro}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}${ctaText}`;
 
       const res = await fetch('https://api.postmarkapp.com/email', {
         method: 'POST',
@@ -192,9 +226,9 @@ Deno.serve(async (req: Request) => {
         },
         body: JSON.stringify({
           From: fromEmail,
-          To: hqEmail,
+          To: recipient,
           ReplyTo: contactEmailRaw.toLowerCase(),
-          Subject: `New class enquiry — ${postcode.toUpperCase()} (${numAttendees} people)`,
+          Subject: subject,
           HtmlBody: html,
           TextBody: text,
           MessageStream: 'outbound',
@@ -222,12 +256,13 @@ Deno.serve(async (req: Request) => {
       entity_id: id,
       action: 'interest_form_submitted',
       metadata: {
-        postcode: postcode.toUpperCase(),
+        postcode: postcode ? postcode.toUpperCase() : null,
+        franchisee_id: franchiseeId,
         num_attendees: numAttendees,
         source: 'widget',
         hq_notified: hqNotified,
       },
-      description: `Interest form from ${contactName} (${postcode.toUpperCase()}, ${numAttendees} attendees)`,
+      description: `Interest form from ${contactName} (${postcode ? postcode.toUpperCase() : 'trainer request'}, ${numAttendees} attendees)`,
     })
     .then((r: { error: unknown }) => {
       if (r.error) console.error('activity insert failed', r.error);
