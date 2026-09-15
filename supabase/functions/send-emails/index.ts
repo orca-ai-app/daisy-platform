@@ -77,7 +77,9 @@ async function sendViaPostmark(
         'X-Postmark-Server-Token': token,
       },
       body: JSON.stringify({
-        From: from,
+        // Display name matters: without it, Postmark's sender-signature name
+        // (a person) shows as the sender. Customers should see the brand.
+        From: `Daisy First Aid <${from}>`,
         To: to,
         ReplyTo: replyTo ?? undefined,
         Subject: subject,
