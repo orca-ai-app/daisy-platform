@@ -24,7 +24,7 @@
  *
  * Wave 7B.
  */
-import { useEffect, useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -37,6 +37,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 import {
   useCourseInstance,
@@ -84,7 +91,6 @@ function buildEditSchema(visibility: Visibility, isOnline: boolean) {
       bespoke_details: z.string().max(2000, 'Keep notes under 2000 characters'),
       /** Explicit confirmation that a £0.00 class is intentional (F6). */
       allow_free: z.boolean(),
-      notify_attendees: z.boolean(),
     })
     .superRefine((vals, ctx) => {
       // F6: block an accidental £0.00 class unless explicitly confirmed.
@@ -287,36 +293,42 @@ function EditCourseForm({
       // Pre-tick for a class that is already saved as free, so editing an
       // unrelated field on an existing free class is not blocked.
       allow_free: instance.price_pence === 0,
-      notify_attendees: false,
     },
   });
 
   const venueTbc = watch('venue_tbc');
-  const notifyAttendees = watch('notify_attendees');
   const allowFree = watch('allow_free');
   const pricePounds = watch('price_pounds');
 
-  // Notify checkbox (NTH-14): default ON the first time a date/time/venue
-  // field becomes dirty while confirmed bookings exist. The franchisee can
-  // still untick it before saving.
-  const notifyAutoSet = useRef(false);
+  // Notify gate (NTH-14, reworked 16 Sep): emailing booked customers is an
+  // explicit save-time choice, never a silent side effect. Only material
+  // changes (date, time, venue address/postcode/TBC) even offer it —
+  // venue_name is a display label and cosmetic edits (description, prices,
+  // labels) must not email anyone. The old auto-ticked checkbox let a label
+  // rename email a whole class without the franchisee realising.
   const scheduleChanged = Boolean(
     dirtyFields.event_date ||
     dirtyFields.start_time ||
     dirtyFields.end_time ||
-    dirtyFields.venue_name ||
     dirtyFields.venue_address ||
     dirtyFields.venue_postcode ||
     dirtyFields.venue_tbc,
   );
-  useEffect(() => {
-    if (scheduleChanged && bookingsCount > 0 && !notifyAutoSet.current) {
-      notifyAutoSet.current = true;
-      setValue('notify_attendees', true);
-    }
-  }, [scheduleChanged, bookingsCount, setValue]);
+  const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
+  const pendingValues = useRef<EditFormValues | null>(null);
 
   const onSubmit = async (values: EditFormValues) => {
+    // Material change with live bookings: ask before saving. The dialog
+    // resolves into saveCourse with the franchisee's explicit choice.
+    if (scheduleChanged && bookingsCount > 0) {
+      pendingValues.current = values;
+      setNotifyDialogOpen(true);
+      return;
+    }
+    await saveCourse(values, false);
+  };
+
+  const saveCourse = async (values: EditFormValues, notify: boolean) => {
     const tbc = isPrivate && values.venue_tbc;
     const postcode = values.venue_postcode.trim().toUpperCase();
 
@@ -343,7 +355,7 @@ function EditCourseForm({
       await updateInstance.mutateAsync({
         id: instanceId,
         fields,
-        notify_attendees: values.notify_attendees,
+        notify_attendees: notify,
       });
       toast.success('Course updated');
       void navigate(`/franchisee/courses/${instanceId}`);
@@ -564,25 +576,8 @@ function EditCourseForm({
               />
             </div>
 
-            {/* Notify booked customers (NTH-14) */}
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={notifyAttendees}
-                onChange={(e) => setValue('notify_attendees', e.target.checked)}
-                className="accent-daisy-primary mt-0.5 h-4 w-4"
-              />
-              <span>
-                <span className="text-daisy-ink font-semibold">
-                  Notify booked customers of this change
-                </span>
-                <span className="text-daisy-muted block text-xs">
-                  {bookingsCount > 0
-                    ? `Emails the new date, time and venue to ${bookingsCount} booking${bookingsCount === 1 ? '' : 's'} when the date, time or venue changed.`
-                    : 'No bookings on this course yet — nothing will be sent.'}
-                </span>
-              </span>
-            </label>
+            {/* Notify gate (NTH-14): the email decision moved to a save-time
+                dialog — see notifyDialogOpen. Cosmetic edits never ask. */}
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <Button
@@ -599,6 +594,47 @@ function EditCourseForm({
           </form>
         </CardContent>
       </Card>
+
+      {/* NTH-14 notify gate: shown only when date/time/venue changed on a
+          class with live bookings. Both buttons save; they differ only in
+          whether booked customers get the course_updated email. */}
+      <Dialog open={notifyDialogOpen} onOpenChange={setNotifyDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Email this change to booked customers?</DialogTitle>
+            <DialogDescription>
+              You&apos;ve changed the date, time or venue.{' '}
+              {bookingsCount === 1 ? 'There is 1 booking' : `There are ${bookingsCount} bookings`}{' '}
+              on this class — they can be emailed the updated details so nobody turns up wrong.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={updateInstance.isPending}
+              onClick={() => {
+                const vals = pendingValues.current;
+                setNotifyDialogOpen(false);
+                if (vals) void saveCourse(vals, false);
+              }}
+            >
+              Save without emailing
+            </Button>
+            <Button
+              type="button"
+              disabled={updateInstance.isPending}
+              onClick={() => {
+                const vals = pendingValues.current;
+                setNotifyDialogOpen(false);
+                if (vals) void saveCourse(vals, true);
+              }}
+            >
+              Save and email {bookingsCount === 1 ? 'the customer' : `${bookingsCount} customers`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

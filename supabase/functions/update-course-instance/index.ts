@@ -56,12 +56,15 @@ const ALLOWED_FIELDS = new Set([
 ]);
 
 // Changes to any of these trigger the course_updated email when
-// notify_attendees is set (NTH-14).
+// notify_attendees is set (NTH-14). venue_name is deliberately NOT here:
+// it's a display label, and a label rename alone must never email booked
+// customers — a real venue move changes address/postcode (Feola's
+// "GUILDFORD - " prefix rename, 16 Sep, emailed a whole class about
+// nothing).
 const NOTIFY_FIELDS = new Set([
   'event_date',
   'start_time',
   'end_time',
-  'venue_name',
   'venue_address',
   'venue_postcode',
   'venue_tbc',
