@@ -143,7 +143,7 @@ function wrap(
       <h1 style="font-family:Quicksand,Arial,sans-serif;color:${DAISY_BLUE};font-size:22px;margin:0 0 16px">${title}</h1>
       ${bodyHtml}
       ${extraHtml}
-      <p style="color:#5a7a8f;font-size:13px;margin-top:24px">${signoffHtml ?? `With love,<br/>${ctx.franchisee_name} &amp; the Daisy First Aid team`}</p>
+      <p style="color:#5a7a8f;font-size:13px;margin-top:24px">${signoffHtml ?? `Warm wishes,<br/>${ctx.franchisee_name} &amp; the Daisy First Aid team`}</p>
     </div>
     <p style="color:#9bb0bd;font-size:11px;text-align:center;margin-top:16px">
       ${reason ?? "You're receiving this because you booked a Daisy First Aid class."}
