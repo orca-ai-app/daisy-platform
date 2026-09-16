@@ -1059,6 +1059,9 @@ function CourseBookingsCard({ courseInstanceId }: { courseInstanceId: string }) 
               {`${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim() ||
                 b.booking_reference}
             </span>
+            {b.customer?.email ? (
+              <span className="text-daisy-muted text-xs">{b.customer.email}</span>
+            ) : null}
             {b.ticket_type?.name ? (
               <Badge variant="default" className="text-[11px]">
                 {b.ticket_type.name}

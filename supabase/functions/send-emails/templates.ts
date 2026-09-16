@@ -15,6 +15,11 @@ export interface TemplateContext {
   franchisee_email: string;
   booking_reference: string;
   unsubscribe_url: string;
+  /**
+   * Composed payment summary for the franchisee alert, e.g.
+   * "£90.00 · 2 × Couples · code SAVE10". Empty for customer-facing keys.
+   */
+  amount_paid?: string;
   // Sellable items (migration 044) — set only for product_purchase_confirmation,
   // which resolves via da_product_sales rather than a booking.
   product_name?: string;
@@ -171,8 +176,10 @@ const TEMPLATES: Record<string, RawTemplate> = {
       <p><strong>Customer:</strong> {{customer_name}}<br/>
       <strong>Course:</strong> {{template_name}}<br/>
       <strong>When:</strong> {{event_date}} at {{start_time}}<br/>
+      <strong>Where:</strong> {{venue}}<br/>
+      <strong>Amount paid:</strong> {{amount_paid}}<br/>
       <strong>Reference:</strong> {{booking_reference}}</p>`,
-    text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nReference: {{booking_reference}}`,
+    text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nAmount paid: {{amount_paid}}\nReference: {{booking_reference}}`,
   },
   medical_reminder: {
     subject: 'Reminder: your Daisy First Aid class is soon',

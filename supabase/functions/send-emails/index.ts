@@ -264,7 +264,7 @@ Deno.serve(async (req: Request) => {
         const booking = await admin
           .from('da_bookings')
           .select(
-            `booking_reference, booking_status, total_price_pence, quantity,
+            `booking_reference, booking_status, payment_status, total_price_pence, quantity, discount_code,
            customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
              event_date, start_time, venue_name, venue_postcode, status,
@@ -319,6 +319,21 @@ Deno.serve(async (req: Request) => {
           franchisee_email: b.franchisee?.email ?? '',
           booking_reference: b.booking_reference,
           unsubscribe_url: await buildUnsubscribeUrl(row.customer_id),
+          // Franchisee alert only: what was paid, for what, with any code —
+          // so the alert is actionable without opening the portal (Feola,
+          // Hannah, launch week).
+          amount_paid: toFranchisee
+            ? [
+                `£${(Math.round(b.total_price_pence ?? 0) / 100).toFixed(2)}` +
+                  (b.payment_status === 'pending' ? ' (awaiting payment)' : ''),
+                b.quantity > 1
+                  ? `${b.quantity} × ${b.ticket_type?.name ?? 'places'}`
+                  : (b.ticket_type?.name ?? ''),
+                b.discount_code ? `code ${b.discount_code}` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')
+            : '',
           // The franchisee's own message (G2), rendered by the code
           // booking_confirmation template. It is deliberately blank on
           // new_booking_notification: that one goes TO the franchisee, who

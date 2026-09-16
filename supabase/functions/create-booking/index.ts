@@ -308,6 +308,26 @@ Deno.serve(async (req: Request) => {
     payment_status: string;
   };
 
+  // --- Franchisee notification --------------------------------------------
+  // Manual adds get the same "New booking" alert as online bookings (Hannah,
+  // launch week) — franchisee-facing only. The customer email journey still
+  // deliberately does NOT run for offline bookings: the franchisee has
+  // usually already spoken to the customer, and cash/cheque customers must
+  // not get a "payment received" style confirmation.
+  await admin
+    .from('da_email_sequences')
+    .insert({
+      customer_id: customerId,
+      booking_id: booking.id,
+      template_key: 'new_booking_notification',
+      sequence_day: 0,
+      scheduled_for: new Date().toISOString(),
+      status: 'pending',
+    })
+    .then((r: { error: unknown }) => {
+      if (r.error) console.error('notification queue failed', r.error);
+    });
+
   // --- Activity log --------------------------------------------------------
   await admin
     .from('da_activities')

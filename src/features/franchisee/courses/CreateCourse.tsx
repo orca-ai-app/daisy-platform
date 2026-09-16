@@ -1470,6 +1470,10 @@ export default function CreateCourse() {
   const handleTemplateSelect = useCallback(
     (id: string) => {
       const t = templates.find((x) => x.id === id);
+      // Re-clicking the already-selected template must not reseed — on a
+      // duplicate the card arrives pre-selected, and reseeding here wiped the
+      // duplicated description, pricing and tickets back to template defaults.
+      if (id === form.getValues('template_id')) return;
       form.setValue('template_id', id, { shouldValidate: true });
       if (t) {
         form.setValue('price_pounds', penceToPounds(t.default_price_pence));
