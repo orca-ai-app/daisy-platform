@@ -14,9 +14,11 @@
  * (e.g. GU1), or empty while "Venue to be confirmed" is ticked — so a TBC
  * venue can be completed later. Public courses still require a full postcode.
  *
- * Notifications (NTH-14): a "Notify booked customers" checkbox queues one
- * course_updated email per confirmed booking when date/time/venue changed.
- * It defaults ON when such a change is pending and confirmed bookings exist.
+ * Notifications (NTH-14, reworked 16 Sep 2026): when a material field
+ * (date, time, venue address/postcode/TBC) changed on a class with
+ * bookings, saving opens a dialog — "Save and email N customers" or
+ * "Save without emailing". Cosmetic edits (labels, description, price)
+ * save silently and never email; venue_name is also excluded server-side.
  *
  * Money is handled as pounds (max 2 decimals) in the form and converted to
  * integer pence before sending.  Dates are 'YYYY-MM-DD' wall-clock strings;
