@@ -27,6 +27,7 @@ import { renderBlocks, fillMerge, type EmailBlock } from '../_shared/emailBlocks
 import { buildUnsubscribeUrl } from '../_shared/unsubscribeToken.ts';
 import { processBroadcast } from '../_shared/broadcastSender.ts';
 import { logSystem } from '../_shared/log.ts';
+import { checkEmailHealth } from './health.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -532,13 +533,16 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // Delivery health snapshot + escalation (migration 057) — never throws.
+  const health = await checkEmailHealth(admin);
+
   // Heartbeat: one info row per run — the HQ dashboard's cron-staleness tile
   // reads the newest of these.
   await logSystem(admin, {
     level: 'info',
     source: 'send-emails',
     message: 'run complete',
-    context: { processed, sent, failed, cancelled, broadcasts: broadcastsProcessed },
+    context: { processed, sent, failed, cancelled, broadcasts: broadcastsProcessed, health },
   });
 
   return jsonResponse({ processed, sent, failed, cancelled, broadcasts: broadcastsProcessed }, 200);

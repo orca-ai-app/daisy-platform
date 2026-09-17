@@ -88,6 +88,39 @@ function useEmailCronHeartbeat() {
   });
 }
 
+/**
+ * Latest delivery-health snapshot (migration 057) — written hourly by
+ * send-emails. Distinct from "did we send": this is "did Postmark actually
+ * deliver what we marked sent", the signal that catches the silent-discard
+ * failure mode from 15-16 Sep.
+ */
+interface EmailHealthRow {
+  state: 'green' | 'amber' | 'red';
+  unconfirmed_count: number;
+  checked_at: string;
+}
+
+function useEmailDeliveryHealth() {
+  return useQuery<EmailHealthRow | null>({
+    queryKey: ['hq', 'health', 'email-delivery'],
+    staleTime: STALE_TIME,
+    retry: 1,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('da_email_health')
+        .select('state, unconfirmed_count, checked_at')
+        .order('checked_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        if (isTableMissing(error.code)) return null;
+        throw error;
+      }
+      return (data as EmailHealthRow | null) ?? null;
+    },
+  });
+}
+
 function useBrowserErrors24h() {
   return useQuery<number>({
     queryKey: ['hq', 'health', 'browser-errors'],
@@ -189,15 +222,53 @@ export function PlatformHealth() {
   const manualPayments = useManualPayments();
   const heartbeat = useEmailCronHeartbeat();
   const browserErrors = useBrowserErrors24h();
+  const delivery = useEmailDeliveryHealth();
 
   const heartbeatInfo = heartbeat.data ? agoLabel(heartbeat.data) : null;
+  // A snapshot older than 2h means the monitor itself has gone quiet — treat
+  // as amber, not green: absence of bad news is not good news (15 Sep lesson).
+  const deliveryStale = delivery.data
+    ? Date.now() - new Date(delivery.data.checked_at).getTime() > 2 * 3_600_000
+    : false;
+  const deliveryTone: Tone = !delivery.data
+    ? 'warn'
+    : delivery.data.state === 'red'
+      ? 'bad'
+      : delivery.data.state === 'amber' || deliveryStale
+        ? 'warn'
+        : 'ok';
+  const deliveryValue = !delivery.data
+    ? 'No data'
+    : delivery.data.state === 'green'
+      ? 'Healthy'
+      : delivery.data.state === 'amber'
+        ? 'Watch'
+        : 'Not delivering';
+  const deliveryMeta = !delivery.data
+    ? 'Monitor not run yet'
+    : deliveryStale
+      ? 'Monitor gone quiet — check cron'
+      : delivery.data.state === 'green'
+        ? 'Deliveries confirmed'
+        : delivery.data.state === 'red'
+          ? `${delivery.data.unconfirmed_count} unconfirmed — Chris alerted`
+          : `${delivery.data.unconfirmed_count} awaiting confirmation`;
 
   return (
     <section aria-label="Platform health" className="flex flex-col gap-2">
       <h2 className="text-daisy-muted text-[12px] font-extrabold tracking-[0.08em] uppercase">
         Platform health
       </h2>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <HealthTile
+          label="Email delivery"
+          to="/hq/system-logs?source=send-emails"
+          isLoading={delivery.isLoading}
+          isError={delivery.isError}
+          value={deliveryValue}
+          meta={deliveryMeta}
+          tone={deliveryTone}
+        />
         <HealthTile
           label="Email failures"
           to="/hq/system-logs?source=send-emails"
