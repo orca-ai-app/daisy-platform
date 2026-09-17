@@ -28,6 +28,34 @@ const AMBER_BOUNCE_PCT = 5;
 const REALERT_MS = 24 * 60 * 60_000;
 const RETENTION_DAYS = 60;
 
+// Pure signal → state mapping (extracted so the thresholds are unit-tested
+// without a live database). Red wins over amber: a discard incident (unconfirmed
+// sends or hard failures) must never be softened to amber by a benign bounce rate.
+export function computeState(s: {
+  unconfirmed: number;
+  failed24h: number;
+  bounceRate7d: number;
+}): HealthResult['state'] {
+  let state: HealthResult['state'] = 'green';
+  if (s.unconfirmed >= 1 && s.unconfirmed < RED_UNCONFIRMED) state = 'amber';
+  if (s.bounceRate7d > AMBER_BOUNCE_PCT) state = 'amber';
+  if (s.unconfirmed >= RED_UNCONFIRMED || s.failed24h > 0) state = 'red';
+  return state;
+}
+
+// Pure transition/escalation logic. Red fires once, then stays quiet for 24h
+// (alertedWithin24h) so a persistent incident doesn't spam. Any move off red
+// from a red previous state is a recovery, so the all-clear fires once.
+export function alertDecision(o: {
+  state: HealthResult['state'];
+  prevState?: string;
+  alertedWithin24h: boolean;
+}): { fireRed: boolean; fireAllClear: boolean } {
+  if (o.state === 'red') return { fireRed: !o.alertedWithin24h, fireAllClear: false };
+  if (o.prevState === 'red') return { fireRed: false, fireAllClear: true };
+  return { fireRed: false, fireAllClear: false };
+}
+
 async function pushover(title: string, message: string, priority: number): Promise<void> {
   const token = Deno.env.get('PUSHOVER_API_TOKEN') ?? '';
   const user = Deno.env.get('PUSHOVER_USER_KEY') ?? '';
@@ -90,10 +118,7 @@ export async function checkEmailHealth(admin: any): Promise<HealthResult | null>
       .limit(1)
       .maybeSingle();
 
-    let state: HealthResult['state'] = 'green';
-    if (unconfirmed >= 1 && unconfirmed < RED_UNCONFIRMED) state = 'amber';
-    if (bounceRate7d > AMBER_BOUNCE_PCT) state = 'amber';
-    if (unconfirmed >= RED_UNCONFIRMED || failed24h > 0) state = 'red';
+    const state = computeState({ unconfirmed, failed24h, bounceRate7d });
 
     // Previous snapshot drives transition + re-alert decisions.
     const prev = await admin
@@ -104,7 +129,8 @@ export async function checkEmailHealth(admin: any): Promise<HealthResult | null>
       .maybeSingle();
     const prevState = (prev.data as any)?.state as string | undefined;
 
-    let alertSent = false;
+    // Only query the re-alert window when we're actually red (cheap otherwise).
+    let alertedWithin24h = false;
     if (state === 'red') {
       const lastAlert = await admin
         .from('da_email_health')
@@ -113,17 +139,22 @@ export async function checkEmailHealth(admin: any): Promise<HealthResult | null>
         .gte('checked_at', new Date(now - REALERT_MS).toISOString())
         .limit(1)
         .maybeSingle();
-      if (!lastAlert.data) {
-        await pushover(
-          'Daisy email health RED',
-          `${unconfirmed} send(s) unconfirmed >2h, ${failed24h} failed in 24h. ` +
-            `Check the Postmark dashboard for a banner/limit, then send-emails logs. ` +
-            `Emails may be silently not reaching customers.`,
-          1,
-        );
-        alertSent = true;
-      }
-    } else if (prevState === 'red') {
+      alertedWithin24h = !!lastAlert.data;
+    }
+
+    const { fireRed, fireAllClear } = alertDecision({ state, prevState, alertedWithin24h });
+    let alertSent = false;
+    if (fireRed) {
+      await pushover(
+        'Daisy email health RED',
+        `${unconfirmed} send(s) unconfirmed >2h, ${failed24h} failed in 24h. ` +
+          `Check the Postmark dashboard for a banner/limit, then send-emails logs. ` +
+          `Emails may be silently not reaching customers.`,
+        1,
+      );
+      alertSent = true;
+    }
+    if (fireAllClear) {
       await pushover('Daisy email health recovered', 'Deliveries confirming normally again.', 0);
     }
 
