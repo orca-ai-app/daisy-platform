@@ -91,6 +91,12 @@ function buildEditSchema(visibility: Visibility, isOnline: boolean) {
       description_override: z.string(),
       /** Private operational notes (Sep 2026) — never shown to customers. */
       bespoke_details: z.string().max(2000, 'Keep notes under 2000 characters'),
+      /**
+       * Class runs at the customer's own address (home/workplace), so the
+       * booking flow captures the customer's address even on the public flow
+       * (migration 059). Always true for private classes.
+       */
+      delivered_at_address: z.boolean(),
       /** Explicit confirmation that a £0.00 class is intentional (F6). */
       allow_free: z.boolean(),
     })
@@ -259,6 +265,8 @@ function EditCourseForm({
     description_override?: string | null;
     /** Private operational notes — never shown to customers. */
     bespoke_details?: string | null;
+    /** Class runs at the customer's address (home/workplace) — migration 059. */
+    delivered_at_address?: boolean;
     template?: { name: string; description?: string | null; is_online?: boolean } | null;
   };
   bookingsCount: number;
@@ -292,6 +300,9 @@ function EditCourseForm({
       // description so the box shows the wording customers currently see.
       description_override: instance.description_override ?? instance.template?.description ?? '',
       bespoke_details: instance.bespoke_details ?? '',
+      // Migration 059: private classes are always delivered at the customer's
+      // address; public classes only when the franchisee ticked the box.
+      delivered_at_address: instance.delivered_at_address ?? isPrivate,
       // Pre-tick for a class that is already saved as free, so editing an
       // unrelated field on an existing free class is not blocked.
       allow_free: instance.price_pence === 0,
@@ -299,6 +310,7 @@ function EditCourseForm({
   });
 
   const venueTbc = watch('venue_tbc');
+  const deliveredAtAddress = watch('delivered_at_address');
   const allowFree = watch('allow_free');
   const pricePounds = watch('price_pounds');
 
@@ -351,6 +363,11 @@ function EditCourseForm({
     if (isPrivate) {
       fields.venue_tbc = tbc;
       fields.display_name = values.display_name.trim() || null;
+    } else {
+      // Migration 059: a public class can be flagged as a home/workplace class
+      // delivered at the customer's address. Private classes always are, so the
+      // toggle is only editable — and only sent — for public classes.
+      fields.delivered_at_address = values.delivered_at_address;
     }
 
     try {
@@ -444,6 +461,35 @@ function EditCourseForm({
                   <span className="text-daisy-muted">— you can add the venue later</span>
                 </label>
               </>
+            ) : null}
+
+            {/* Home/workplace class listed publicly (Jenni, 18 Sep 2026,
+                migration 059). Offered only for public classes — private
+                classes always run at the customer's address. */}
+            {!isPrivate ? (
+              <label className="border-daisy-line flex items-start gap-2.5 rounded-[8px] border-2 bg-white p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={deliveredAtAddress === true}
+                  onChange={(e) =>
+                    setValue('delivered_at_address', e.target.checked, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                  className="accent-daisy-primary mt-0.5 h-4 w-4 shrink-0"
+                />
+                <span>
+                  <span className="text-daisy-ink font-semibold">
+                    This class is delivered at the customer&rsquo;s address
+                  </span>
+                  <span className="text-daisy-muted block">
+                    Tick this for a home or workplace class you list publicly. The customer is asked
+                    for the class address and any parking notes when they book. Leave unticked for a
+                    normal class at a fixed venue.
+                  </span>
+                </span>
+              </label>
             ) : null}
 
             {/* Venue */}

@@ -133,6 +133,7 @@ export function useCourseInstance(id: string | undefined) {
            cancellation_reason,
            display_name,
            venue_tbc,
+           delivered_at_address,
            description_override,
            template:da_course_templates ( id, name, slug, description, is_online )`,
         )
@@ -200,6 +201,12 @@ export interface CourseInstanceUpdateFields {
   display_name?: string | null;
   /** Venue not yet confirmed — private courses only (migration 040). */
   venue_tbc?: boolean;
+  /**
+   * Class runs at the customer's own address (home/workplace), so the booking
+   * flow captures the customer's address even on the public flow (migration
+   * 059). Always true for private classes.
+   */
+  delivered_at_address?: boolean;
   /**
    * Customer-facing class description (migration 045 / G1). Null falls back to
    * the template description.

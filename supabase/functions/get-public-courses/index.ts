@@ -105,6 +105,10 @@ function toCard(r: any) {
     end_time: r.end_time,
     venue_name: r.venue_name,
     venue_postcode: r.venue_postcode,
+    // Home/workplace class delivered at the customer's own address (migration
+    // 059). When true the widget asks the customer for their address + parking
+    // even on the public flow, where venue_postcode is only the advertised area.
+    delivered_at_address: r.delivered_at_address ?? false,
     distance_miles: r.distance_miles == null ? null : Math.round(r.distance_miles * 10) / 10,
     franchisee_name: r.franchisee_name ?? r.franchisee?.name ?? null,
     // Who the customer is booking with (Emma, 27 Aug) + their page on the
@@ -196,7 +200,7 @@ Deno.serve(async (req: Request) => {
     // missing column is a hard 400 from PostgREST, so try it first and retry
     // without it rather than breaking every /book/:token page in between.
     const columns = (withOverride: boolean) =>
-      `id, booking_token, display_name,${withOverride ? ' description_override,' : ''} event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, status, visibility,
+      `id, booking_token, display_name,${withOverride ? ' description_override,' : ''} event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining, status, visibility,
          template:da_course_templates ( name, slug, description, age_range ),
          franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`;
@@ -258,7 +262,7 @@ Deno.serve(async (req: Request) => {
     const day = await admin
       .from('da_course_instances')
       .select(
-        `id, booking_token, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining,
+        `id, booking_token, event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining,
          template:da_course_templates ( name, slug )`,
       )
       .eq('franchisee_id', (fr.data as any).id)
@@ -322,7 +326,7 @@ Deno.serve(async (req: Request) => {
     const schedule = await admin
       .from('da_course_instances')
       .select(
-        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining,
+        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining,
          template:da_course_templates ( name, slug, description, age_range ),
          franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`,
@@ -596,7 +600,7 @@ Deno.serve(async (req: Request) => {
     const own = await admin
       .from('da_course_instances')
       .select(
-        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, lat, lng,
+        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining, lat, lng,
          template:da_course_templates!inner ( name, slug, description, age_range, is_online ),
          franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`,
@@ -642,7 +646,7 @@ Deno.serve(async (req: Request) => {
     const online = await admin
       .from('da_course_instances')
       .select(
-        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, capacity, spots_remaining, franchisee_id,
+        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining, franchisee_id,
          template:da_course_templates!inner ( name, slug, description, age_range, is_online ),
          franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`,

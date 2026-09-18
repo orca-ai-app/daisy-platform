@@ -117,6 +117,12 @@ interface CreateCourseInstanceRequest {
   /** Venue not yet confirmed (private courses only, migration 040). */
   venue_tbc?: boolean;
   /**
+   * The class runs at the customer's own address (home/workplace), so the
+   * booking flow asks the customer for their address + parking even on the
+   * public flow (migration 059). Always implied for private courses.
+   */
+  delivered_at_address?: boolean;
+  /**
    * Optional franchisee-written class description shown to customers
    * (migration 045 / G1). Null falls back to the template description.
    */
@@ -437,6 +443,9 @@ function validateBody(
           : null,
       display_name: typeof b.display_name === 'string' ? b.display_name.trim() || null : null,
       venue_tbc: venueTbc,
+      // Private classes are always delivered at the customer's address; public
+      // classes only when the franchisee ticked the box (migration 059).
+      delivered_at_address: b.visibility === 'private' || b.delivered_at_address === true,
       description_override:
         typeof b.description_override === 'string' ? b.description_override.trim() || null : null,
       allow_free: allowFree,
@@ -772,6 +781,9 @@ Deno.serve(async (req: Request) => {
     // Migration 040: customer-facing name override + venue-TBC flag.
     display_name: input.display_name ?? null,
     venue_tbc: input.venue_tbc === true,
+    // Migration 059: class runs at the customer's address (home/workplace), so
+    // the booking flow captures the customer's address even on the public flow.
+    delivered_at_address: input.delivered_at_address === true,
     // Migration 045 (G1): franchisee-written customer-facing description.
     // NULL falls back to the template description on the booking page.
     description_override: input.description_override ?? null,

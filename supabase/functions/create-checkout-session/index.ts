@@ -205,7 +205,7 @@ Deno.serve(async (req: Request) => {
   let q = admin
     .from('da_course_instances')
     .select(
-      'id, franchisee_id, template_id, event_date, start_time, end_time, private_client_id, status, visibility, spots_remaining',
+      'id, franchisee_id, template_id, event_date, start_time, end_time, private_client_id, status, visibility, delivered_at_address, spots_remaining',
     );
   q = courseInstanceId ? q.eq('id', courseInstanceId) : q.eq('booking_token', bookingToken!);
   const instRes = await q.maybeSingle();
@@ -220,13 +220,18 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'This course is no longer open for booking' }, 409);
   }
 
-  // Private (home/workplace) bookings: the class is delivered at the customer's
-  // address, so capture it and any parking/access notes (migration 058). The
-  // address is required for a private class, the notes are optional. Public
-  // venue classes send neither and both stay null.
+  // Home/workplace bookings: the class is delivered at the customer's address,
+  // so capture it and any parking/access notes (migration 058). This is every
+  // private booking, plus any public class the franchisee flagged as delivered
+  // at the customer's address (migration 059) — a home class listed publicly,
+  // where venue_postcode is only the advertised area, not where the class runs.
+  // The address is required for these, the notes optional. Public venue classes
+  // send neither and both stay null.
+  const deliveredAtAddress =
+    instance.visibility === 'private' || instance.delivered_at_address === true;
   const serviceAddress = reqStr(body.service_address);
   const parkingNotes = reqStr(body.parking_notes);
-  if (instance.visibility === 'private' && !serviceAddress) {
+  if (deliveredAtAddress && !serviceAddress) {
     return jsonResponse(
       { error: 'Please provide the address where the class will take place.' },
       400,

@@ -53,6 +53,9 @@ const ALLOWED_FIELDS = new Set([
   // Sep 2026 (Jenni): private operational notes (freelancer name/fee etc).
   // Never selected by the public search.
   'bespoke_details',
+  // Migration 059 (Jenni): class runs at the customer's address (home/workplace)
+  // so the booking flow captures the customer's address even on the public flow.
+  'delivered_at_address',
 ]);
 
 // Changes to any of these trigger the course_updated email when
@@ -290,6 +293,12 @@ Deno.serve(async (req: Request) => {
   }
   if ('venue_tbc' in updateFields && typeof updateFields.venue_tbc !== 'boolean') {
     return jsonResponse({ error: 'venue_tbc must be a boolean' }, 400);
+  }
+  if (
+    'delivered_at_address' in updateFields &&
+    typeof updateFields.delivered_at_address !== 'boolean'
+  ) {
+    return jsonResponse({ error: 'delivered_at_address must be a boolean' }, 400);
   }
   if (
     'visibility' in updateFields &&

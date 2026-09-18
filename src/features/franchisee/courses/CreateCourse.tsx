@@ -94,6 +94,8 @@ export interface DuplicateCourseState {
   venue_tbc: boolean;
   display_name: string | null;
   visibility: Visibility;
+  /** Class runs at the customer's address (home/workplace) — migration 059. */
+  delivered_at_address?: boolean;
   bespoke_details: string | null;
   /** Customer-facing description override (migration 045); optional on older state. */
   description_override?: string | null;
@@ -166,6 +168,13 @@ const schema = z
     bespoke_details: z.string(),
     /** Optional customer-facing class description (G1 / migration 045). */
     description_override: z.string(),
+    /**
+     * Class runs at the customer's own address (home/workplace). Public home
+     * classes tick this so the booking flow captures the customer's address
+     * even though the class is listed publicly (migration 059). Implied for
+     * private courses, where it is always true.
+     */
+    delivered_at_address: z.boolean().default(false),
     ticket_types: z.array(ticketTypeSchema).min(1, 'At least one ticket type required'),
     out_of_territory_confirmed: z.boolean(),
     /** Explicit confirmation that a £0.00 class is intentional (F6). */
@@ -521,6 +530,7 @@ function Step2Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
 
   const visibility = watch('visibility');
   const privateClientId = watch('private_client_id');
+  const deliveredAtAddress = watch('delivered_at_address');
 
   return (
     <div className="flex flex-col gap-5">
@@ -562,6 +572,39 @@ function Step2Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
           <p className="text-daisy-orange text-xs">{errors.visibility.message}</p>
         ) : null}
       </div>
+
+      {/* Home/workplace classes listed publicly (Jenni, 18 Sep 2026, migration
+          059). A public class is normally at a fixed venue, so no customer
+          address is needed. But franchisees also advertise home classes in the
+          finder using just the area (e.g. SM1) — those run at the customer's
+          own address, which the booking flow must capture. Private classes are
+          always delivered at the customer's address, so the box is only offered
+          for public classes. */}
+      {visibility === 'public' ? (
+        <label className="border-daisy-line flex items-start gap-2.5 rounded-[8px] border-2 bg-white p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={deliveredAtAddress === true}
+            onChange={(e) => {
+              setValue('delivered_at_address', e.target.checked, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+            }}
+            className="accent-daisy-primary mt-0.5 h-4 w-4 shrink-0"
+          />
+          <span>
+            <span className="text-daisy-ink font-semibold">
+              This class is delivered at the customer&rsquo;s address
+            </span>
+            <span className="text-daisy-muted block">
+              Tick this for a home or workplace class you list publicly. The customer is asked for
+              the class address and any parking notes when they book, and the trainer sees them on
+              the booking. Leave unticked for a normal class at a fixed venue.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       {visibility === 'private' ? (
         <>
@@ -1415,6 +1458,7 @@ export default function CreateCourse() {
           price_pounds: penceToPounds(duplicate.price_pence),
           bespoke_details: duplicate.bespoke_details ?? '',
           description_override: duplicate.description_override ?? '',
+          delivered_at_address: duplicate.delivered_at_address ?? false,
           allow_free: false,
           ticket_types: duplicate.ticket_types.map((tt, i) => ({
             name: tt.name,
@@ -1448,6 +1492,7 @@ export default function CreateCourse() {
           price_pounds: 0,
           bespoke_details: '',
           description_override: '',
+          delivered_at_address: false,
           allow_free: false,
           ticket_types: [
             {
@@ -1597,6 +1642,9 @@ export default function CreateCourse() {
       private_client_id: values.private_client_id ?? null,
       display_name: isPrivate ? values.display_name.trim() || null : null,
       venue_tbc: venueTbc,
+      // Migration 059: private courses are always delivered at the customer's
+      // address; a public course is only when the franchisee ticked the box.
+      delivered_at_address: isPrivate || values.delivered_at_address,
       // G1 (migration 045): null falls back to the template description.
       description_override: values.description_override.trim() || null,
       // F6: the server rejects a £0.00 price unless this is explicitly set.

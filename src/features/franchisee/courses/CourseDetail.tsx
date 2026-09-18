@@ -257,6 +257,7 @@ export default function CourseDetail() {
                       venue_tbc: instance.venue_tbc,
                       display_name: instance.display_name,
                       visibility: instance.visibility,
+                      delivered_at_address: instance.delivered_at_address,
                       bespoke_details: instance.bespoke_details,
                       description_override: instance.description_override,
                       capacity: instance.capacity,

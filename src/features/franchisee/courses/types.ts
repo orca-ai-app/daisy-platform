@@ -128,6 +128,12 @@ export interface CourseInstance {
   /** Venue not yet confirmed (private courses only, migration 040). */
   venue_tbc: boolean;
   /**
+   * Class runs at the customer's own address (home/workplace), so the booking
+   * flow captures the customer's address even on the public flow (migration
+   * 059). Always true for private classes.
+   */
+  delivered_at_address: boolean;
+  /**
    * Optional franchisee-written class description shown to customers
    * (migration 045). NULL falls back to da_course_templates.description.
    */
@@ -301,6 +307,12 @@ export interface CreateCourseInstanceRequest {
   display_name?: string | null;
   /** Venue not yet confirmed (private courses only, migration 040). */
   venue_tbc?: boolean;
+  /**
+   * The class runs at the customer's own address (home/workplace), so the
+   * booking flow captures the customer's address even on the public flow
+   * (migration 059). Always true for private courses.
+   */
+  delivered_at_address?: boolean;
   /**
    * Optional franchisee-written class description shown to customers
    * (migration 045 / G1). Null falls back to the template description.
