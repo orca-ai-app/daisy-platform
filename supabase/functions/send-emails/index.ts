@@ -22,7 +22,13 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
-import { buildVatBlockHtml, renderTemplate, type TemplateContext } from './templates.ts';
+import {
+  buildVatBlockHtml,
+  buildServiceBlockHtml,
+  buildServiceBlockText,
+  renderTemplate,
+  type TemplateContext,
+} from './templates.ts';
 import { renderBlocks, fillMerge, type EmailBlock } from '../_shared/emailBlocks.ts';
 import { buildUnsubscribeUrl } from '../_shared/unsubscribeToken.ts';
 import { processBroadcast } from '../_shared/broadcastSender.ts';
@@ -265,7 +271,7 @@ Deno.serve(async (req: Request) => {
         const booking = await admin
           .from('da_bookings')
           .select(
-            `booking_reference, booking_status, payment_status, total_price_pence, quantity, discount_code,
+            `booking_reference, booking_status, payment_status, total_price_pence, quantity, discount_code, service_address, parking_notes,
            customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
              event_date, start_time, venue_name, venue_postcode, status,
@@ -349,6 +355,16 @@ Deno.serve(async (req: Request) => {
           booking_email_message: toFranchisee ? '' : (b.franchisee?.booking_email_message ?? ''),
           // VAT receipt block (migration 055) — only when the ticket carries a
           // VAT rate. Lets business customers reclaim without chasing invoices.
+          // Private/home/workplace booking (migration 058): the franchisee alert
+          // carries the customer's class address + parking so the trainer knows
+          // where to go. Franchisee alert only; empty for public venue classes
+          // and never on the customer-facing confirmation.
+          service_block_html: toFranchisee
+            ? buildServiceBlockHtml(b.service_address, b.parking_notes)
+            : '',
+          service_block_text: toFranchisee
+            ? buildServiceBlockText(b.service_address, b.parking_notes)
+            : '',
           vat_block_html: toFranchisee
             ? ''
             : buildVatBlockHtml({

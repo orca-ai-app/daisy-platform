@@ -117,6 +117,9 @@ export interface OwnBookingDetail {
   notes: string | null;
   quantity: number;
   created_at: string;
+  /** Private/home/workplace bookings (migration 058): where the class runs + parking. */
+  service_address: string | null;
+  parking_notes: string | null;
   customer: {
     id: string;
     first_name: string;
@@ -387,6 +390,8 @@ export function useBookingDetail(id: string | undefined) {
            notes,
            quantity,
            created_at,
+           service_address,
+           parking_notes,
            customer:da_customers ( id, first_name, last_name, email, phone, postcode ),
            course_instance:da_course_instances (
              id,

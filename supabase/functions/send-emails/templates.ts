@@ -48,6 +48,14 @@ export interface TemplateContext {
    * rate. Already-escaped HTML, appended after the franchisee message.
    */
   vat_block_html?: string;
+  /**
+   * Pre-rendered "where the class runs" block for the franchisee's new-booking
+   * alert (migration 058): the customer's address and any parking/access notes
+   * for a private/home/workplace booking. Built in index.ts, already escaped;
+   * empty string for public venue classes. HTML and plain-text variants.
+   */
+  service_block_html?: string;
+  service_block_text?: string;
 }
 
 /**
@@ -55,6 +63,34 @@ export interface TemplateContext {
  * VAT amounts plus the franchisee's VAT number, so a business customer's
  * accountant can reclaim from the confirmation email alone.
  */
+/**
+ * "Where the class runs" block for the franchisee's new-booking alert
+ * (migration 058). A private/home/workplace booking carries the customer's
+ * address and optional parking notes; a trainer needs both to turn up. Returns
+ * an empty string when there is no address (public venue class), so callers can
+ * concatenate it unconditionally. Customer free text is escaped.
+ */
+export function buildServiceBlockHtml(
+  address: string | null | undefined,
+  parking: string | null | undefined,
+): string {
+  const addr = (address ?? '').trim();
+  if (!addr) return '';
+  const park = (parking ?? '').trim();
+  const parkLine = park ? `<br/><strong>Parking / access:</strong> ${escapeHtml(park)}` : '';
+  return `<p><strong>Class address:</strong> ${escapeHtml(addr)}${parkLine}</p>`;
+}
+
+export function buildServiceBlockText(
+  address: string | null | undefined,
+  parking: string | null | undefined,
+): string {
+  const addr = (address ?? '').trim();
+  if (!addr) return '';
+  const park = (parking ?? '').trim();
+  return `\nClass address: ${addr}${park ? `\nParking / access: ${park}` : ''}`;
+}
+
 export function buildVatBlockHtml(input: {
   totalPricePence: unknown;
   vatRate: unknown;
@@ -178,8 +214,9 @@ const TEMPLATES: Record<string, RawTemplate> = {
       <strong>When:</strong> {{event_date}} at {{start_time}}<br/>
       <strong>Where:</strong> {{venue}}<br/>
       <strong>Amount paid:</strong> {{amount_paid}}<br/>
-      <strong>Reference:</strong> {{booking_reference}}</p>`,
-    text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nAmount paid: {{amount_paid}}\nReference: {{booking_reference}}`,
+      <strong>Reference:</strong> {{booking_reference}}</p>
+      {{service_block_html}}`,
+    text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nAmount paid: {{amount_paid}}\nReference: {{booking_reference}}{{service_block_text}}`,
   },
   medical_reminder: {
     subject: 'Reminder: your Daisy First Aid class is soon',

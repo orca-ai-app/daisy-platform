@@ -109,6 +109,10 @@ interface RequestBody {
   discount_code?: unknown;
   origin?: unknown;
   franchisee_product_id?: unknown;
+  // Private/home/workplace bookings only: where the class is delivered and any
+  // parking or access notes (migration 058). Ignored for public venue classes.
+  service_address?: unknown;
+  parking_notes?: unknown;
 }
 
 // Shared by both paths. Round 2 (G3): phone and postcode are now COMPULSORY,
@@ -214,6 +218,19 @@ Deno.serve(async (req: Request) => {
 
   if (instance.status !== 'scheduled') {
     return jsonResponse({ error: 'This course is no longer open for booking' }, 409);
+  }
+
+  // Private (home/workplace) bookings: the class is delivered at the customer's
+  // address, so capture it and any parking/access notes (migration 058). The
+  // address is required for a private class, the notes are optional. Public
+  // venue classes send neither and both stay null.
+  const serviceAddress = reqStr(body.service_address);
+  const parkingNotes = reqStr(body.parking_notes);
+  if (instance.visibility === 'private' && !serviceAddress) {
+    return jsonResponse(
+      { error: 'Please provide the address where the class will take place.' },
+      400,
+    );
   }
 
   // --- Ticket type ----------------------------------------------------------
@@ -433,6 +450,9 @@ Deno.serve(async (req: Request) => {
       payment_status: 'pending',
       booking_status: 'confirmed',
       reserved_seats: seatsNeeded,
+      // Private/home/workplace bookings only (migration 058); null otherwise.
+      service_address: serviceAddress,
+      parking_notes: parkingNotes,
     })
     .select('id')
     .single();

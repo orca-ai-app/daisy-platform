@@ -716,6 +716,15 @@ export default function BookingDetail() {
                           : (booking.course_instance?.venue_postcode ?? '-')
                       }
                     />
+                    {/* Private/home/workplace bookings (migration 058): the customer's
+                        own address and any parking/access notes, so the trainer knows
+                        where to go. Only shown when captured. */}
+                    {booking.service_address ? (
+                      <Field label="Class address" value={booking.service_address} full />
+                    ) : null}
+                    {booking.parking_notes ? (
+                      <Field label="Parking / access" value={booking.parking_notes} full />
+                    ) : null}
                     <Field
                       label="Ticket type"
                       value={
