@@ -59,11 +59,6 @@ export interface TemplateContext {
 }
 
 /**
- * VAT receipt block for VAT-rated tickets (migration 055): gross, ex-VAT and
- * VAT amounts plus the franchisee's VAT number, so a business customer's
- * accountant can reclaim from the confirmation email alone.
- */
-/**
  * "Where the class runs" block for the franchisee's new-booking alert
  * (migration 058). A private/home/workplace booking carries the customer's
  * address and optional parking notes; a trainer needs both to turn up. Returns
@@ -91,6 +86,11 @@ export function buildServiceBlockText(
   return `\nClass address: ${addr}${park ? `\nParking / access: ${park}` : ''}`;
 }
 
+/**
+ * VAT receipt block for VAT-rated tickets (migration 055): gross, ex-VAT and
+ * VAT amounts plus the franchisee's VAT number, so a business customer's
+ * accountant can reclaim from the confirmation email alone.
+ */
 export function buildVatBlockHtml(input: {
   totalPricePence: unknown;
   vatRate: unknown;
