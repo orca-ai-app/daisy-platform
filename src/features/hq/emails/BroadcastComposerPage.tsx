@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 import { ArrowLeft, CalendarClock, Send, Undo2 } from 'lucide-react';
 import { PageHeader } from '@/components/daisy';
@@ -58,6 +58,11 @@ const AUDIENCE_OPTIONS: ReadonlyArray<{
     value: 'customers_all',
     label: 'All opted-in customers',
     help: 'Every customer with a marketing opt-in, minus the suppression list.',
+  },
+  {
+    value: 'customers_selected',
+    label: 'Selected contacts',
+    help: 'The contacts you ticked on the Contacts page and sent here with “Email selected”.',
   },
   {
     value: 'customers_franchisee',
@@ -131,9 +136,22 @@ export default function BroadcastComposerPage() {
   return <BroadcastComposer key={broadcast.data.id} broadcast={broadcast.data} />;
 }
 
+/** Prefill handed over by the Contacts CRM page via router state. */
+interface CrmAudienceState {
+  type: BroadcastAudienceType;
+  customerIds?: string[];
+}
+
 function BroadcastComposer({ broadcast }: { broadcast: EmailBroadcast | null }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { franchisee } = useRole();
+
+  // Contacts page → "Email all" / "Email selected" arrives as router state on a
+  // fresh composer (never overrides an existing draft's saved audience).
+  const crmAudience = !broadcast
+    ? ((location.state as { crmAudience?: CrmAudienceState } | null)?.crmAudience ?? null)
+    : null;
 
   const upsert = useUpsertBroadcast();
   const sendTest = useSendInlineTestEmail();
@@ -153,12 +171,16 @@ function BroadcastComposer({ broadcast }: { broadcast: EmailBroadcast | null }) 
   const [preheader, setPreheader] = useState(broadcast?.preheader ?? '');
   const [blocks, setBlocks] = useState<EmailBlock[]>(broadcast?.blocks ?? []);
   const [audienceType, setAudienceType] = useState<BroadcastAudienceType>(
-    broadcast?.audience_type ?? 'customers_all',
+    broadcast?.audience_type ?? crmAudience?.type ?? 'customers_all',
   );
   const [franchiseeIds, setFranchiseeIds] = useState<string[]>(
     broadcast?.audience_config.franchisee_ids ?? [],
   );
   const [listId, setListId] = useState<string>(broadcast?.audience_config.list_id ?? '');
+  // customers_selected — the ticked contacts, from a saved draft or the CRM handoff.
+  const [customerIds] = useState<string[]>(
+    broadcast?.audience_config.customer_ids ?? crmAudience?.customerIds ?? [],
+  );
 
   const [confirmSendOpen, setConfirmSendOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -166,16 +188,23 @@ function BroadcastComposer({ broadcast }: { broadcast: EmailBroadcast | null }) 
 
   const audienceConfig = useMemo<BroadcastAudienceConfig>(() => {
     if (audienceType === 'list') return listId ? { list_id: listId } : {};
+    if (audienceType === 'customers_selected') {
+      return customerIds.length ? { customer_ids: customerIds } : {};
+    }
     if (audienceType === 'customers_franchisee' || audienceType === 'franchisees_selected') {
       return { franchisee_ids: franchiseeIds };
     }
     return {};
-  }, [audienceType, franchiseeIds, listId]);
+  }, [audienceType, franchiseeIds, listId, customerIds]);
 
   const audienceValid =
     audienceType === 'customers_all' ||
     audienceType === 'franchisees_all' ||
-    (audienceType === 'list' ? Boolean(listId) : franchiseeIds.length > 0);
+    (audienceType === 'customers_selected'
+      ? customerIds.length > 0
+      : audienceType === 'list'
+        ? Boolean(listId)
+        : franchiseeIds.length > 0);
 
   // Debounce the audience for the live count so rapid checkbox ticking
   // doesn't hammer the edge function.
@@ -573,13 +602,35 @@ function BroadcastComposer({ broadcast }: { broadcast: EmailBroadcast | null }) 
               </div>
             ) : null}
 
+            {audienceType === 'customers_selected' ? (
+              <div className="border-daisy-line bg-daisy-paper-soft rounded-[8px] border-2 p-3">
+                {customerIds.length > 0 ? (
+                  <p className="text-daisy-ink text-sm font-semibold">
+                    {customerIds.length} contact{customerIds.length === 1 ? '' : 's'} chosen on the
+                    Contacts page. Opted-out and suppressed contacts are removed automatically
+                    before sending.
+                  </p>
+                ) : (
+                  <p className="text-daisy-muted text-sm">
+                    No contacts chosen. Pick them on the{' '}
+                    <Link to="/hq/contacts" className="text-daisy-primary font-semibold underline">
+                      Contacts page
+                    </Link>{' '}
+                    and use “Email selected”, or choose another audience above.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
             {/* Live recipient count */}
             <p className="text-daisy-ink text-sm font-semibold" aria-live="polite">
               {!audienceValid ? (
                 <span className="text-daisy-muted font-normal">
                   {audienceType === 'list'
                     ? 'Choose a list to see the recipient count.'
-                    : 'Tick at least one franchisee to see the recipient count.'}
+                    : audienceType === 'customers_selected'
+                      ? 'Pick contacts on the Contacts page to see the recipient count.'
+                      : 'Tick at least one franchisee to see the recipient count.'}
                 </span>
               ) : count.isFetching || !count.data ? (
                 count.isError ? (

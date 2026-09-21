@@ -284,6 +284,7 @@ export function useSendInlineTestEmail() {
 
 export type BroadcastAudienceType =
   | 'customers_all'
+  | 'customers_selected'
   | 'customers_franchisee'
   | 'franchisees_all'
   | 'franchisees_selected'
@@ -294,6 +295,8 @@ export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'fail
 export interface BroadcastAudienceConfig {
   franchisee_ids?: string[];
   list_id?: string;
+  /** customers_selected — the contacts HQ ticked in the CRM (migration 060). */
+  customer_ids?: string[];
 }
 
 export interface EmailBroadcast {

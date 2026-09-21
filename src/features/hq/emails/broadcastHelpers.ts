@@ -47,6 +47,7 @@ export const AUDIENCE_TYPE_LABEL: Record<BroadcastAudienceType, string> = {
   customers_franchisee: 'Customers of selected franchisees',
   franchisees_all: 'All active franchisees',
   franchisees_selected: 'Selected franchisees',
+  customers_selected: 'Selected contacts',
   list: 'A saved list',
 };
 
@@ -63,6 +64,10 @@ export function describeAudience(
   switch (type) {
     case 'customers_all':
       return 'All opted-in customers';
+    case 'customers_selected': {
+      const n = config.customer_ids?.length ?? 0;
+      return `${n} selected contact${n === 1 ? '' : 's'}`;
+    }
     case 'customers_franchisee': {
       const n = config.franchisee_ids?.length ?? 0;
       return `Customers of ${n} franchisee${n === 1 ? '' : 's'}`;

@@ -57,6 +57,32 @@ async function loadCandidates(
         customer_id: c.id,
       }));
     }
+    case 'customers_selected': {
+      // HQ ticked specific contacts in the mini-CRM. Send only to those, still
+      // opt-out filtered and (via resolveAudience) suppression-checked. Chunked
+      // so a large hand-picked selection doesn't blow the PostgREST URL limit.
+      const ids: string[] = audienceConfig?.customer_ids ?? [];
+      if (ids.length === 0) return [];
+      const out: Candidate[] = [];
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const chunk = ids.slice(i, i + BATCH_SIZE);
+        const res = await admin
+          .from('da_customers')
+          .select('id, email, first_name, last_name')
+          .in('id', chunk)
+          .eq('marketing_opt_out', false);
+        if (res.error) throw new Error(`selected-customer load failed: ${res.error.message}`);
+        for (const c of res.data ?? []) {
+          out.push({
+            email: c.email,
+            first_name: c.first_name,
+            last_name: c.last_name,
+            customer_id: c.id,
+          });
+        }
+      }
+      return out;
+    }
     case 'customers_franchisee': {
       const ids: string[] = audienceConfig?.franchisee_ids ?? [];
       if (ids.length === 0) return [];

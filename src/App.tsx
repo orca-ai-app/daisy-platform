@@ -81,6 +81,9 @@ const ListsPage = lazy(() =>
 const ListDetailPage = lazy(() =>
   import('@/features/hq/emails').then((m) => ({ default: m.ListDetailPage })),
 );
+const ContactsPage = lazy(() =>
+  import('@/features/hq/contacts').then((m) => ({ default: m.ContactsPage })),
+);
 const InstancesList = lazy(() =>
   import('@/features/hq/courses/instances').then((m) => ({ default: m.InstancesList })),
 );
@@ -354,6 +357,18 @@ export default function App() {
                     element={
                       <LazyRoute>
                         <ReportsPage />
+                      </LazyRoute>
+                    }
+                  />
+
+                  {/* Contacts CRM: the HQ-wide directory of da_customers, with
+                    email-all / email-selected handoff into the broadcast
+                    composer. */}
+                  <Route
+                    path="contacts"
+                    element={
+                      <LazyRoute>
+                        <ContactsPage />
                       </LazyRoute>
                     }
                   />
