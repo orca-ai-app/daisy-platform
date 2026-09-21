@@ -109,6 +109,12 @@ function toCard(r: any) {
     // 059). When true the widget asks the customer for their address + parking
     // even on the public flow, where venue_postcode is only the advertised area.
     delivered_at_address: r.delivered_at_address ?? false,
+    // Needed so the widget can mirror the create-checkout-session address gate
+    // exactly (visibility === 'private' || delivered_at_address). Present on the
+    // /book/:token path; null on public search (which only ever returns public
+    // rows, so the widget falls back to the flag). Without it, a public venue
+    // class shared by its /book/:token link wrongly demanded a customer address.
+    visibility: r.visibility ?? null,
     distance_miles: r.distance_miles == null ? null : Math.round(r.distance_miles * 10) / 10,
     franchisee_name: r.franchisee_name ?? r.franchisee?.name ?? null,
     // Who the customer is booking with (Emma, 27 Aug) + their page on the
