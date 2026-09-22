@@ -1048,7 +1048,7 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
         {fields.map((field, i) => (
           <Card key={field.id} className="border-daisy-line">
             <CardContent className="pt-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_1fr_auto]">
                 <div className="flex flex-col gap-1">
                   <Label htmlFor={`tt-name-${i}`} className="text-xs">
                     Name
@@ -1109,6 +1109,34 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
                   {errors.ticket_types?.[i]?.seats_consumed ? (
                     <p className="text-daisy-orange text-xs">
                       {errors.ticket_types[i].seats_consumed?.message}
+                    </p>
+                  ) : null}
+                </div>
+
+                {/* Max available (TRI-0002, Nicola G): cap how many of this
+                    ticket can be sold on the class — the field used to exist
+                    only in edit, so a Group ticket with no cap let a customer
+                    buy 4 in one go. Blank = no limit. */}
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor={`tt-max-${i}`} className="text-xs">
+                    Max available
+                  </Label>
+                  <Input
+                    id={`tt-max-${i}`}
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="Unlimited"
+                    {...register(`ticket_types.${i}.max_available`, {
+                      setValueAs: (v: string) => (v === '' || v === null ? null : Number(v)),
+                    })}
+                  />
+                  <p className="text-daisy-muted text-xs">
+                    Most you&rsquo;ll sell of this ticket. Leave blank for no limit.
+                  </p>
+                  {errors.ticket_types?.[i]?.max_available ? (
+                    <p className="text-daisy-orange text-xs">
+                      {errors.ticket_types[i].max_available?.message}
                     </p>
                   ) : null}
                 </div>
