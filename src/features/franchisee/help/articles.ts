@@ -47,7 +47,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Customers: people who have booked with you, plus anyone who has submitted a medical form for your classes.',
           'Clients: private clients (companies and groups) you run tailored courses for.',
           'Discounts: promotional codes you create for customers to use at checkout.',
-          'Merchandise: book sales you record, with a running total for the month.',
+          'Merchandise: the book sales you record, plus My shop, where you sell books and e-learning from your booking page. A running total for the month is shown.',
           'Payments: your Stripe connection. All card payments from customers are handled here.',
           'Profile: your personal details and your permanent medical form QR code.',
           'Help: these guides.',
@@ -576,6 +576,68 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     related: ['managing-courses', 'bookings', 'getting-help'],
+  },
+  {
+    slug: 'online-shop',
+    title: 'Your online shop: books and e-learning',
+    summary:
+      'Sell books and e-learning from your booking page, on sale any time with no date to pick, and how e-learning buyers get their access.',
+    keywords: [
+      'e-learning',
+      'elearning',
+      'e learning',
+      'online course',
+      'online courses',
+      'my shop',
+      'shop',
+      'available any time',
+      'book',
+      'books',
+      'sell online',
+      'digital',
+      'add your own item',
+      'show on my booking page',
+      'access details',
+    ],
+    sections: [
+      {
+        heading: 'What your shop is for',
+        body: [
+          'Not everything you sell is a class on a date. Books and e-learning can be sold from your booking page at any time, so a parent who missed a class can still buy from you at 10pm on a Tuesday. They show in a separate section for things customers can buy any time, apart from your dated classes, because there is no date to pick.',
+        ],
+      },
+      {
+        heading: 'Set up your shop',
+        body: [
+          'Open Merchandise and go to the My shop tab. You can price up anything in the shared catalogue, or add your own item. The price is yours to set, in pounds, and it does not change what any other franchisee charges.',
+        ],
+        steps: [
+          'Go to Merchandise, then the My shop tab.',
+          'To sell a catalogue item, click it, set your price and a VAT rate if you are VAT registered, and save.',
+          'To add something of your own, click "Add your own item", give it a Name, choose the Type, add a Description, and set the price.',
+        ],
+      },
+      {
+        heading: 'Adding an e-learning course',
+        body: [
+          'When you add your own item, set Type to "E-learning course". The Description is what customers see on your booking page, and Fulfilment notes are for anything they should know, for example how long their access lasts.',
+          'E-learning is delivered by hand, not automatically. When someone buys your own course, their confirmation email tells them their access details will follow separately, usually within 48 hours, and you enrol them yourself. If it is an HQ course that already has a link set, the customer is sent straight to it after paying and you have nothing to do. If HQ has not set the link yet, contact HQ before you put it on your booking page.',
+        ],
+      },
+      {
+        heading: 'Show an item on your booking page',
+        body: [
+          'Nothing sells until you switch it on. Open the item from My shop and turn on "Show on my booking page". Anything left switched off stays invisible to customers, so you only ever show what you want to sell.',
+        ],
+      },
+      {
+        heading: 'Sold something in person?',
+        body: [
+          'For a book, kit or anything else sold face to face, use "Record sale" on the Merchandise page, or "Record book sale" on the class page. In-person sales sit alongside your online ones in your figures and exports. See "Selling merchandise" for the full detail on recording sales.',
+        ],
+      },
+    ],
+    related: ['selling-merchandise', 'managing-courses', 'getting-help'],
   },
 
   {
