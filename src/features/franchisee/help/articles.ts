@@ -139,6 +139,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         steps: [
           'Template: pick the course type from the list provided by HQ.',
           'Venue and date: enter the event date, start and end times, venue name, address, and postcode. The system checks whether the postcode is within your territory and warns you if it is not.',
+          'Tip: the time boxes take typing, so click in and type 1430 for 14:30 rather than scrolling the pop-up list. The arrow keys nudge the time in steps too.',
           'Pricing and capacity: set the price and maximum number of spaces. You can also add ticket types here (for example, Individual, Couple, or Family).',
           'Visibility: choose Public (appears on the Daisy website) or Private (direct link only, for clients and private groups). Private courses require a description.',
           'Review: check all the details, then save. You are taken straight to the course page.',
