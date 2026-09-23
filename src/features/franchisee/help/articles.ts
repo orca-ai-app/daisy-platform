@@ -164,6 +164,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
           '"Spaces" means the number of places left on the course based on capacity minus the seats consumed by confirmed bookings. When spaces reach zero, the course shows as full.',
         ],
       },
+      {
+        heading: 'Finding your way around a busy list',
+        body: [
+          'The Courses list has filters along the top: Status (Scheduled, Completed, Cancelled), a date dropdown, course type, and a venue box. Your choices are remembered on that device, so set them once and the list stays how you like it.',
+          'The date dropdown includes the next six months by name, so you can jump straight to, say, November. The venue box filters by venue name or postcode as you type, useful when you run classes across several locations.',
+        ],
+      },
     ],
     related: ['booking-links', 'bookings'],
   },
@@ -182,6 +189,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'website',
       'postcode search',
       'book online',
+      'filter',
+      'filtered link',
+      'course type',
+      'month',
+      'level 3',
+      'colour',
+      'colours',
+      'enquiry',
     ],
     sections: [
       {
@@ -203,6 +218,22 @@ export const HELP_ARTICLES: HelpArticle[] = [
         body: [
           'If you set a class to Public when creating it, it appears automatically on the Daisy website. Visitors can search by postcode and find it. You do not need to do anything extra.',
           'Private classes do not appear in the postcode search. Share the booking link directly with the group or client.',
+        ],
+      },
+      {
+        heading: 'Sending a customer a filtered link',
+        body: [
+          'When someone enquires about one kind of course, you can send a single link that shows only your classes of that type, rather than your whole schedule. The link is:',
+          'https://booking.daisyfirstaid.com/search?franchisee=YOUR-NUMBER&course-type=TYPE',
+          'Replace YOUR-NUMBER with your franchisee number (it is on your Profile page) and TYPE with one of: baby-family, paediatric, workplace, teaching-children, online, or bespoke-other. For example, a Level 3 enquiry gets course-type=paediatric.',
+          'You can narrow to one month too by adding &month=2026-10 (year and month). Customers can always widen or clear the filters themselves on the page, so a link never traps anyone.',
+        ],
+      },
+      {
+        heading: 'Filters and colours on the booking page',
+        body: [
+          'Customers browsing your classes can now filter by course type and month using the dropdowns above the list, and every class card carries a colour for its course family so the list is scannable at a glance.',
+          'The colours are: pink for baby and family classes, blue for paediatric courses (including Anaphylaxis), coral for workplace courses (including Duty of Care and Basic Life Saver), green for teaching children, yellow for live online, and violet for bespoke and anything else.',
         ],
       },
     ],
