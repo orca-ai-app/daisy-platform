@@ -218,6 +218,16 @@ const TEMPLATES: Record<string, RawTemplate> = {
       {{service_block_html}}`,
     text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nAmount paid: {{amount_paid}}\nReference: {{booking_reference}}{{service_block_text}}`,
   },
+  day_before_reminder: {
+    subject: 'See you tomorrow — {{template_name}} ({{booking_reference}})',
+    bodyHtml: `<p>Hi {{first_name}},</p>
+      <p>A quick reminder that your <strong>{{template_name}}</strong> class is tomorrow.</p>
+      <p><strong>When:</strong> {{event_date}} at {{start_time}}<br/>
+      <strong>Where:</strong> {{venue}}<br/>
+      <strong>Reference:</strong> {{booking_reference}}</p>
+      <p>We look forward to seeing you. If anything has changed and you can't make it, just reply to this email.</p>`,
+    text: `Hi {{first_name}},\n\nA quick reminder that your {{template_name}} class is tomorrow.\n\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nReference: {{booking_reference}}\n\nWe look forward to seeing you. If anything has changed and you can't make it, just reply to this email.\n\n{{franchisee_name}} & the Daisy First Aid team`,
+  },
   medical_reminder: {
     subject: 'Reminder: your Daisy First Aid class is soon',
     bodyHtml: `<p>Hi {{first_name}},</p>

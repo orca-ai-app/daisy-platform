@@ -28,10 +28,11 @@ import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webhookSrc = readFileSync(join(here, 'index.ts'), 'utf8');
-// Migration 028 supersedes 020 — it widens the CHECK to Daisy's real Kartra
-// journey. The webhook must only queue keys in this (current) allowed set.
+// Migration 061 supersedes 028 (which superseded 020) — it widens the CHECK to
+// the Kartra journey plus the day-before reminder. The webhook must only queue
+// keys in this (current) allowed set.
 const migration028 = readFileSync(
-  join(here, '..', '..', 'migrations', '028_email_journey_keys.sql'),
+  join(here, '..', '..', 'migrations', '061_day_before_reminder.sql'),
   'utf8',
 );
 
@@ -127,7 +128,7 @@ describe('webhook template_key set ⊆ migration 028 CHECK set', () => {
 });
 
 describe('every QUEUED template_key is constraint-safe', () => {
-  it('every push() key is in the migration-028 CHECK set', () => {
+  it('every push() key is in the migration-061 CHECK set', () => {
     const violations = queuedKeys.filter((k) => !migrationKeys.has(k));
     expect(violations).toEqual([]);
   });
@@ -146,6 +147,7 @@ describe('every QUEUED template_key is constraint-safe', () => {
         'new_booking_notification',
         'booking_confirmation',
         'medical_reminder',
+        'day_before_reminder',
         'post_course_welcome',
         'recap_anaphylaxis',
         'recap_choking',

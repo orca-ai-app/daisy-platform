@@ -53,12 +53,14 @@ class RetryableWebhookError extends Error {}
 // No CORS headers — this endpoint is called by Stripe's servers, not a browser.
 // We do need to respond quickly to avoid Stripe's 30 s timeout.
 
-// Allowed template_keys per migration 028 CHECK constraint (Kartra journey).
+// Allowed template_keys per the migration-061 CHECK constraint (Kartra journey
+// + the day-before reminder; 061 supersedes 028).
 // ONLY insert keys from this set. Any key not listed here violates the constraint.
 const ALLOWED_TEMPLATE_KEYS = new Set([
   'new_booking_notification',
   'booking_confirmation',
   'medical_reminder',
+  'day_before_reminder',
   'post_course_welcome',
   'recap_anaphylaxis',
   'recap_choking',

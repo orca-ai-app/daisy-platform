@@ -32,6 +32,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { londonToUtc } from '../_shared/emailSchedule.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -169,7 +170,7 @@ Deno.serve(async (req: Request) => {
   // --- Load course instance ------------------------------------------------
   const instanceResult = await admin
     .from('da_course_instances')
-    .select('id, franchisee_id, event_date, private_client_id, status')
+    .select('id, franchisee_id, event_date, start_time, private_client_id, status')
     .eq('id', courseInstanceId)
     .maybeSingle();
 
@@ -327,6 +328,33 @@ Deno.serve(async (req: Request) => {
     .then((r: { error: unknown }) => {
       if (r.error) console.error('notification queue failed', r.error);
     });
+
+  // Day-before reminder (migration 061): offline bookings skip the customer
+  // journey (no pay-online emails for cash/cheque customers) but the reminder
+  // is about turning up, not paying, so every booked customer gets it. Only
+  // queued when that moment is still ahead of us.
+  const dayBeforeAt = new Date(
+    londonToUtc(
+      (instance as { event_date: string }).event_date,
+      (instance as { start_time?: string | null }).start_time ?? null,
+    ).getTime() -
+      24 * 3_600_000,
+  );
+  if (dayBeforeAt.getTime() > Date.now()) {
+    await admin
+      .from('da_email_sequences')
+      .insert({
+        customer_id: customerId,
+        booking_id: booking.id,
+        template_key: 'day_before_reminder',
+        sequence_day: 0,
+        scheduled_for: dayBeforeAt.toISOString(),
+        status: 'pending',
+      })
+      .then((r: { error: unknown }) => {
+        if (r.error) console.error('day-before reminder queue failed', r.error);
+      });
+  }
 
   // --- Activity log --------------------------------------------------------
   await admin

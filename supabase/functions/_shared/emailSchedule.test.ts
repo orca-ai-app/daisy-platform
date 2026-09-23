@@ -47,6 +47,11 @@ describe('buildJourneyRows — full set (booker at payment)', () => {
     expect(byKey.medical_reminder).toBe('2026-07-20T08:00:00.000Z');
   });
 
+  it('day_before_reminder = start − 24h (same wall-clock time, day before)', () => {
+    // start 09:00 UTC on the 20th → reminder 09:00 UTC on the 19th
+    expect(byKey.day_before_reminder).toBe('2026-07-19T09:00:00.000Z');
+  });
+
   it('post_course_welcome = end + 7h — AFTER the session, same evening', () => {
     // end 17:00 UTC → welcome 2026-07-21T00:00 UTC (which is 01:00 London — evening+7h)
     expect(byKey.post_course_welcome).toBe('2026-07-21T00:00:00.000Z');
@@ -56,8 +61,8 @@ describe('buildJourneyRows — full set (booker at payment)', () => {
     expect(byKey.recap_anaphylaxis).toBe('2026-08-17T17:00:00.000Z');
   });
 
-  it('queues all 13 keys', () => {
-    expect(rows).toHaveLength(13);
+  it('queues all 14 keys', () => {
+    expect(rows).toHaveLength(14);
   });
 });
 
@@ -73,10 +78,11 @@ describe('buildJourneyRows — post_course set (attendee from medical form)', ()
   });
   const keys = rows.map((r) => r.template_key);
 
-  it('excludes the transactional pair and the pre-class reminder', () => {
+  it('excludes the transactional pair and the pre-class reminders', () => {
     expect(keys).not.toContain('booking_confirmation');
     expect(keys).not.toContain('new_booking_notification');
     expect(keys).not.toContain('medical_reminder');
+    expect(keys).not.toContain('day_before_reminder');
   });
 
   it('includes the 10-step post-course journey', () => {
@@ -106,6 +112,28 @@ describe('past-dropping', () => {
       set: 'full',
     });
     expect(rows.map((r) => r.template_key)).not.toContain('medical_reminder');
+  });
+
+  it('drops day_before_reminder for a last-minute booking, keeps it otherwise', () => {
+    const lastMinute = buildJourneyRows({
+      ...BASE,
+      eventDate: '2026-07-20',
+      startTime: '10:00:00',
+      endTime: '18:00:00',
+      now: new Date('2026-07-19T12:00:00Z'), // booked under 24h before start
+      set: 'full',
+    });
+    expect(lastMinute.map((r) => r.template_key)).not.toContain('day_before_reminder');
+
+    const early = buildJourneyRows({
+      ...BASE,
+      eventDate: '2026-07-20',
+      startTime: '10:00:00',
+      endTime: '18:00:00',
+      now: new Date('2026-07-10T12:00:00Z'),
+      set: 'full',
+    });
+    expect(early.map((r) => r.template_key)).toContain('day_before_reminder');
   });
 
   it('drops already-past recaps for a late form submission', () => {

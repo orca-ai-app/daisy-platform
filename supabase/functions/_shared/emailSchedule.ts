@@ -116,6 +116,15 @@ export function buildJourneyRows(input: JourneyInput): SequenceRow[] {
     if (reminderAt.getTime() > now.getTime()) {
       push('medical_reminder', reminderAt, 0);
     }
+
+    // Day-before reminder (approved item 3, Sep 2026): 24h before the class
+    // starts, so a 10:00 class reminds at 10:00 the day before. Skipped for
+    // last-minute bookings where that moment has already passed — the
+    // confirmation just sent covers them.
+    const dayBeforeAt = plusHours(startUtc, -24);
+    if (dayBeforeAt.getTime() > now.getTime()) {
+      push('day_before_reminder', dayBeforeAt, 0);
+    }
   }
 
   // Post-course journey (both sets). Skip anything already in the past — an
