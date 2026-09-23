@@ -1054,6 +1054,9 @@ function CourseBookingsCard({ courseInstanceId }: { courseInstanceId: string }) 
           <Link
             key={b.id}
             to={`/franchisee/bookings/${b.id}`}
+            // TRI-0011 (Hannah): tell BookingDetail we came from this class so
+            // its back link returns here, not to the main bookings list.
+            state={{ fromCourseId: courseInstanceId }}
             className="hover:bg-daisy-primary-tint -mx-2 flex flex-wrap items-center gap-2 rounded-[6px] px-2 py-1 text-sm"
           >
             <span className="text-daisy-ink font-semibold">
@@ -1061,7 +1064,26 @@ function CourseBookingsCard({ courseInstanceId }: { courseInstanceId: string }) 
                 b.booking_reference}
             </span>
             {b.customer?.email ? (
-              <span className="text-daisy-muted text-xs">{b.customer.email}</span>
+              // TRI-0005 (Hannah): the whole row navigates, which made the
+              // address impossible to select. Clicking the address itself now
+              // copies it instead of opening the booking.
+              <button
+                type="button"
+                title="Click to copy"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const email = b.customer?.email;
+                  if (!email) return;
+                  void navigator.clipboard
+                    .writeText(email)
+                    .then(() => toast.success(`Copied ${email}`))
+                    .catch(() => toast.error('Could not copy, sorry'));
+                }}
+                className="text-daisy-muted hover:text-daisy-primary text-xs underline-offset-2 hover:underline"
+              >
+                {b.customer.email}
+              </button>
             ) : null}
             {b.ticket_type?.name ? (
               <Badge variant="default" className="text-[11px]">

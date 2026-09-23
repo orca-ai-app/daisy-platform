@@ -20,7 +20,7 @@
  */
 
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useLocation, useParams } from 'react-router';
 import { formatInTimeZone } from 'date-fns-tz';
 import { toast } from 'sonner';
 import { PageHeader, StatusPill, EmptyState, FieldHelp } from '@/components/daisy';
@@ -558,6 +558,11 @@ export default function BookingDetail() {
   const { data: booking, isLoading, error } = useBookingDetail(id);
   const { data: activity = [], isLoading: activityLoading } = useBookingActivity(id);
 
+  // TRI-0011 (Hannah): when the booking was opened from a class's "Who's
+  // booked" list, back should return to that class, not the bookings list.
+  const location = useLocation();
+  const fromCourseId = (location.state as { fromCourseId?: string } | null)?.fromCourseId;
+
   const isCancelled = booking?.booking_status === 'cancelled';
   const isPending = booking?.payment_status === 'pending';
   const refundHref = booking ? stripeRefundHref(booking) : null;
@@ -566,10 +571,10 @@ export default function BookingDetail() {
   return (
     <div className="flex flex-col gap-6">
       <Link
-        to="/franchisee/bookings"
+        to={fromCourseId ? `/franchisee/courses/${fromCourseId}` : '/franchisee/bookings'}
         className="text-daisy-primary mb-3 inline-flex items-center gap-1 text-sm font-semibold hover:underline"
       >
-        ← Back to bookings
+        {fromCourseId ? '← Back to class' : '← Back to bookings'}
       </Link>
 
       {error ? (
