@@ -149,6 +149,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Editing a course',
         body: [
           'Open the course from the Courses list and click "Edit course" at the top right. You can change the date, time, venue, capacity, and visibility. You cannot edit a cancelled course.',
+          'The class description is what customers read on the booking page, so it is the place for venue detail: how to find the room, parking, baby change, what to bring. Leave it blank and the standard course description shows instead.',
+          "One thing you cannot change is the course type. The type is the class's identity, bookings and certificates hang off it, so if a class was created on the wrong course, schedule a new class on the right one, open each booking and use Transfer to move it across, then cancel the old empty class. A transfer moves a booking exactly as it is, price and ticket included.",
         ],
       },
       {
@@ -162,7 +164,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
         body: [
           'A ticket type is a named category with a price and a number of seats it consumes. For example, a Couple ticket might consume 2 spaces while a Single ticket consumes 1.',
           'On a course page, scroll to the ticket types section. Click "Add ticket type" to create one. You can also edit or delete existing ticket types using the pencil and bin icons on each row.',
+          'Use "Max available" to cap how many of a ticket type can sell, for example 1 of a discounted Group ticket. Leave it blank for no limit. You can set it when creating the class or from the course page afterwards.',
           '"Spaces" means the number of places left on the course based on capacity minus the seats consumed by confirmed bookings. When spaces reach zero, the course shows as full.',
+          'A customer books one ticket type per checkout. If people often want a mix, for example two adults and a child, create a combined ticket at the blended price, "Group of 3", and it books all the places in one go.',
         ],
       },
       {
@@ -211,7 +215,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What customers see when they follow the link',
         body: [
           'The link opens the Daisy booking page for that specific class. Customers see the course name, date, time, and venue, and can choose a ticket type. They fill in their details and pay by card through Stripe.',
-          'After paying, they receive a confirmation email from the system.',
+          'After paying, the emails take care of themselves: the customer gets a confirmation with the class, date, time, venue and reference, you get a new-booking alert, and the customer gets a reminder the day before the class. These are the same for every franchisee and cannot be edited individually, though the ability to add your own per-class lines to the confirmation is on its way.',
         ],
       },
       {
@@ -284,8 +288,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Taking a cheque or invoice payment',
         body: [
-          'For a booking paid offline (cheque, invoice or phone payment), use "Add booking": open the Bookings tab, click "Add booking", choose the class and ticket type, enter the quantity and the customer\'s details, and save. The booking is recorded with a manual payment in one step — there is nothing further to mark.',
-          'A separate "Mark as paid" button appears only on a booking that already exists and is still showing payment status "pending" (for example a website booking whose payment did not complete). Open that booking, click "Mark as paid", enter a payment reference such as the cheque number, and confirm.',
+          'It is two steps. First "Add booking" creates the booking as confirmed but awaiting payment, so the place is held and the space count is right. Then, once the money arrives (bank transfer, cheque, cash), open the booking and click "Mark as paid", enter a payment reference such as the transfer or invoice number, and confirm. An offline booking never times out, so there is no rush between the two steps.',
+          'The same "Mark as paid" button appears on any booking still showing payment status "pending", including a website booking whose card payment did not complete but where the customer has since paid you another way.',
         ],
       },
       {
@@ -351,7 +355,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What you can see',
         body: [
           'In the Customers section, the All contacts tab shows everyone who has submitted a medical form for your classes. You can see their name, the email they gave, and whether they opted in to marketing.',
+          'On the class page itself, the Medical declarations card lists everyone who has filled the form in for that class. Anyone whose answers need attention shows a "please speak to attendee" badge: the detail stays private by design, the attendee tells the trainer what they need to know on the day. For a class a freelancer delivers, check the card and brief them on who to speak to, exactly as if you were teaching it yourself.',
           'Health answers are kept confidential. They are encrypted and only HQ can unlock them for clinical or safeguarding reasons. Every unlock is logged automatically.',
+        ],
+      },
+      {
+        heading: 'Every class must be in the portal',
+        body: [
+          'The QR works by finding which of your classes runs that day, so a class that is not in the portal cannot be signed into. That includes school jobs and classes a freelancer delivers for you: create them as private classes, a couple of minutes each, and the QR offers them automatically alongside anything else that day. It is also what keeps your reporting, your insurance position, and the data rules straight.',
         ],
       },
     ],
@@ -393,6 +404,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
         body: [
           'The "All contacts" view combines booked customers with people who have submitted a medical form for your classes, deduplicated by email. Contacts who only appear from a medical form are labelled "from medical form".',
           'This gives you a fuller picture of people who have engaged with your sessions, even if they attended as part of a group booking made by someone else.',
+        ],
+      },
+      {
+        heading: 'Emailing your attendees',
+        body: [
+          'If you email attendees yourself, use the people on this page who opted in to hearing from you, and always BCC so addresses are never shared between customers. The medical form itself is never a contact list: it is health data, collected only to run the class safely, and using it for anything else is not allowed under GDPR, whatever the system.',
+          'A quick way to collect addresses: on a class page\'s "Who\'s booked" list, click an email address and it copies to your clipboard.',
         ],
       },
       {
