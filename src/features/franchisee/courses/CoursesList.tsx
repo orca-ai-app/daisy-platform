@@ -17,7 +17,7 @@
  */
 
 import { toast } from 'sonner';
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, QrCode } from 'lucide-react';
@@ -84,6 +84,25 @@ const DATE_OPTIONS: ReadonlyArray<{ value: DatePreset; label: string }> = [
   { value: 'custom', label: 'Custom range' },
 ];
 
+// Item 2 of the filter bundle: jump straight to a named month. Values are
+// 'month:YYYY-MM' so they live in the same date <Select> (and the same URL
+// param) as the presets — one control, no conflicting state.
+const MONTH_PRESET_RE = /^month:(\d{4})-(\d{2})$/;
+
+function buildMonthOptions(): ReadonlyArray<{ value: string; label: string }> {
+  const now = new Date();
+  const out: Array<{ value: string; label: string }> = [];
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    out.push({
+      value: `month:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+    });
+  }
+  return out;
+}
+const MONTH_OPTIONS = buildMonthOptions();
+
 // ---------------------------------------------------------------------------
 // Filter persistence (NTH-3 / FIX-6)
 //
@@ -101,6 +120,8 @@ const FILTER_DEFAULTS: Record<string, string> = {
   from: '',
   to: '',
   template: 'all',
+  // Item 2 of the filter bundle: venue name/postcode filter.
+  location: '',
   // F5: latest first is now the default, so 'desc' is the value omitted from
   // the URL. An explicit 'asc' choice is still written to the URL + storage,
   // so a franchisee's saved preference survives exactly as before.
@@ -120,11 +141,22 @@ const DATE_VALUES = new Set(DATE_OPTIONS.map((o) => o.value as string));
  * Uses integer arithmetic on y/m/d parts to avoid BST-related Date drift.
  */
 export function resolvePreset(
-  preset: DatePreset,
+  preset: DatePreset | string,
   customFrom?: string,
   customTo?: string,
 ): { from?: string; to?: string } {
   if (preset === 'all') return {};
+
+  // 'month:YYYY-MM' — the named-month options (item 2 of the filter bundle).
+  // pad2/ymd below are function declarations, so they're hoisted and usable here.
+  const monthMatch = MONTH_PRESET_RE.exec(preset);
+  if (monthMatch) {
+    const y = Number(monthMatch[1]);
+    const m = Number(monthMatch[2]);
+    if (m < 1 || m > 12) return {};
+    const lastDay = new Date(y, m, 0).getDate();
+    return { from: ymd(y, m, 1), to: ymd(y, m, lastDay) };
+  }
 
   // Wall-clock today from the local Date (not UTC) for bounds logic.
   const now = new Date();
@@ -481,10 +513,13 @@ export default function CoursesList() {
   const rawStatus = searchParams.get('status') ?? 'all';
   const status = (STATUS_VALUES.has(rawStatus) ? rawStatus : 'all') as CourseInstanceStatus | 'all';
   const rawDate = searchParams.get('date') ?? 'all';
-  const datePreset = (DATE_VALUES.has(rawDate) ? rawDate : 'all') as DatePreset;
+  // Named months ('month:YYYY-MM') are valid alongside the fixed presets.
+  const datePreset: DatePreset | string =
+    DATE_VALUES.has(rawDate) || MONTH_PRESET_RE.test(rawDate) ? rawDate : 'all';
   const customFrom = searchParams.get('from') ?? '';
   const customTo = searchParams.get('to') ?? '';
   const templateFilter = searchParams.get('template') ?? 'all';
+  const locationFilter = searchParams.get('location') ?? '';
   // F5: latest first unless the franchisee explicitly chose soonest first.
   const sortDir: 'asc' | 'desc' = searchParams.get('sort') === 'asc' ? 'asc' : 'desc';
   const view: ViewMode = searchParams.get('view') === 'calendar' ? 'calendar' : 'list';
@@ -510,7 +545,19 @@ export default function CoursesList() {
   // page that no longer exists.
   useEffect(() => {
     setPage(0);
-  }, [status, from, to, templateFilter, sortDir]);
+  }, [status, from, to, templateFilter, sortDir, locationFilter]);
+
+  // Debounced location typing: the URL param (and so the query) updates 300ms
+  // after the last keystroke, not on every one.
+  const locationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setLocationDebounced = useCallback(
+    (value: string) => {
+      if (locationTimer.current) clearTimeout(locationTimer.current);
+      locationTimer.current = setTimeout(() => setFilter('location', value.trim()), 300);
+    },
+    [setFilter],
+  );
+  useEffect(() => () => clearTimeout(locationTimer.current ?? undefined), []);
 
   const listFilters: OwnCoursesFilters = {
     status,
@@ -520,6 +567,7 @@ export default function CoursesList() {
     templateId: selectedGroup ? 'all' : templateFilter,
     templateIds: selectedGroup?.templateIds,
     sortDir,
+    location: locationFilter,
     page,
     pageSize: PAGE_SIZE,
   };
@@ -638,8 +686,25 @@ export default function CoursesList() {
                     {o.label}
                   </SelectItem>
                 ))}
+                {/* Named months (item 2 of the filter bundle) — same control,
+                    same URL param, so no fighting with the presets above. */}
+                {MONTH_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+
+            {/* Location filter (item 2): venue name or postcode, debounced. */}
+            <Input
+              type="search"
+              defaultValue={locationFilter}
+              onChange={(e) => setLocationDebounced(e.target.value)}
+              placeholder="Venue or postcode"
+              aria-label="Filter by venue or postcode"
+              className="h-10 w-[190px]"
+            />
 
             {/* Course type filter — grouped (G7), truncated so long labels
                 cannot spill outside the trigger (F3). */}

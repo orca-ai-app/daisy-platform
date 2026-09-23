@@ -49,6 +49,11 @@ export interface OwnCoursesFilters {
   templateIds?: string[];
   /** Sort direction on event_date. Defaults to 'desc' (latest first, F5). */
   sortDir?: 'asc' | 'desc';
+  /**
+   * Location filter (item 2 of the filter bundle): matches venue_name OR
+   * venue_postcode, case-insensitive substring, applied server-side.
+   */
+  location?: string;
   page?: number;
   /** Defaults to 20. */
   pageSize?: number;
@@ -104,9 +109,14 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
     templateId = 'all',
     templateIds,
     sortDir = 'desc',
+    location,
     page = 0,
     pageSize = 20,
   } = filters;
+
+  // PostgREST .or() syntax breaks on commas/parens/% in the term, so strip
+  // them rather than trying to escape (a venue search never needs them).
+  const locationTerm = (location ?? '').replace(/[%,()]/g, '').trim();
 
   // Build a stable, serialisable filter object for the cache key.
   const filterKey: Record<string, unknown> = {
@@ -116,6 +126,7 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
     templateId,
     templateIds,
     sortDir,
+    location: locationTerm,
     page,
     pageSize,
   };
@@ -168,6 +179,10 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
         // Inclusive upper bound: use lte so 'YYYY-MM-DD' comparison is
         // on the raw DATE string (Postgres handles string-to-date cast).
         qb = qb.lte('event_date', to);
+      }
+
+      if (locationTerm) {
+        qb = qb.or(`venue_name.ilike.%${locationTerm}%,venue_postcode.ilike.%${locationTerm}%`);
       }
 
       const rangeFrom = page * pageSize;

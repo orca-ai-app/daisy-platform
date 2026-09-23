@@ -51,6 +51,24 @@ describe('resolvePreset', () => {
         to: '2025-05-31',
       });
     });
+
+    // Named months (item 2 of the filter bundle): 'month:YYYY-MM' resolves to
+    // that whole month regardless of today's date.
+    it('month:2025-06 -> first..last day of June', () => {
+      expect(resolvePreset('month:2025-06')).toEqual({ from: '2025-06-01', to: '2025-06-30' });
+    });
+
+    it('month:2024-02 -> leap-year February has 29 days', () => {
+      expect(resolvePreset('month:2024-02')).toEqual({ from: '2024-02-01', to: '2024-02-29' });
+    });
+
+    it('month with an invalid month number -> no bounds', () => {
+      expect(resolvePreset('month:2025-13')).toEqual({});
+    });
+
+    it('malformed month value -> falls through as unknown, no bounds', () => {
+      expect(resolvePreset('month:junk')).toEqual({});
+    });
   });
 
   describe('year rollback', () => {
