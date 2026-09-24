@@ -539,8 +539,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'After that week, cancel your BookWhen subscription.',
         ],
       },
+      {
+        heading: 'Where your BookWhen habit lives now',
+        body: [
+          'Most of us built our own way of doing things on BookWhen. Here is where each habit goes on the new system.',
+          "The hidden section customers saw after booking (Zoom links, joining details): its replacement is already approved and being built, optional per-class lines that go out with the confirmation email, so every booker gets the details in their inbox automatically. Until it lands, use the Who's booked list, click each email address to copy it, and send one BCC email per class. Never put a Zoom link in the class description, that shows before anyone pays.",
+          'Booking several ticket types in one go: a customer books one ticket type per checkout here, so create a combined ticket at the blended price ("Group of 3") for the common mixes.',
+          'The monthly income sheet: the Merchandise page and your bookings replace it, everything you sell is recorded as it happens.',
+          'Emailing customers before and after class yourself: the system already sends the confirmation, a day-before reminder and a post-class email with recap links automatically, so check what it covers before writing your own.',
+        ],
+      },
     ],
-    related: ['connecting-stripe', 'managing-courses', 'bookings'],
+    related: ['connecting-stripe', 'managing-courses', 'bookings', 'booking-links'],
   },
 
   {
