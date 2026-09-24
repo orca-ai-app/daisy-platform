@@ -33,6 +33,11 @@ describe('resolvePreset', () => {
       expect(resolvePreset('all')).toEqual({});
     });
 
+    // The default view (TRI-0022): today onwards, no upper bound.
+    it('upcoming -> from today, open-ended', () => {
+      expect(resolvePreset('upcoming')).toEqual({ from: '2025-03-15' });
+    });
+
     it('this-month -> first..last day of March', () => {
       expect(resolvePreset('this-month')).toEqual({ from: '2025-03-01', to: '2025-03-31' });
     });

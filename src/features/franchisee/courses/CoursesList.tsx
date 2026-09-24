@@ -533,10 +533,13 @@ export default function CoursesList() {
   const status = (STATUS_VALUES.has(rawStatus) ? rawStatus : FILTER_DEFAULTS.status) as
     | CourseInstanceStatus
     | 'all';
-  const rawDate = searchParams.get('date') ?? 'all';
+  // Fall back to FILTER_DEFAULTS, never a literal: the default is omitted from
+  // the URL, so a literal here silently overrides it (that is how 'upcoming'
+  // failed to apply and snapped back to All dates when chosen, TRI-0022).
+  const rawDate = searchParams.get('date') ?? FILTER_DEFAULTS.date;
   // Named months ('month:YYYY-MM') are valid alongside the fixed presets.
   const datePreset: DatePreset | string =
-    DATE_VALUES.has(rawDate) || MONTH_PRESET_RE.test(rawDate) ? rawDate : 'all';
+    DATE_VALUES.has(rawDate) || MONTH_PRESET_RE.test(rawDate) ? rawDate : FILTER_DEFAULTS.date;
   const customFrom = searchParams.get('from') ?? '';
   const customTo = searchParams.get('to') ?? '';
   const templateFilter = searchParams.get('template') ?? 'all';
