@@ -172,7 +172,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Finding your way around a busy list',
         body: [
-          'The Courses list opens showing your Scheduled classes only, so past classes are out of the way by default. To see completed or cancelled classes, change the Status dropdown along the top (or pick All statuses). The other filters are a date dropdown, course type, and a venue box. Your choices are remembered on that device, so set them once and the list stays how you like it.',
+          'The Courses list opens on your upcoming classes only, so past classes are out of the way by default. To see earlier classes, use the date dropdown along the top: Past only, a named month, or All dates. The Status dropdown hides cancelled classes in the same way. The other filters are course type and a venue box. Your choices are remembered on that device, so set them once and the list stays how you like it.',
           'The date dropdown includes the next six months by name, so you can jump straight to, say, November. The venue box filters by venue name or postcode as you type, useful when you run classes across several locations.',
         ],
       },

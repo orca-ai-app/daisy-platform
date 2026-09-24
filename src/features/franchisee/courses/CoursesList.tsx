@@ -66,7 +66,14 @@ import { useOwnProfile } from '../profileQueries';
 // Constants
 // ---------------------------------------------------------------------------
 
-export type DatePreset = 'all' | 'next-30-days' | 'this-month' | 'last-month' | 'past' | 'custom';
+export type DatePreset =
+  | 'all'
+  | 'upcoming'
+  | 'next-30-days'
+  | 'this-month'
+  | 'last-month'
+  | 'past'
+  | 'custom';
 
 const STATUS_OPTIONS: ReadonlyArray<{ value: CourseInstanceStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All statuses' },
@@ -77,6 +84,7 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: CourseInstanceStatus | 'all'; label
 
 const DATE_OPTIONS: ReadonlyArray<{ value: DatePreset; label: string }> = [
   { value: 'all', label: 'All dates' },
+  { value: 'upcoming', label: 'Upcoming' },
   { value: 'next-30-days', label: 'Next 30 days' },
   { value: 'this-month', label: 'This month' },
   { value: 'last-month', label: 'Last month' },
@@ -119,7 +127,10 @@ const FILTER_DEFAULTS: Record<string, string> = {
   // classes on open, with history a click away. An explicit 'all' is written
   // to the URL + storage like any other non-default choice, so it persists.
   status: 'scheduled',
-  date: 'all',
+  // Upcoming by default (TRI-0022): nothing ever moves a class to 'completed',
+  // so the status filter alone cannot hide past dates. History is one click
+  // away (Past only / a named month / All dates) and an explicit choice sticks.
+  date: 'upcoming',
   from: '',
   to: '',
   template: 'all',
@@ -175,6 +186,9 @@ export function resolvePreset(
   }
 
   const today = ymd(todayY, todayM, todayD);
+
+  // Today onwards, open-ended: the default view.
+  if (preset === 'upcoming') return { from: today };
 
   if (preset === 'next-30-days') {
     // Add 30 days by leaning on Date arithmetic for day-of-month roll-over.
