@@ -5,7 +5,9 @@
  * no emojis. Button/label text matches the actual UI exactly.
  */
 
-import { MEDICAL_HOST } from '@/lib/publicUrls';
+// Relative on purpose: vite.config.ts imports this file at build time to emit
+// help-index.json, and the config bundler does not apply the `@/` alias.
+import { MEDICAL_HOST } from '../../../lib/publicUrls';
 
 export interface HelpSection {
   heading?: string;
@@ -139,6 +141,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         steps: [
           'Template: pick the course type from the list provided by HQ.',
           'Venue and date: enter the event date, start and end times, venue name, address, and postcode. The system checks whether the postcode is within your territory and warns you if it is not.',
+          'The venue name is the location line customers see on the class card, next to the date and the distance from them. If the venue name alone does not say where it is, put the town in it, for example "Horsham, Trafalgar Road Baptist Church". There is no separate location field. You can change the venue name on any existing class with "Edit course".',
           'Tip: the time boxes take typing, so click in and type 1430 for 14:30 rather than scrolling the pop-up list. The arrow keys nudge the time in steps too.',
           'Pricing and capacity: set the price and maximum number of spaces. You can also add ticket types here (for example, Individual, Couple, or Family).',
           'Visibility: choose Public (appears on the Daisy website) or Private (direct link only, for clients and private groups). Private courses require a description.',
@@ -228,7 +231,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Sending a customer a filtered link',
         body: [
-          'When someone enquires about one kind of course, you can send a single link that shows only your classes of that type, rather than your whole schedule. The link is:',
+          'When someone enquires about one kind of course, you can send a single link that shows only your classes of that type, rather than your whole schedule. The easy way: on the Courses page click "Link for customers", choose the course type and, if you like, a month, then use Copy link or Send via WhatsApp. If you would rather build the link yourself, it is:',
           'https://booking.daisyfirstaid.com/search?franchisee=YOUR-NUMBER&course-type=TYPE',
           'To find YOUR-NUMBER, go to Profile in the left-hand menu and look at the Account summary box on the right: the first row, "Franchisee number", is it (the same number as your instructor number for the medical form). Replace TYPE with one of: baby-family, paediatric, workplace, teaching-children, online, or bespoke-other. For example, a Level 3 enquiry gets course-type=paediatric.',
           'You can narrow to one month too by adding &month=2026-10 (year and month). Customers can always widen or clear the filters themselves on the page, so a link never traps anyone.',
@@ -699,7 +702,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Show an item on your booking page',
         body: [
           'Nothing sells until you switch it on. Open the item from My shop and turn on "Show on my booking page". Anything left switched off stays invisible to customers, so you only ever show what you want to sell.',
-          'A shop item does not get a link of its own the way a class does. To send someone to it, send them your booking page link, https://booking.daisyfirstaid.com/search?franchisee=YOUR-NUMBER (your number is on your Profile page, in the Account summary box), and they will find it in the "Available any time" section underneath your classes.',
+          'A shop item does not get a link of its own the way a class does. The link to send is your booking page, and it is waiting for you at the top of My shop in the "Your shop link" card, with Copy link and Send via WhatsApp buttons. Customers find your items in the "Available any time" section underneath your classes.',
         ],
       },
       {
@@ -757,4 +760,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
 /** Look up a single article by slug. Returns undefined if not found. */
 export function findArticle(slug: string): HelpArticle | undefined {
   return HELP_ARTICLES.find((a) => a.slug === slug);
+}
+
+/**
+ * Stable id for a section heading, used both for the <h2 id> in HelpArticle
+ * and for the `anchor` field in help-index.json, so a link built off the
+ * index always lands on the right section.
+ */
+export function sectionAnchor(heading: string): string {
+  return heading
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }

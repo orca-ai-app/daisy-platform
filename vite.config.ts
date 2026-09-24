@@ -1,10 +1,51 @@
 import path from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { HELP_ARTICLES, sectionAnchor } from './src/features/franchisee/help/articles';
+
+/**
+ * Publish the Help articles as /help-index.json so the triage form on
+ * simmance.ai can show the matching guide section while people type. Built
+ * from the same HELP_ARTICLES the portal renders, so it can never drift.
+ * CORS for it is set in netlify.toml.
+ */
+function helpIndexJson(): string {
+  return JSON.stringify(
+    HELP_ARTICLES.map((a) => ({
+      slug: a.slug,
+      title: a.title,
+      summary: a.summary,
+      keywords: a.keywords,
+      url: `/franchisee/help/${a.slug}`,
+      sections: a.sections.map((s) => ({
+        heading: s.heading ?? '',
+        anchor: s.heading ? sectionAnchor(s.heading) : '',
+        body: s.body ?? [],
+        steps: s.steps ?? [],
+      })),
+    })),
+  );
+}
+
+function helpIndex(): Plugin {
+  return {
+    name: 'daisy-help-index',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'help-index.json', source: helpIndexJson() });
+    },
+    configureServer(server) {
+      server.middlewares.use('/help-index.json', (_req, res) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.end(helpIndexJson());
+      });
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), helpIndex()],
   define: {
     // Build stamp shipped with browser error logs. Netlify sets COMMIT_REF;
     // local dev builds report 'dev'.

@@ -5,10 +5,11 @@
  * related links, and optional video guide notice.
  */
 
-import { Link, useParams } from 'react-router';
+import { useEffect } from 'react';
+import { Link, useLocation, useParams } from 'react-router';
 import { BookOpen } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/daisy';
-import { findArticle } from './articles';
+import { findArticle, sectionAnchor } from './articles';
 
 // ---------------------------------------------------------------------------
 // Section renderer
@@ -26,7 +27,12 @@ function ArticleSection({
   return (
     <div className="flex flex-col gap-3">
       {heading ? (
-        <h2 className="font-display text-daisy-ink text-[18px] font-bold">{heading}</h2>
+        <h2
+          id={sectionAnchor(heading)}
+          className="font-display text-daisy-ink scroll-mt-24 text-[18px] font-bold"
+        >
+          {heading}
+        </h2>
       ) : null}
       {body?.map((paragraph, i) => (
         <p key={i} className="text-daisy-ink text-sm leading-relaxed">
@@ -56,6 +62,15 @@ function ArticleSection({
 export default function HelpArticle() {
   const { slug } = useParams<{ slug: string }>();
   const article = slug ? findArticle(slug) : undefined;
+  const { hash } = useLocation();
+
+  // Deep links to a section (…/help/booking-links#sending-a-customer-a-filtered-link)
+  // come from the triage form's guide match. Scroll once the article has rendered.
+  useEffect(() => {
+    if (!hash || !article) return;
+    const el = document.getElementById(hash.slice(1));
+    if (el) el.scrollIntoView({ block: 'start' });
+  }, [hash, article]);
 
   if (!article) {
     return (
@@ -87,7 +102,7 @@ export default function HelpArticle() {
 
       <PageHeader title={article.title} />
 
-      <div className="flex flex-col gap-8 max-w-2xl">
+      <div className="flex max-w-2xl flex-col gap-8">
         {article.sections.map((section, i) => (
           <ArticleSection
             key={i}

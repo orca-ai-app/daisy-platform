@@ -20,15 +20,12 @@ import {
   Edit2,
   Eye,
   EyeOff,
-  Copy,
   CopyPlus,
-  MessageCircle,
-  Link2,
   ShoppingBag,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { PageHeader, StatusPill, EmptyState, FieldHelp } from '@/components/daisy';
+import { PageHeader, StatusPill, EmptyState, ShareLinkCard } from '@/components/daisy';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -1152,7 +1149,9 @@ function CourseDeclarationsCard({ courseInstanceId }: { courseInstanceId: string
         <p className="text-daisy-muted mt-2 text-xs">
           "Please speak to attendee" means they flagged a condition or requirement on the medical
           form. The detail itself is encrypted and only HQ can unlock it — ask the attendee directly
-          at the start of class.
+          at the start of class. If a freelancer is delivering this class, brief them from this card
+          the day before: who to have a quiet word with and who has said no photos. They do not need
+          portal access.
         </p>
       </CardContent>
     </Card>
@@ -1173,69 +1172,18 @@ interface BookingLinkCardProps {
   courseName: string;
 }
 
+// The same card now also fronts My shop and the Courses "Link for customers"
+// dialog, via the shared ShareLinkCard.
 function BookingLinkCard({ bookingToken, courseName }: BookingLinkCardProps) {
   const url = bookingUrl(bookingToken);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success('Booking link copied to clipboard');
-    } catch {
-      toast.error('Could not copy to clipboard');
-    }
-  };
-
-  const whatsAppHref = encodeURIComponent(`Book your place on ${courseName}: ${url}`);
-
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Link2 aria-hidden className="text-daisy-primary h-4 w-4" />
-          <CardTitle>Booking link</CardTitle>
-        </div>
-        <CardDescription>
-          Share this link so customers can book directly. Works for both public and private courses.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <div className="border-daisy-line bg-daisy-paper rounded-[8px] border px-3 py-2">
-          <p className="mb-1 inline-flex items-center gap-1 text-[11px] font-bold tracking-wider uppercase">
-            <span className="text-daisy-muted">Booking URL</span>
-            <FieldHelp label="About the booking link">
-              This is the private link customers use to book this class. Share it with your invited
-              guests.
-            </FieldHelp>
-          </p>
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-daisy-primary text-sm font-medium break-all underline underline-offset-2"
-          >
-            {url}
-          </a>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => void handleCopy()}>
-            <Copy aria-hidden className="h-4 w-4" />
-            Copy link
-          </Button>
-
-          <Button size="sm" variant="outline" asChild>
-            <a
-              href={`https://wa.me/?text=${whatsAppHref}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <MessageCircle aria-hidden className="h-4 w-4" />
-              Send via WhatsApp
-            </a>
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <ShareLinkCard
+      title="Booking link"
+      description="Share this link so customers can book directly. Works for both public and private courses."
+      url={url}
+      urlLabel="Booking URL"
+      whatsAppText={`Book your place on ${courseName}: ${url}`}
+    />
   );
 }
 

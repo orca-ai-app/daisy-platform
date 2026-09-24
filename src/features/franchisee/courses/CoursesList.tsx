@@ -58,6 +58,7 @@ import {
 } from './courseListQueries';
 import { useCourseTemplates } from './createCourseQueries';
 import { buildCourseTypeGroups } from './courseTypeGroups';
+import { CustomerLinkDialog } from './CustomerLinkDialog';
 import { formatPrice } from './money';
 import type { CourseInstanceStatus } from './types';
 import { useOwnProfile } from '../profileQueries';
@@ -474,6 +475,7 @@ export default function CoursesList() {
   // Filter / sort / view state — URL params + localStorage mirror
   // ------------------------------------------------------------------
   const [searchParams, setSearchParams] = useSearchParams();
+  const [customerLinkOpen, setCustomerLinkOpen] = useState(false);
 
   // One-time restore from localStorage when the URL carries no filter state
   // (e.g. a plain "Back to courses" link).
@@ -621,6 +623,7 @@ export default function CoursesList() {
 
   return (
     <div className="flex flex-col gap-6">
+      <CustomerLinkDialog open={customerLinkOpen} onClose={() => setCustomerLinkOpen(false)} />
       <PageHeader
         title="My courses"
         subtitle="Your scheduled, completed, and cancelled course instances."
@@ -632,6 +635,9 @@ export default function CoursesList() {
             <Badge variant="primary">{totalCount} total</Badge>
             <Button asChild variant="default" size="sm">
               <Link to="/franchisee/courses/new">Schedule a course</Link>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setCustomerLinkOpen(true)}>
+              Link for customers
             </Button>
             <Button
               variant="outline"

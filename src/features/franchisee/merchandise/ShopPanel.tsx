@@ -21,8 +21,11 @@ import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { GraduationCap, BookOpen, Store, Plus } from 'lucide-react';
 import { DataTable, EmptyState, StatusPill } from '@/components/daisy';
+import { ShareLinkCard } from '@/components/daisy/ShareLinkCard';
 import { Button } from '@/components/ui/button';
 import { formatPence } from '@/lib/format';
+import { franchiseePageUrl } from '@/lib/publicUrls';
+import { useOwnProfile } from '@/features/franchisee/profileQueries';
 import { useShopItems, type Product, type ShopItem } from './merchandiseQueries';
 import { ShopListingDialog } from './ShopListingDialog';
 import { OwnProductDialog } from './OwnProductDialog';
@@ -42,6 +45,7 @@ function isElearning(item: ShopItem): boolean {
 
 export function ShopPanel() {
   const { items, isLoading, error } = useShopItems();
+  const profile = useOwnProfile();
   const [editing, setEditing] = useState<ShopItem | null>(null);
   /** null = closed; { product: undefined } = add a new item of their own. */
   const [editingOwn, setEditingOwn] = useState<{ product?: Product } | null>(null);
@@ -167,6 +171,17 @@ export function ShopPanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* The link to send (TRI-0018): shop items have no link of their own, they
+          sit under "Available any time" on the franchisee's booking page. */}
+      {profile.data?.number ? (
+        <ShareLinkCard
+          title="Your shop link"
+          description="Shop items do not get a link of their own. Send customers this page: they find your books and e-learning under Available any time, below your classes."
+          url={franchiseePageUrl(profile.data.number)}
+          urlLabel="Your booking page"
+          whatsAppText={`Book classes or buy books and e-learning from ${profile.data.business_name ?? 'Daisy First Aid'}:`}
+        />
+      ) : null}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-daisy-muted max-w-2xl text-sm">
           Set your own price for anything in the catalogue, then switch it on to sell it from your

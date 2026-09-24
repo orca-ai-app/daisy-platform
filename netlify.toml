@@ -16,3 +16,11 @@
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+# The Help index is read by the triage form on simmance.ai so it can show the
+# matching guide section as people type. Emitted at build by vite.config.ts.
+[[headers]]
+  for = "/help-index.json"
+  [headers.values]
+    Access-Control-Allow-Origin = "https://simmance.ai"
+    Cache-Control = "public, max-age=300"
