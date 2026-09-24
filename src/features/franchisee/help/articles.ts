@@ -699,6 +699,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Show an item on your booking page',
         body: [
           'Nothing sells until you switch it on. Open the item from My shop and turn on "Show on my booking page". Anything left switched off stays invisible to customers, so you only ever show what you want to sell.',
+          'A shop item does not get a link of its own the way a class does. To send someone to it, send them your booking page link, https://booking.daisyfirstaid.com/search?franchisee=YOUR-NUMBER (your number is on your Profile page, in the Account summary box), and they will find it in the "Available any time" section underneath your classes.',
         ],
       },
       {
