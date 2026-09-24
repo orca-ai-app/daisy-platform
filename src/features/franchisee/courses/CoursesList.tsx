@@ -115,7 +115,10 @@ const FILTERS_STORAGE_KEY = 'daisy.courses.filters';
 /** Search-param keys with their default values (defaults are omitted from the URL). */
 const FILTER_DEFAULTS: Record<string, string> = {
   view: 'list',
-  status: 'all',
+  // Scheduled by default (TRI-0006, TRI-0022): franchisees want upcoming
+  // classes on open, with history a click away. An explicit 'all' is written
+  // to the URL + storage like any other non-default choice, so it persists.
+  status: 'scheduled',
   date: 'all',
   from: '',
   to: '',
@@ -510,8 +513,10 @@ export default function CoursesList() {
   );
 
   // Read current values (unknown values fall back to defaults).
-  const rawStatus = searchParams.get('status') ?? 'all';
-  const status = (STATUS_VALUES.has(rawStatus) ? rawStatus : 'all') as CourseInstanceStatus | 'all';
+  const rawStatus = searchParams.get('status') ?? FILTER_DEFAULTS.status;
+  const status = (STATUS_VALUES.has(rawStatus) ? rawStatus : FILTER_DEFAULTS.status) as
+    | CourseInstanceStatus
+    | 'all';
   const rawDate = searchParams.get('date') ?? 'all';
   // Named months ('month:YYYY-MM') are valid alongside the fixed presets.
   const datePreset: DatePreset | string =
