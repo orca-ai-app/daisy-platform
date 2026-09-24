@@ -230,7 +230,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         body: [
           'When someone enquires about one kind of course, you can send a single link that shows only your classes of that type, rather than your whole schedule. The link is:',
           'https://booking.daisyfirstaid.com/search?franchisee=YOUR-NUMBER&course-type=TYPE',
-          'Replace YOUR-NUMBER with your franchisee number (it is on your Profile page) and TYPE with one of: baby-family, paediatric, workplace, teaching-children, online, or bespoke-other. For example, a Level 3 enquiry gets course-type=paediatric.',
+          'To find YOUR-NUMBER, go to Profile in the left-hand menu and look at the Account summary box on the right: the first row, "Franchisee number", is it (the same number as your instructor number for the medical form). Replace TYPE with one of: baby-family, paediatric, workplace, teaching-children, online, or bespoke-other. For example, a Level 3 enquiry gets course-type=paediatric.',
           'You can narrow to one month too by adding &month=2026-10 (year and month). Customers can always widen or clear the filters themselves on the page, so a link never traps anyone.',
         ],
       },
@@ -329,6 +329,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'instructor number',
       'print',
       'laminate',
+      'photo',
+      'photos',
+      'photo consent',
+      'consent',
     ],
     sections: [
       {
@@ -355,8 +359,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What you can see',
         body: [
           'In the Customers section, the All contacts tab shows everyone who has submitted a medical form for your classes. You can see their name, the email they gave, and whether they opted in to marketing.',
-          'On the class page itself, the Medical declarations card lists everyone who has filled the form in for that class. Anyone whose answers need attention shows a "please speak to attendee" badge: the detail stays private by design, the attendee tells the trainer what they need to know on the day. For a class a freelancer delivers, check the card and brief them on who to speak to, exactly as if you were teaching it yourself.',
+          'On the class page itself, the Medical declarations card lists everyone who has filled the form in for that class. Anyone whose answers need attention shows a "please speak to attendee" badge: the detail stays private by design, the attendee tells the trainer what they need to know on the day. For a class a freelancer delivers, check the card and brief them on who to speak to, exactly as if you were teaching it yourself. Each person also carries a photo badge, "photos OK" or "no photos", so you can see at a glance who is happy to be photographed.',
           'Health answers are kept confidential. They are encrypted and only HQ can unlock them for clinical or safeguarding reasons. Every unlock is logged automatically.',
+        ],
+      },
+      {
+        heading: 'Photo consent',
+        body: [
+          'The medical form asks each attendee whether they are happy to be photographed, and their answer shows on the class page as a "photos OK" or "no photos" badge next to their name. Check it before you take any group or end-of-class photos, and never photograph someone whose badge says no photos.',
+          'Consent can change on the day, and that is fine. If someone ticked "no photos" on the form but is happy once they see it is just a quick photo at the end, that is their consent to give you in person and you can act on it. It works the other way too: if someone changes their mind against being photographed, respect that on the spot. The form is where they start, not a rule that traps them. If you want a record, add a quick note to the booking.',
         ],
       },
       {
