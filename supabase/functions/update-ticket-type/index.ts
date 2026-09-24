@@ -235,7 +235,7 @@ Deno.serve(async (req: Request) => {
 
   const instanceQuery = await admin
     .from('da_course_instances')
-    .select('id, franchisee_id, venue_postcode, event_date, capacity')
+    .select('id, franchisee_id, venue_postcode, event_date, capacity, spots_remaining')
     .eq('id', beforeRow.course_instance_id as string)
     .maybeSingle();
 
@@ -253,6 +253,7 @@ Deno.serve(async (req: Request) => {
     venue_postcode: string;
     event_date: string;
     capacity: number;
+    spots_remaining: number;
   };
 
   // Auth predicate: HQ or owning franchisee.
@@ -309,6 +310,61 @@ Deno.serve(async (req: Request) => {
   }
 
   // -------------------------------------------------------------------------
+  // Keep spots_remaining consistent when seats_consumed changes.
+  //
+  // spots_remaining is maintained incrementally by the booking flows
+  // (decrement on booking, restore on cancel). Editing a ticket's
+  // seats_consumed changes how many places its EXISTING confirmed bookings
+  // occupy, but the edit alone never revisited that count, so the class stayed
+  // stuck. That is the fault that pinned Julie's class (TRI-0016) at full: the
+  // ticket originally used 12 places, one booking filled the class, and
+  // dropping it to 1 place per ticket never handed the places back.
+  //
+  // Mirror the capacity-change logic in update-course-instance: adjust by the
+  // delta only, never a full recompute. A full recompute would clobber classes
+  // whose stored count was set by imported group bookings. seats sold by THIS
+  // ticket = seatsConsumed x confirmed quantity, so spots move by the negative
+  // of the change in that product. Clamped to [0, capacity].
+  // -------------------------------------------------------------------------
+  let spotsAdjustment: { before: number; after: number } | null = null;
+  if ('seats_consumed' in changedFields) {
+    const oldSeats = Number(beforeRow.seats_consumed ?? 1);
+    const newSeats = Number(changedFields.seats_consumed);
+
+    const soldQuery = await admin
+      .from('da_bookings')
+      .select('quantity')
+      .eq('ticket_type_id', body.id as string)
+      .eq('booking_status', 'confirmed');
+
+    if (soldQuery.error) {
+      console.error('confirmed-booking lookup failed', soldQuery.error);
+    } else {
+      const soldQty = (soldQuery.data ?? []).reduce(
+        (sum, row) => sum + Number((row as { quantity: unknown }).quantity ?? 0),
+        0,
+      );
+      const oldSpots = Number(instance.spots_remaining ?? 0);
+      const newSpots = Math.max(
+        0,
+        Math.min(instance.capacity, oldSpots - (newSeats - oldSeats) * soldQty),
+      );
+
+      if (newSpots !== oldSpots) {
+        const spotsUpdate = await admin
+          .from('da_course_instances')
+          .update({ spots_remaining: newSpots })
+          .eq('id', instance.id);
+        if (spotsUpdate.error) {
+          console.error('spots_remaining recompute failed', spotsUpdate.error);
+        } else {
+          spotsAdjustment = { before: oldSpots, after: newSpots };
+        }
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Activity log
   // -------------------------------------------------------------------------
   const actorType = actor.is_hq ? 'hq' : 'franchisee';
@@ -326,6 +382,7 @@ Deno.serve(async (req: Request) => {
       changed_fields: changedFields,
       before: beforeSnapshot,
       after: afterSnapshot,
+      ...(spotsAdjustment ? { spots_remaining_recomputed: spotsAdjustment } : {}),
     },
     description,
   });
