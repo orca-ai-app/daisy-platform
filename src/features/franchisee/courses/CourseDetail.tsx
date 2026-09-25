@@ -1114,7 +1114,9 @@ function CourseBookingsCard({ courseInstanceId }: { courseInstanceId: string }) 
 
 function CourseDeclarationsCard({ courseInstanceId }: { courseInstanceId: string }) {
   const { data: declarations = [], isLoading } = useCourseDeclarations(courseInstanceId);
-  if (isLoading || declarations.length === 0) return null;
+  // Always render once loaded. Hiding the card while empty meant the guide
+  // described a card franchisees could not find (Julie, TRI-0017 follow-up).
+  if (isLoading) return null;
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint border-b px-5 py-4">
@@ -1123,6 +1125,13 @@ function CourseDeclarationsCard({ courseInstanceId }: { courseInstanceId: string
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 p-5">
+        {declarations.length === 0 ? (
+          <p className="text-daisy-muted text-sm">
+            No one has filled in the medical form for this class yet. Names and badges appear here
+            as attendees submit it, by scanning your QR code or typing your instructor number at the
+            medical form address.
+          </p>
+        ) : null}
         {declarations.map((d) => (
           <div key={d.id} className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-daisy-ink font-semibold">{d.attendee_name}</span>
