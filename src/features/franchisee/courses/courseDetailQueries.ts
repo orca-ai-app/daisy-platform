@@ -135,6 +135,7 @@ export function useCourseInstance(id: string | undefined) {
            venue_tbc,
            delivered_at_address,
            description_override,
+           joining_details,
            template:da_course_templates ( id, name, slug, description, is_online )`,
         )
         .eq('id', id)
@@ -212,6 +213,8 @@ export interface CourseInstanceUpdateFields {
    * the template description.
    */
   description_override?: string | null;
+  /** Joining details emailed only to bookers (migration 064): sign-in, parking, Zoom link. */
+  joining_details?: string | null;
 }
 
 interface UpdateCourseInstanceArgs {

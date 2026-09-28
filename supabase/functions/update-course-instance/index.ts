@@ -56,6 +56,9 @@ const ALLOWED_FIELDS = new Set([
   // Migration 059 (Jenni): class runs at the customer's address (home/workplace)
   // so the booking flow captures the customer's address even on the public flow.
   'delivered_at_address',
+  // Migration 064 (TRI-0026): joining details emailed only to bookers
+  // (venue sign-in, parking, Zoom link). Never on the public booking page.
+  'joining_details',
 ]);
 
 // Changes to any of these trigger the course_updated email when
@@ -335,6 +338,19 @@ Deno.serve(async (req: Request) => {
     }
     if (typeof v === 'string') {
       updateFields.description_override = v.trim() || null;
+    }
+  }
+  // Migration 064: empty string normalises to NULL; capped at 1000 characters.
+  if ('joining_details' in updateFields) {
+    const v = updateFields.joining_details;
+    if (v !== null && typeof v !== 'string') {
+      return jsonResponse({ error: 'joining_details must be a string or null' }, 400);
+    }
+    if (typeof v === 'string') {
+      if (v.trim().length > 1000) {
+        return jsonResponse({ error: 'Joining details can be up to 1000 characters' }, 400);
+      }
+      updateFields.joining_details = v.trim() || null;
     }
   }
   for (const k of ['venue_name', 'venue_address'] as const) {

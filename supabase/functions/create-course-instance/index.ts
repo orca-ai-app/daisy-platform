@@ -128,6 +128,11 @@ interface CreateCourseInstanceRequest {
    */
   description_override?: string | null;
   /**
+   * Joining details emailed only to people who book (migration 064): venue
+   * sign-in, parking, what to bring, or the Zoom link. Never public.
+   */
+  joining_details?: string | null;
+  /**
    * Explicit confirmation that a £0.00 price is intentional (F6). Without it
    * a zero instance price or zero ticket price is rejected.
    */
@@ -448,6 +453,10 @@ function validateBody(
       delivered_at_address: b.visibility === 'private' || b.delivered_at_address === true,
       description_override:
         typeof b.description_override === 'string' ? b.description_override.trim() || null : null,
+      joining_details:
+        typeof b.joining_details === 'string'
+          ? b.joining_details.trim().slice(0, 1000) || null
+          : null,
       allow_free: allowFree,
       bookwhen_event_id:
         typeof b.bookwhen_event_id === 'string' ? b.bookwhen_event_id.trim() || null : null,
@@ -787,6 +796,8 @@ Deno.serve(async (req: Request) => {
     // Migration 045 (G1): franchisee-written customer-facing description.
     // NULL falls back to the template description on the booking page.
     description_override: input.description_override ?? null,
+    // Migration 064: joining details, emailed to bookers only.
+    joining_details: input.joining_details ?? null,
     // Migration 050: BookWhen import idempotency key.
     bookwhen_event_id: input.bookwhen_event_id ?? null,
   };

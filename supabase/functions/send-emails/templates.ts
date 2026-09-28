@@ -42,6 +42,8 @@ export interface TemplateContext {
    * string, which would let an apostrophe or angle bracket break the HTML.
    */
   booking_email_message?: string;
+  /** Per-class joining details (migration 064): sign-in, parking, Zoom link. */
+  joining_details?: string;
   /**
    * Pre-rendered VAT receipt block (migration 055). Built in index.ts from the
    * booking's ticket + franchisee; empty string when the ticket has no VAT
@@ -153,6 +155,30 @@ function franchiseeMessageHtml(ctx: TemplateContext): string {
     </div>`;
 }
 
+/**
+ * Per-class joining details (migration 064) as a highlighted block. Escaped,
+ * line breaks kept, and web links made clickable (a Zoom link must be one tap).
+ * Appended after fill(), like the franchisee message, so "{{" in the text is
+ * never treated as a merge field.
+ */
+function joiningDetailsHtml(ctx: TemplateContext): string {
+  const msg = (ctx.joining_details ?? '').trim();
+  if (!msg) return '';
+  const body = escapeHtml(msg)
+    .replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" style="color:${DAISY_BLUE}">${u}</a>`)
+    .replace(/\r?\n/g, '<br/>');
+  return `<div style="background:#edf5fa;border-radius:10px;margin-top:20px;padding:14px 16px">
+      <p style="color:${DAISY_BLUE};font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin:0 0 8px">Joining details</p>
+      <p style="margin:0">${body}</p>
+    </div>`;
+}
+
+/** Plain-text counterpart of joiningDetailsHtml. */
+function joiningDetailsText(ctx: TemplateContext): string {
+  const msg = (ctx.joining_details ?? '').trim();
+  return msg ? `\n\nJoining details:\n${msg}` : '';
+}
+
 /** Plain-text counterpart of franchiseeMessageHtml. */
 function franchiseeMessageText(ctx: TemplateContext): string {
   const msg = (ctx.booking_email_message ?? '').trim();
@@ -194,6 +220,14 @@ interface RawTemplate {
   bodyHtml: string;
   text: string;
 }
+
+/** Customer emails about the class itself that carry its joining details. */
+const JOINING_DETAILS_KEYS = new Set([
+  'booking_confirmation',
+  'day_before_reminder',
+  'medical_reminder',
+  'course_updated',
+]);
 
 const TEMPLATES: Record<string, RawTemplate> = {
   booking_confirmation: {
@@ -389,8 +423,16 @@ export function renderTemplate(
   // VAT receipt (migration 055) rides on the confirmation too, after the
   // franchisee's message. Pre-rendered + escaped in index.ts; '' when no VAT.
   const vatHtml = wantsFranchiseeMessage ? (ctx.vat_block_html ?? '') : '';
-  const messageHtml = (wantsFranchiseeMessage ? franchiseeMessageHtml(ctx) : '') + vatHtml;
-  const messageText = wantsFranchiseeMessage ? franchiseeMessageText(ctx) : '';
+  // Per-class joining details (migration 064) ride on every customer email
+  // about the class itself, above the franchisee's own note.
+  const wantsJoining = JOINING_DETAILS_KEYS.has(key);
+  const messageHtml =
+    (wantsJoining ? joiningDetailsHtml(ctx) : '') +
+    (wantsFranchiseeMessage ? franchiseeMessageHtml(ctx) : '') +
+    vatHtml;
+  const messageText =
+    (wantsJoining ? joiningDetailsText(ctx) : '') +
+    (wantsFranchiseeMessage ? franchiseeMessageText(ctx) : '');
 
   // The franchisee's own business alert should not be signed "With love" from
   // themselves (Danielle, go-live day) — a plain professional sign-off instead.

@@ -257,6 +257,7 @@ export default function CourseDetail() {
                       delivered_at_address: instance.delivered_at_address,
                       bespoke_details: instance.bespoke_details,
                       description_override: instance.description_override,
+                      joining_details: instance.joining_details,
                       capacity: instance.capacity,
                       price_pence: instance.price_pence,
                       ticket_types: ticketTypes.map((tt) => ({
@@ -375,6 +376,13 @@ export default function CourseDetail() {
                       <Field
                         label="Territory warning"
                         value={instance.out_of_territory_warning ?? 'out of territory'}
+                      />
+                    ) : null}
+                    {instance.joining_details ? (
+                      <Field
+                        label="Joining details (emailed to bookers)"
+                        value={instance.joining_details}
+                        full
                       />
                     ) : null}
                     {instance.bespoke_details ? (

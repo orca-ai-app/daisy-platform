@@ -99,6 +99,8 @@ export interface DuplicateCourseState {
   bespoke_details: string | null;
   /** Customer-facing description override (migration 045); optional on older state. */
   description_override?: string | null;
+  /** Joining details emailed to bookers only (migration 064). */
+  joining_details?: string | null;
   capacity: number;
   price_pence: number;
   ticket_types: Array<{
@@ -168,6 +170,8 @@ const schema = z
     bespoke_details: z.string(),
     /** Optional customer-facing class description (G1 / migration 045). */
     description_override: z.string(),
+    /** Joining details emailed to bookers only (migration 064). */
+    joining_details: z.string().max(1000, 'Keep joining details under 1000 characters'),
     /**
      * Class runs at the customer's own address (home/workplace). Public home
      * classes tick this so the booking flow captures the customer's address
@@ -1279,6 +1283,27 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
           particular class, or clear it to use the standard wording.
         </p>
       </div>
+
+      {/* Joining details (migration 064, TRI-0026): emailed to bookers only */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="joining-details">
+          Joining details for people who book{' '}
+          <span className="text-daisy-muted font-normal">(optional)</span>
+        </Label>
+        <textarea
+          id="joining-details"
+          rows={3}
+          maxLength={1000}
+          placeholder="e.g. Please sign in on the screen at reception to avoid a parking fine. Or the Zoom link for an online class."
+          className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+          {...register('joining_details')}
+        />
+        <p className="text-daisy-muted text-xs">
+          Only people who have booked see this. It goes on their booking confirmation, the
+          day-before reminder and the reminder an hour before. It never shows on the booking page,
+          so a Zoom link is safe here.
+        </p>
+      </div>
     </div>
   );
 }
@@ -1486,6 +1511,7 @@ export default function CreateCourse() {
           price_pounds: penceToPounds(duplicate.price_pence),
           bespoke_details: duplicate.bespoke_details ?? '',
           description_override: duplicate.description_override ?? '',
+          joining_details: duplicate.joining_details ?? '',
           delivered_at_address: duplicate.delivered_at_address ?? false,
           allow_free: false,
           ticket_types: duplicate.ticket_types.map((tt, i) => ({
@@ -1520,6 +1546,7 @@ export default function CreateCourse() {
           price_pounds: 0,
           bespoke_details: '',
           description_override: '',
+          joining_details: '',
           delivered_at_address: false,
           allow_free: false,
           ticket_types: [
@@ -1675,6 +1702,8 @@ export default function CreateCourse() {
       delivered_at_address: isPrivate || values.delivered_at_address,
       // G1 (migration 045): null falls back to the template description.
       description_override: values.description_override.trim() || null,
+      // Migration 064: joining details, emailed to bookers only.
+      joining_details: values.joining_details.trim() || null,
       // F6: the server rejects a £0.00 price unless this is explicitly set.
       allow_free: values.allow_free,
     };

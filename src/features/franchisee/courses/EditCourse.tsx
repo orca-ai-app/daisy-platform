@@ -89,6 +89,8 @@ function buildEditSchema(visibility: Visibility, isOnline: boolean) {
       price_pounds: poundsSchema,
       /** Optional customer-facing class description (G1 / migration 045). */
       description_override: z.string(),
+      /** Joining details emailed to bookers only (migration 064). */
+      joining_details: z.string().max(1000, 'Keep joining details under 1000 characters'),
       /** Private operational notes (Sep 2026) — never shown to customers. */
       bespoke_details: z.string().max(2000, 'Keep notes under 2000 characters'),
       /**
@@ -263,6 +265,8 @@ function EditCourseForm({
     price_pence: number;
     /** Customer-facing description override (migration 045). */
     description_override?: string | null;
+    /** Joining details emailed to bookers only (migration 064). */
+    joining_details?: string | null;
     /** Private operational notes — never shown to customers. */
     bespoke_details?: string | null;
     /** Class runs at the customer's address (home/workplace) — migration 059. */
@@ -299,6 +303,7 @@ function EditCourseForm({
       // G1: pre-fill from the saved override, falling back to the template's
       // description so the box shows the wording customers currently see.
       description_override: instance.description_override ?? instance.template?.description ?? '',
+      joining_details: instance.joining_details ?? '',
       bespoke_details: instance.bespoke_details ?? '',
       // Migration 059: private classes are always delivered at the customer's
       // address; public classes only when the franchisee ticked the box.
@@ -358,6 +363,7 @@ function EditCourseForm({
       price_pence: Math.round(values.price_pounds * 100),
       // G1 (migration 045): null falls back to the template description.
       description_override: values.description_override.trim() || null,
+      joining_details: values.joining_details.trim() || null,
       bespoke_details: values.bespoke_details.trim() || null,
     };
     if (isPrivate) {
@@ -609,6 +615,27 @@ function EditCourseForm({
               <p className="text-daisy-muted text-xs">
                 Starts from the standard description for this course type. Edit it to describe this
                 particular class, or clear it to use the standard wording.
+              </p>
+            </div>
+
+            {/* Joining details (migration 064, TRI-0026): emailed to bookers only */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ec-joining">
+                Joining details for people who book{' '}
+                <span className="text-daisy-muted font-normal">(optional)</span>
+              </Label>
+              <textarea
+                id="ec-joining"
+                rows={3}
+                maxLength={1000}
+                placeholder="e.g. Please sign in on the screen at reception to avoid a parking fine. Or the Zoom link for an online class."
+                className="border-daisy-line text-daisy-ink placeholder:text-daisy-muted focus-visible:border-daisy-primary rounded-[8px] border-2 bg-white px-3 py-2 text-sm focus-visible:outline-none"
+                {...register('joining_details')}
+              />
+              <p className="text-daisy-muted text-xs">
+                Only people who have booked see this. It goes on their booking confirmation, the
+                day-before reminder and the reminder an hour before. It never shows on the booking
+                page, so a Zoom link is safe here.
               </p>
             </div>
 

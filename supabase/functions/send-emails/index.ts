@@ -41,6 +41,31 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/**
+ * The "Where" line: venue name, then the street address and postcode when the
+ * franchisee has entered them, so a customer can find the place (TRI-0026).
+ * Parts already contained in the name are not repeated.
+ */
+function venueLine(
+  ci:
+    | {
+        venue_name?: string | null;
+        venue_address?: string | null;
+        venue_postcode?: string | null;
+      }
+    | null
+    | undefined,
+): string {
+  const parts: string[] = [];
+  for (const raw of [ci?.venue_name, ci?.venue_address, ci?.venue_postcode]) {
+    const p = (raw ?? '').trim();
+    if (!p) continue;
+    if (parts.some((q) => q.toLowerCase().includes(p.toLowerCase()))) continue;
+    parts.push(p);
+  }
+  return parts.join(', ');
+}
+
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -274,7 +299,8 @@ Deno.serve(async (req: Request) => {
             `booking_reference, booking_status, payment_status, total_price_pence, quantity, discount_code, service_address, parking_notes,
            customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
-             event_date, start_time, venue_name, venue_postcode, status,
+             event_date, start_time, venue_name, venue_address, venue_postcode, status,
+             joining_details,
              template:da_course_templates ( name )
            ),
            ticket_type:da_ticket_types ( name, vat_rate, vat_exclusive ),
@@ -321,7 +347,11 @@ Deno.serve(async (req: Request) => {
           template_name: b.course_instance?.template?.name ?? 'your class',
           event_date: formatDate(b.course_instance?.event_date ?? null),
           start_time: (b.course_instance?.start_time ?? '').slice(0, 5),
-          venue: b.course_instance?.venue_name ?? b.course_instance?.venue_postcode ?? '',
+          venue: venueLine(b.course_instance),
+          // Migration 064: per-class joining details (venue sign-in, parking,
+          // Zoom link). Rendered on the confirmation, both reminders and the
+          // course-updated email; blank everywhere else.
+          joining_details: b.course_instance?.joining_details ?? '',
           franchisee_name: b.franchisee?.name ?? 'Daisy First Aid',
           franchisee_email: b.franchisee?.email ?? '',
           booking_reference: b.booking_reference,

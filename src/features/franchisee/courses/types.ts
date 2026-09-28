@@ -138,6 +138,8 @@ export interface CourseInstance {
    * (migration 045). NULL falls back to da_course_templates.description.
    */
   description_override: string | null;
+  /** Joining details emailed only to bookers (migration 064): sign-in, parking, Zoom link. */
+  joining_details?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,6 +320,8 @@ export interface CreateCourseInstanceRequest {
    * (migration 045 / G1). Null falls back to the template description.
    */
   description_override?: string | null;
+  /** Joining details emailed only to bookers (migration 064): sign-in, parking, Zoom link. */
+  joining_details?: string | null;
   /**
    * Explicit confirmation that a £0.00 price is intentional (F6). The function
    * rejects a zero price on the instance or any ticket type unless this is true.
