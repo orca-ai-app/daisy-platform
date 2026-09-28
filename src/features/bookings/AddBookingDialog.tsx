@@ -55,18 +55,28 @@ function formatDate(d: string | null): string {
   }
 }
 
-/** Scheduled courses with at least one space left. RLS scopes own vs all. */
+/**
+ * Courses with at least one space left: every scheduled class, plus classes
+ * completed in the last 30 days so a cash/cheque booking can still be recorded
+ * after the class has run (the nightly job marks past classes completed,
+ * migration 063). RLS scopes own vs all.
+ */
 function useBookableInstances(enabled: boolean) {
   return useQuery<BookableInstance[]>({
     enabled,
     queryKey: ['bookable-instances'],
     queryFn: async () => {
+      const cutoff = formatInTimeZone(
+        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        'Europe/London',
+        'yyyy-MM-dd',
+      );
       const { data, error } = await supabase
         .from('da_course_instances')
         .select(
           'id, event_date, venue_postcode, spots_remaining, template:da_course_templates(name)',
         )
-        .eq('status', 'scheduled')
+        .or(`status.eq.scheduled,and(status.eq.completed,event_date.gte.${cutoff})`)
         .gt('spots_remaining', 0)
         .order('event_date', { ascending: true });
       if (error) throw error;

@@ -530,6 +530,18 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // A completed class (the nightly job marks past dates completed, migration
+  // 063) that is moved to today or later is running again: put it back to
+  // scheduled so it can take bookings. Cancelled classes stay cancelled.
+  if (
+    beforeRow.status === 'completed' &&
+    typeof finalUpdate.event_date === 'string' &&
+    finalUpdate.event_date >=
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date())
+  ) {
+    finalUpdate.status = 'scheduled';
+  }
+
   // ---------------------------------------------------------------------
   // Apply update + activity log
   // ---------------------------------------------------------------------

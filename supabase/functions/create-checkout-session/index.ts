@@ -225,13 +225,18 @@ Deno.serve(async (req: Request) => {
   // private booking, plus any public class the franchisee flagged as delivered
   // at the customer's address (migration 059) — a home class listed publicly,
   // where venue_postcode is only the advertised area, not where the class runs.
-  // The address is required for these, the notes optional. Public venue classes
-  // send neither and both stay null.
+  // The address is required only on a PUBLIC class flagged as delivered at the
+  // customer's address (that booker is the host). A private class link is often
+  // shared with a whole group who may not know the address (TRI-0024), so there
+  // it is optional. Notes are always optional. Public venue classes send
+  // neither and both stay null. The widget mirrors this gate field for field.
   const deliveredAtAddress =
     instance.visibility === 'private' || instance.delivered_at_address === true;
+  const addressRequired =
+    instance.visibility !== 'private' && instance.delivered_at_address === true;
   const serviceAddress = reqStr(body.service_address);
   const parkingNotes = reqStr(body.parking_notes);
-  if (deliveredAtAddress && !serviceAddress) {
+  if (addressRequired && !serviceAddress) {
     return jsonResponse(
       { error: 'Please provide the address where the class will take place.' },
       400,

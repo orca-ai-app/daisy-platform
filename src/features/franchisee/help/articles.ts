@@ -175,7 +175,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Finding your way around a busy list',
         body: [
-          'The Courses list opens on your upcoming classes only, so past classes are out of the way by default. To see earlier classes, use the date dropdown along the top: Past only, a named month, or All dates. The Status dropdown hides cancelled classes in the same way. The other filters are course type and a venue box. Your choices are remembered on that device, so set them once and the list stays how you like it.',
+          'The Courses list opens on your upcoming classes only, so past classes are out of the way by default. To see earlier classes, use the date dropdown along the top: Past only, a named month, or All dates. The Status dropdown hides cancelled classes in the same way. Classes move to Completed automatically overnight once their date has passed, so Status set to Scheduled shows only classes still to run. The other filters are course type and a venue box. Your choices are remembered on that device, so set them once and the list stays how you like it.',
           'The date dropdown includes the next six months by name, so you can jump straight to, say, November. The venue box filters by venue name or postcode as you type, useful when you run classes across several locations.',
         ],
       },
@@ -226,6 +226,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         body: [
           'If you set a class to Public when creating it, it appears automatically on the Daisy website. Visitors can search by postcode and find it. You do not need to do anything extra.',
           'Private classes do not appear in the postcode search. Share the booking link directly with the group or client.',
+          'On a private class link the address box is optional, so a group can share one link even if some of them do not know where the class is. Whatever a booker enters shows on their booking under Class address. Put the address in the venue name when you create the class, and everyone sees it at the top of the booking page.',
         ],
       },
       {
@@ -281,7 +282,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
         steps: [
           'Click "Add booking" at the top right of the Bookings page.',
-          'Choose the class from the list.',
+          'Choose the class from the list. It includes classes that ran in the last 30 days, so you can still record someone who paid on the day.',
           'Choose the ticket type.',
           'Enter the quantity.',
           "Fill in the customer's name, email, and phone number.",
