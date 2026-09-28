@@ -79,6 +79,7 @@ import type {
 import { formatPrice, penceToPounds, poundsSchema, poundsToPence } from './money';
 import { supabase } from '@/lib/supabase';
 import { PrivateClientSelect } from '@/features/franchisee/clients/PrivateClientSelect';
+import { pastDateWarning } from './pastDate';
 
 // ---------------------------------------------------------------------------
 // Duplicate-course navigation state (NTH-8) — CourseDetail builds this.
@@ -688,6 +689,8 @@ function Step3Venue({
   } = form;
 
   const confirmed = watch('out_of_territory_confirmed');
+  const eventDate = watch('event_date');
+  const additionalDates = watch('additional_dates');
   const visibility = watch('visibility');
   const venueTbc = watch('venue_tbc');
   const isOnlineTemplate = watch('template_is_online');
@@ -715,6 +718,11 @@ function Step3Venue({
           <Input id="event-date" type="date" {...register('event_date')} />
           {errors.event_date ? (
             <p className="text-daisy-orange text-xs">{errors.event_date.message}</p>
+          ) : null}
+          {pastDateWarning(eventDate ?? '') ? (
+            <p className="text-daisy-orange text-xs font-semibold" role="alert">
+              {pastDateWarning(eventDate ?? '')}
+            </p>
           ) : null}
         </div>
         <div className="flex flex-col gap-1.5">
@@ -787,6 +795,11 @@ function Step3Venue({
               {errors.additional_dates?.[i]?.value ? (
                 <p className="text-daisy-orange text-xs">
                   {errors.additional_dates[i].value?.message}
+                </p>
+              ) : null}
+              {pastDateWarning(additionalDates?.[i]?.value ?? '') ? (
+                <p className="text-daisy-orange text-xs font-semibold" role="alert">
+                  {pastDateWarning(additionalDates?.[i]?.value ?? '')}
                 </p>
               ) : null}
             </div>

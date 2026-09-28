@@ -54,6 +54,7 @@ import {
 } from './courseDetailQueries';
 import { poundsSchema } from './money';
 import type { Visibility } from './types';
+import { pastDateWarning } from './pastDate';
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -318,6 +319,10 @@ function EditCourseForm({
   const deliveredAtAddress = watch('delivered_at_address');
   const allowFree = watch('allow_free');
   const pricePounds = watch('price_pounds');
+  const eventDate = watch('event_date');
+  // Only when the date has been changed: an old class opened for editing
+  // should not nag about its own, correct, past date.
+  const dateWarning = dirtyFields.event_date ? pastDateWarning(eventDate ?? '') : null;
 
   // Notify gate (NTH-14, reworked 16 Sep): emailing booked customers is an
   // explicit save-time choice, never a silent side effect. Only material
@@ -418,6 +423,11 @@ function EditCourseForm({
                 <Input id="ec-date" type="date" {...register('event_date')} />
                 {errors.event_date ? (
                   <p className="text-daisy-orange text-xs">{errors.event_date.message}</p>
+                ) : null}
+                {dateWarning ? (
+                  <p className="text-daisy-orange text-xs font-semibold" role="alert">
+                    {dateWarning}
+                  </p>
                 ) : null}
               </div>
               <div className="flex flex-col gap-1.5">
