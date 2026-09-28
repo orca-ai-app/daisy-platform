@@ -68,7 +68,8 @@ export interface DecryptedDeclarationData {
   conditions: MedicalConditionKey[];
   property_disclaimer_acknowledged: boolean;
   special_requirements_advised: 'yes' | 'not_applicable';
-  age_16_plus_confirmed: boolean;
+  /** Only on declarations submitted before 28 Sep 2026, when the form asked. */
+  age_16_plus_confirmed?: boolean;
   gdpr_terms_agreed: boolean;
 }
 

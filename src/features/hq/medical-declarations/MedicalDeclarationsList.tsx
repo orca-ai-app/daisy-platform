@@ -417,10 +417,12 @@ export default function MedicalDeclarationsList() {
                 label="Property disclaimer acknowledged"
                 value={revealed.declaration_data.property_disclaimer_acknowledged ? 'Yes' : 'No'}
               />
-              <Field
-                label="Age 16+ confirmed"
-                value={revealed.declaration_data.age_16_plus_confirmed ? 'Yes' : 'No'}
-              />
+              {revealed.declaration_data.age_16_plus_confirmed !== undefined ? (
+                <Field
+                  label="Age 16+ confirmed"
+                  value={revealed.declaration_data.age_16_plus_confirmed ? 'Yes' : 'No'}
+                />
+              ) : null}
               <Field
                 label="GDPR terms agreed"
                 value={revealed.declaration_data.gdpr_terms_agreed ? 'Yes' : 'No'}
