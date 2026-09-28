@@ -9,7 +9,7 @@ import { useEffect } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 import { BookOpen } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/daisy';
-import { findArticle, sectionAnchor } from './articles';
+import { findArticle, sectionAnchor, type HelpImage } from './articles';
 
 // ---------------------------------------------------------------------------
 // Section renderer
@@ -19,10 +19,12 @@ function ArticleSection({
   heading,
   body,
   steps,
+  images,
 }: {
   heading?: string;
   body?: string[];
   steps?: string[];
+  images?: HelpImage[];
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -51,6 +53,19 @@ function ArticleSection({
           ))}
         </ol>
       ) : null}
+      {images?.map((img) => (
+        <figure key={img.src} className="flex flex-col gap-1.5">
+          <img
+            src={img.src}
+            alt={img.alt}
+            loading="lazy"
+            className="border-daisy-line w-full max-w-md rounded-[8px] border"
+          />
+          {img.caption ? (
+            <figcaption className="text-daisy-muted text-xs">{img.caption}</figcaption>
+          ) : null}
+        </figure>
+      ))}
     </div>
   );
 }
@@ -109,6 +124,7 @@ export default function HelpArticle() {
             heading={section.heading}
             body={section.body}
             steps={section.steps}
+            images={section.images}
           />
         ))}
 

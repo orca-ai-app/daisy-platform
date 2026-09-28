@@ -9,10 +9,18 @@
 // help-index.json, and the config bundler does not apply the `@/` alias.
 import { MEDICAL_HOST } from '../../../lib/publicUrls';
 
+export interface HelpImage {
+  /** Path under public/, e.g. '/help/emails/email-1-confirmation.png'. */
+  src: string;
+  alt: string;
+  caption?: string;
+}
+
 export interface HelpSection {
   heading?: string;
   body?: string[];
   steps?: string[];
+  images?: HelpImage[];
 }
 
 export interface HelpArticle {
@@ -218,7 +226,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What customers see when they follow the link',
         body: [
           'The link opens the Daisy booking page for that specific class. Customers see the course name, date, time, and venue, and can choose a ticket type. They fill in their details and pay by card through Stripe.',
-          'After paying, the emails take care of themselves: the customer gets a confirmation with the class, date, time, venue and reference, you get a new-booking alert, and the customer gets a reminder the day before the class. These are the same for every franchisee and cannot be edited individually, though the ability to add your own per-class lines to the confirmation is on its way.',
+          'After paying, the emails take care of themselves: the customer gets a confirmation, a reminder the day before and another an hour before, and you get a new-booking alert. The wording is the same for every franchisee, but you can add your own joining details to each class, and they go on all three customer emails. "Emails your customers get" shows each one.',
         ],
       },
       {
@@ -318,6 +326,132 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ['managing-courses', 'moving-from-bookwhen'],
   },
 
+  {
+    slug: 'automatic-emails',
+    title: 'Emails your customers get',
+    summary:
+      'Every email the system sends about a booking: when it goes, who gets it, what it says, and where each detail comes from.',
+    keywords: [
+      'email',
+      'emails',
+      'reminder',
+      'day before',
+      'confirmation',
+      'follow up',
+      'follow-up',
+      'refresher',
+      'joining details',
+      'zoom',
+      'parking',
+      'sign in',
+      'reception',
+      'what customers receive',
+    ],
+    sections: [
+      {
+        heading: 'They send themselves',
+        body: [
+          'You do not switch anything on. Every online booking sets off the emails below, and each one arrives within about five minutes of being due.',
+          'They go to the person who made the booking, at the email address they gave at checkout. If one person books for a group, only they get the emails, so ask them to pass the details on. Anyone who books their own place gets their own.',
+          'The wording is the same for every franchisee and is written by HQ. What you control is the class details (date, time, venue, address, postcode), the Joining details box on each class, and your own message in Profile.',
+        ],
+      },
+      {
+        heading: 'Booking confirmation',
+        body: [
+          'When: straight after they pay.',
+          "What it shows: the course name, the date and start time, where (the venue name, address and postcode from the class), their booking reference, the class's joining details if you have added any, and your message from Profile.",
+        ],
+        images: [
+          {
+            src: '/help/emails/email-1-confirmation.png',
+            alt: 'A booking confirmation email with the class details, a Joining details box and a note from the trainer',
+            caption: 'Booking confirmation, with joining details and a note from the trainer.',
+          },
+        ],
+      },
+      {
+        heading: 'Reminder the day before',
+        body: [
+          'When: 24 hours before the class starts, so a 10:00 class reminds at 10:00 the day before. Not sent if someone books less than 24 hours ahead.',
+          'What it shows: the course name, date, time, where, their reference, and the joining details.',
+        ],
+        images: [
+          {
+            src: '/help/emails/email-2-day-before.png',
+            alt: 'The day-before reminder email',
+            caption: 'Reminder the day before.',
+          },
+        ],
+      },
+      {
+        heading: 'Reminder an hour before',
+        body: [
+          'When: one hour before the class starts.',
+          'What it shows: the course name, time, date, where, and the joining details. It tells them you will have the QR code for the medical form at the class. The QR code itself is not in the email.',
+        ],
+        images: [
+          {
+            src: '/help/emails/email-3-hour-before.png',
+            alt: 'The one-hour reminder email',
+            caption: 'Reminder an hour before.',
+          },
+        ],
+      },
+      {
+        heading: 'Where each detail comes from',
+        body: [
+          'Date and time: the class date and start time.',
+          'Where: the venue name, then the address and postcode, as entered on the class. Check these read well together, for example "Oakfield Village Hall, 12 Church Lane, GU51 1AA".',
+          'Joining details: the box of that name on the class. Use it for anything people need before they arrive, such as signing in at reception to avoid a parking fine, where to park, what to bring, or the Zoom link for an online class.',
+          'Your message: Profile, "Your message on confirmation emails". It is the same on every booking, and appears on the confirmation only.',
+        ],
+      },
+      {
+        heading: 'Adding joining details to a class',
+        steps: [
+          'Open the class from Courses and click "Edit course" (or fill it in when you create the class).',
+          'Type your details in "Joining details for people who book". Web links become clickable in the email.',
+          'Save. Reminders that have not gone yet will include it. A confirmation that has already been sent is not sent again, so if people have already booked, they will see it on their reminders.',
+        ],
+        body: [
+          'Joining details only ever go to people who have booked. They never show on the booking page, so a Zoom link is safe here.',
+        ],
+      },
+      {
+        heading: 'Bookings you add yourself',
+        body: [
+          'A booking you add with "Add booking" (phone, cash, cheque or invoice) gets the reminder the day before, but no confirmation, no one-hour reminder and no follow-ups, because you have usually already spoken to them. Tell them anything they need yourself.',
+        ],
+      },
+      {
+        heading: 'After the class',
+        body: [
+          'Seven hours after the class ends they get a thank-you email with useful links. Then a short refresher on one topic at a time: anaphylaxis at 4 weeks, choking at 10, head injuries at 16, CPR at 22, febrile convulsions at 28, burns at 34, a quiz at 40 weeks, and two refresher-course reminders at about 46 and 47 weeks.',
+          'These are the same for everyone and written by HQ. They go to the person who booked, and to anyone who ticks "I\'d like to receive emails" on the medical form. Anyone can unsubscribe with the link at the bottom.',
+        ],
+        images: [
+          {
+            src: '/help/emails/email-4-thank-you.jpg',
+            alt: 'The top of the thank-you email sent after a class',
+            caption: 'Thank-you email (top of it).',
+          },
+          {
+            src: '/help/emails/email-5-refresher.png',
+            alt: 'The choking refresher email',
+            caption: 'One of the refreshers.',
+          },
+        ],
+      },
+      {
+        heading: 'What you get',
+        body: [
+          'A "New booking" email every time someone books one of your classes, with who, what, when and how much they paid. Bookings you add yourself send you one too.',
+        ],
+      },
+    ],
+    related: ['managing-courses', 'booking-links', 'medical-qr'],
+  },
   {
     slug: 'medical-qr',
     title: 'Your medical form QR code',
@@ -558,10 +692,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Where your BookWhen habit lives now',
         body: [
           'Most of us built our own way of doing things on BookWhen. Here is where each habit goes on the new system.',
-          "The hidden section customers saw after booking (Zoom links, joining details): its replacement is already approved and being built, optional per-class lines that go out with the confirmation email, so every booker gets the details in their inbox automatically. Until it lands, use the Who's booked list, click each email address to copy it, and send one BCC email per class. Never put a Zoom link in the class description, that shows before anyone pays.",
+          'The hidden section customers saw after booking (Zoom links, joining details): use the Joining details box on the class. It goes out on the booking confirmation and both reminders, only to people who have booked, so a Zoom link is safe there. Never put a Zoom link in the class description, that shows before anyone pays.',
           'Booking several ticket types in one go: a customer books one ticket type per checkout here, so create a combined ticket at the blended price ("Group of 3") for the common mixes.',
           'The monthly income sheet: the Merchandise page and your bookings replace it, everything you sell is recorded as it happens.',
-          'Emailing customers before and after class yourself: the system already sends the confirmation, a day-before reminder and a post-class email with recap links automatically, so check what it covers before writing your own.',
+          'Emailing customers before and after class yourself: the system already sends the confirmation, a day-before reminder, a reminder an hour before and a post-class email with recap links automatically, so check "Emails your customers get" before writing your own.',
         ],
       },
     ],
