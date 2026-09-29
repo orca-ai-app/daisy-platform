@@ -18,6 +18,8 @@ export const CLASS_LENGTH_OPTIONS: ReadonlyArray<{ minutes: number; label: strin
   { minutes: 120, label: '2 hours' },
   { minutes: 180, label: '3 hours' },
   { minutes: 360, label: '6 hours' },
+  // A 6-hour professional course with a 30-minute lunch break, e.g. 09:30-16:00 (TRI-0033).
+  { minutes: 390, label: '6.5 hours' },
   { minutes: 720, label: '12 hours' },
 ];
 

@@ -50,6 +50,7 @@ describe('addMinutesToTime', () => {
     expect(addMinutesToTime('09:30', 90)).toBe('11:00');
     expect(addMinutesToTime('09:30', 120)).toBe('11:30');
     expect(addMinutesToTime('09:00', 360)).toBe('15:00');
+    expect(addMinutesToTime('09:30', 390)).toBe('16:00');
     expect(addMinutesToTime('09:00', 720)).toBe('21:00');
   });
 
