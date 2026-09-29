@@ -161,6 +161,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         body: [
           'Open the course from the Courses list and click "Edit course" at the top right. You can change the date, time, venue, capacity, and visibility. You cannot edit a cancelled course.',
           'The class description is what customers read on the booking page, so it is the place for venue detail: how to find the room, parking, baby change, what to bring. Leave it blank and the standard course description shows instead.',
+          'When you change the date, time or address of a class people have booked, saving asks whether to tell them. Choose "Save and email" to send each booked customer the new details, or "Save without emailing" when the change does not affect them. Changing only the name or description never emails anyone.',
           "One thing you cannot change is the course type. The type is the class's identity, bookings and certificates hang off it, so if a class was created on the wrong course, schedule a new class on the right one, open each booking and use Transfer to move it across, then cancel the old empty class. A transfer moves a booking exactly as it is, price and ticket included.",
         ],
       },
@@ -185,6 +186,22 @@ export const HELP_ARTICLES: HelpArticle[] = [
         body: [
           'The Courses list opens on your upcoming classes only, so past classes are out of the way by default. To see earlier classes, use the date dropdown along the top: Past only, a named month, or All dates. The Status dropdown hides cancelled classes in the same way. Classes move to Completed automatically overnight once their date has passed, so Status set to Scheduled shows only classes still to run. The other filters are course type and a venue box. Your choices are remembered on that device, so set them once and the list stays how you like it.',
           'The date dropdown includes the next six months by name, so you can jump straight to, say, November. The venue box filters by venue name or postcode as you type, useful when you run classes across several locations.',
+        ],
+      },
+      {
+        heading: "When a class's date has passed",
+        body: [
+          'Overnight after a class runs, it moves to Completed and its booking link closes, so nobody can book a class that has already happened.',
+          'If a class needs to stay open for longer, for example because the date was only a booking deadline, open it, click "Edit course" and move the date forward. It reopens for bookings as soon as you save. Choose "Save without emailing" if the people already booked do not need to hear about it.',
+          "A class's date also sets its reminders and follow-up emails, which go to everyone booked on it. So create each session as its own class, rather than using one class as a sign-up list for sessions on other dates.",
+        ],
+      },
+      {
+        heading: 'Who came to a past class',
+        steps: [
+          'Open Courses and set the date dropdown at the top to "Past only", or choose the month.',
+          'Open the class.',
+          '"Who\'s booked" lists everyone who booked a place. The Medical declarations card lists everyone who filled in the medical form on the day, which is the best record of who actually attended, for example when sending certificates.',
         ],
       },
     ],
