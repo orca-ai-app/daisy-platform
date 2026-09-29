@@ -506,6 +506,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        heading: 'More than one class at the same time',
+        body: [
+          'If you, or a freelancer working for you, have more than one class running that day, the form shows a list of them and each attendee taps theirs. The list shows the course type, start time and venue, so two classes at the same place and time look identical.',
+          'In that case, tell the room which one to tap before they scan, for example "tap the first Level 3 Paediatric at 9:30". Freelancers need to do the same at their classes.',
+          'Better still, avoid it: cancel any spare or duplicate class you are not running, so the list only shows the real one. Anyone who picks the wrong class still has their form saved, just against the other class. HQ can move it across if needed.',
+        ],
+      },
+      {
         heading: 'The "who made the booking?" question',
         body: [
           'The medical form asks whether the attendee booked in advance or is a walk-in. This links each submission to the right booking record so you can match attendees to bookings later.',
