@@ -129,6 +129,11 @@ Deno.serve(async (req: Request) => {
       scope: 'read_write',
       redirect_uri: redirectUri,
       state,
+      // Always show Stripe's account picker, including "create a new account".
+      // Without it Stripe jumps straight to the account the browser last used,
+      // which for the three franchisees whose accounts Stripe will no longer
+      // reconnect (29 Sep 2026) meant the same error every time.
+      always_prompt: 'true',
     });
     // Prefill the franchisee's email on the (rare) account-creation path; for an
     // existing account they just sign in and this is ignored.
