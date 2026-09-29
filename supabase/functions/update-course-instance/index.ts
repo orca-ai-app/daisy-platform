@@ -282,6 +282,14 @@ Deno.serve(async (req: Request) => {
   if ('venue_postcode' in updateFields) {
     // Shape check only here — the public-vs-private rule needs the instance
     // row (visibility), so it is enforced after the load below.
+    // A blank string means "no postcode" (online classes have none): treat it
+    // as null rather than rejecting the whole save (TRI-0028).
+    if (
+      typeof updateFields.venue_postcode === 'string' &&
+      updateFields.venue_postcode.trim() === ''
+    ) {
+      updateFields.venue_postcode = null;
+    }
     const v = updateFields.venue_postcode;
     if (v === null) {
       // Allowed only for private venue-TBC courses — checked after load.

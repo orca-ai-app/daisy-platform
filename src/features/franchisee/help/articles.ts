@@ -830,7 +830,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Adding an e-learning course',
         body: [
           'When you add your own item, set Type to "E-learning course". The Description is what customers see on your booking page, and Fulfilment notes are for anything they should know, for example how long their access lasts.',
-          'E-learning is delivered by hand, not automatically. When someone buys your own course, their confirmation email tells them their access details will follow separately, usually within 48 hours, and you enrol them yourself. If it is an HQ course that already has a link set, the customer is sent straight to it after paying and you have nothing to do. If HQ has not set the link yet, contact HQ before you put it on your booking page.',
+          "E-learning is delivered by hand, not automatically. Every e-learning purchase, HQ courses included, tells the customer their access details will follow separately, usually within 48 hours, and you enrol them yourself. If HQ has set a course link on one of its items, that link is added to the customer's email as well.",
+          'An HQ item keeps HQ\'s name and can be in your shop once. To sell the same course under your own names, for example "Duty of Care e-learning" and "Parent e-learning", add each one as your own item with Type set to "E-learning course".',
         ],
       },
       {

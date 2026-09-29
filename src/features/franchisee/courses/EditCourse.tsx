@@ -363,7 +363,9 @@ function EditCourseForm({
       end_time: values.end_time.length === 5 ? `${values.end_time}:00` : values.end_time,
       venue_name: values.venue_name?.trim() || null,
       venue_address: values.venue_address?.trim() || null,
-      venue_postcode: tbc && !postcode ? null : postcode,
+      // A blank postcode is "no postcode" (online classes, venue TBC), never ''
+      // (TRI-0028: every save of an online class was rejected).
+      venue_postcode: postcode || null,
       capacity: values.capacity,
       price_pence: Math.round(values.price_pounds * 100),
       // G1 (migration 045): null falls back to the template description.
