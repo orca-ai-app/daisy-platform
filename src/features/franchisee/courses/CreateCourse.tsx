@@ -80,6 +80,7 @@ import { formatPrice, penceToPounds, poundsSchema, poundsToPence } from './money
 import { supabase } from '@/lib/supabase';
 import { PrivateClientSelect } from '@/features/franchisee/clients/PrivateClientSelect';
 import { pastDateWarning } from './pastDate';
+import { formatInTimeZone } from 'date-fns-tz';
 
 // ---------------------------------------------------------------------------
 // Duplicate-course navigation state (NTH-8) — CourseDetail builds this.
@@ -1365,7 +1366,16 @@ function Step5Review({
           <dt className="text-daisy-muted font-semibold">
             {allDates.length > 1 ? `Dates (${allDates.length} courses)` : 'Date'}
           </dt>
-          <dd className="text-daisy-ink">{allDates.join(', ')}</dd>
+          <dd className="text-daisy-ink">
+            {/* UK display (TRI-0031): the form holds ISO dates, never show them raw. */}
+            {allDates
+              .map((d) =>
+                /^\d{4}-\d{2}-\d{2}$/.test(d)
+                  ? formatInTimeZone(new Date(`${d}T12:00:00Z`), 'Europe/London', 'd MMM yyyy')
+                  : d,
+              )
+              .join(', ')}
+          </dd>
         </div>
         <div>
           <dt className="text-daisy-muted font-semibold">Time</dt>

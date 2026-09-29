@@ -37,6 +37,8 @@ interface BookableInstance {
   venue_postcode: string | null;
   spots_remaining: number;
   template_name: string | null;
+  /** The franchisee's own name for the class, when set (private classes). */
+  display_name: string | null;
 }
 
 interface InstanceTicketType {
@@ -66,6 +68,7 @@ function useBookableInstances(enabled: boolean) {
     enabled,
     queryKey: ['bookable-instances'],
     queryFn: async () => {
+      const today = formatInTimeZone(new Date(), 'Europe/London', 'yyyy-MM-dd');
       const cutoff = formatInTimeZone(
         new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
         'Europe/London',
@@ -74,7 +77,7 @@ function useBookableInstances(enabled: boolean) {
       const { data, error } = await supabase
         .from('da_course_instances')
         .select(
-          'id, event_date, venue_postcode, spots_remaining, template:da_course_templates(name)',
+          'id, event_date, venue_postcode, spots_remaining, display_name, template:da_course_templates(name)',
         )
         .or(`status.eq.scheduled,and(status.eq.completed,event_date.gte.${cutoff})`)
         .gt('spots_remaining', 0)
@@ -85,15 +88,30 @@ function useBookableInstances(enabled: boolean) {
         event_date: string;
         venue_postcode: string | null;
         spots_remaining: number;
+        display_name: string | null;
         template: { name: string } | null;
       };
-      return ((data ?? []) as unknown as Row[]).map((r) => ({
-        id: r.id,
-        event_date: r.event_date,
-        venue_postcode: r.venue_postcode,
-        spots_remaining: r.spots_remaining,
-        template_name: r.template?.name ?? null,
-      }));
+      return (
+        ((data ?? []) as unknown as Row[])
+          .map((r) => ({
+            id: r.id,
+            event_date: r.event_date,
+            venue_postcode: r.venue_postcode,
+            spots_remaining: r.spots_remaining,
+            template_name: r.template?.name ?? null,
+            display_name: r.display_name?.trim() || null,
+          }))
+          // Upcoming classes first (soonest at the top), then the last 30 days
+          // (most recent first), so the list opens on what is still to run.
+          .sort((a, b) => {
+            const aPast = a.event_date < today;
+            const bPast = b.event_date < today;
+            if (aPast !== bPast) return aPast ? 1 : -1;
+            return aPast
+              ? b.event_date.localeCompare(a.event_date)
+              : a.event_date.localeCompare(b.event_date);
+          })
+      );
     },
   });
 }
@@ -274,7 +292,7 @@ export default function AddBookingDialog({
               <SelectContent>
                 {(instances.data ?? []).map((i) => (
                   <SelectItem key={i.id} value={i.id}>
-                    {i.template_name ?? 'Course'} · {formatDate(i.event_date)}
+                    {i.display_name ?? i.template_name ?? 'Course'} · {formatDate(i.event_date)}
                     {i.venue_postcode ? ` · ${i.venue_postcode}` : ''} ({i.spots_remaining} left)
                   </SelectItem>
                 ))}
