@@ -186,6 +186,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         body: [
           'The Courses list opens on your upcoming classes only, so past classes are out of the way by default. To see earlier classes, use the date dropdown along the top: Past only, a named month, or All dates. The Status dropdown hides cancelled classes in the same way. Classes move to Completed automatically overnight once their date has passed, so Status set to Scheduled shows only classes still to run. The other filters are course type and a venue box. Your choices are remembered on that device, so set them once and the list stays how you like it.',
           'The date dropdown includes the next six months by name, so you can jump straight to, say, November. The venue box filters by venue name or postcode as you type, useful when you run classes across several locations.',
+          'To see only your live online classes, type "online" in the venue box. Every online class has "Live online" as its venue, so this shows just those.',
         ],
       },
       {
