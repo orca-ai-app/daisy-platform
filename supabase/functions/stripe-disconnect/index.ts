@@ -82,6 +82,20 @@ Deno.serve(async (req: Request) => {
 
   const franchisee = selfLookup.data as { id: string; stripe_account_id: string | null };
 
+  // Self-service disconnect is switched off (29 Sep 2026). Stripe treats newer
+  // ("v2") accounts as permanently disconnected once deauthorised: they
+  // "cannot be reconnected to any platform", which cost three franchisees
+  // their connection. Changes to a Stripe link now go through HQ.
+  if (franchisee.stripe_account_id) {
+    return jsonResponse(
+      {
+        error:
+          'Your Stripe account is connected and working, so there is nothing you need to do here. If you need to change it, please contact HQ.',
+      },
+      409,
+    );
+  }
+
   // Revoke OAuth access at Stripe (best-effort — if it's already revoked we
   // still clear our local link). Skipped entirely if no account is linked.
   if (franchisee.stripe_account_id) {
