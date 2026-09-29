@@ -24,6 +24,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { verifyState } from '../_shared/oauthState.ts';
+import { logSystem } from '../_shared/log.ts';
 
 /** Resolve the portal origin for the post-OAuth redirect. PORTAL_URL is set in
  *  Supabase secrets; a top-level browser navigation carries no Origin header,
@@ -95,6 +96,23 @@ Deno.serve(async (req: Request) => {
 
     if (!tokenResp.ok || !tokenBody.stripe_user_id) {
       console.error('stripe-oauth-callback: token exchange failed', tokenBody);
+      // Keep Stripe's own reason where HQ can see it (the console alone hid
+      // why two franchisees could not reconnect, 29 Sep 2026).
+      await logSystem(
+        createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } }),
+        {
+          level: 'error',
+          source: 'stripe-oauth-callback',
+          message:
+            `token exchange failed: ${tokenBody.error ?? tokenResp.status} ${tokenBody.error_description ?? ''}`.trim(),
+          context: {
+            franchisee_id: franchiseeId,
+            status: tokenResp.status,
+            stripe_error: tokenBody.error ?? null,
+            stripe_error_description: tokenBody.error_description ?? null,
+          },
+        },
+      );
       return redirectToPortal(portalUrl, 'stripe_error=token_exchange_failed');
     }
     stripeUserId = tokenBody.stripe_user_id;

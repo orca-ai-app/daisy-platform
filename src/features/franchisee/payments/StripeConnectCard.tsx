@@ -186,8 +186,8 @@ export default function StripeConnectCard({ returnState, oauthError }: StripeCon
     <div className="border-daisy-line bg-daisy-paper rounded-[12px] border p-6">
       <h2 className="text-daisy-ink text-lg font-bold">Stripe payments</h2>
       <p className="text-daisy-muted mt-1 text-sm">
-        Connect your existing Stripe account to take card payments for private courses. Daisy takes
-        a 2% platform fee; all other revenue settles directly to your bank.
+        Connect your Stripe account to take card payments for your classes. Payments settle directly
+        to your bank through your own Stripe account.
       </p>
       <p className="text-daisy-muted mt-2 text-xs">
         You will sign in to your own Stripe account. If you do not have one yet, you can create it

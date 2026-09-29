@@ -2,7 +2,7 @@
  * Peer test — <StripeConnectCard> render states (OAuth model).
  *
  * Covers the documented states (StripeConnectCard.tsx header):
- *   State 1 — not connected   → "Connect with Stripe" CTA + 2% fee copy.
+ *   State 1 — not connected   → "Connect with Stripe" CTA + settlement copy.
  *   State 2 — connected       → success card, "Connected" badge, masked id,
  *                               dashboard link, working Disconnect button.
  * Plus the loading skeleton and the error state.
@@ -84,10 +84,10 @@ describe('StripeConnectCard — State 1 (not connected)', () => {
     });
   });
 
-  it('shows the "Connect with Stripe" CTA and the 2% fee copy', () => {
+  it('shows the "Connect with Stripe" CTA and the settlement copy', () => {
     render(<StripeConnectCard />);
     expect(screen.getByRole('button', { name: /connect with stripe/i })).toBeInTheDocument();
-    expect(screen.getByText(/2% platform fee/i)).toBeInTheDocument();
+    expect(screen.getByText(/settle directly to your bank/i)).toBeInTheDocument();
   });
 
   it('does not show the connected success badge', () => {

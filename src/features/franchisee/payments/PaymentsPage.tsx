@@ -37,8 +37,8 @@ export default function PaymentsPage() {
       {!isConnected && !connectStatus.isLoading && (
         <div className="border-daisy-line rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3">
           <p className="text-sm font-semibold text-amber-800">
-            Test mode — Stripe is in test mode. No real money will move until the platform goes
-            live.
+            Not connected yet. Customers can't pay by card for your classes until you connect your
+            Stripe account below.
           </p>
         </div>
       )}
