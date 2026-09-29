@@ -379,11 +379,10 @@ export default function CourseDetail() {
                       />
                     ) : null}
                     {instance.joining_details ? (
-                      <Field
-                        label="Joining details (emailed to bookers)"
-                        value={instance.joining_details}
-                        full
-                      />
+                      <Field label="Joining details (emailed to bookers)" full>
+                        {/* Keep the franchisee's line breaks, as the emails do (TRI-0036). */}
+                        <span className="whitespace-pre-line">{instance.joining_details}</span>
+                      </Field>
                     ) : null}
                     {instance.bespoke_details ? (
                       <Field label="Private notes" value={instance.bespoke_details} full />
