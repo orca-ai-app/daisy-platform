@@ -40,8 +40,9 @@ export function bookingUrl(bookingToken: string): string {
 
 /**
  * A franchisee's public page on the class finder, optionally pre-filtered.
- * This is the link to send customers for the shop (items sit under
- * "Available any time") and for a filtered class list. `courseType` must be
+ * This is the link to send customers for the whole shop (items sit under
+ * "Available any time") and for a filtered class list. For one item, use
+ * shopItemUrl. `courseType` must be
  * one of PUBLIC_COURSE_FAMILIES ids; `month` is 'YYYY-MM'.
  */
 export function franchiseePageUrl(
@@ -51,6 +52,16 @@ export function franchiseePageUrl(
   const params = new URLSearchParams({ franchisee: franchiseeNumber });
   if (opts.courseType) params.set('course-type', opts.courseType);
   if (opts.month) params.set('month', opts.month);
+  return `${BOOKING_BASE}/search?${params.toString()}`;
+}
+
+/**
+ * A link that opens straight onto ONE shop item on the franchisee's booking
+ * page (TRI-0045). `franchiseeProductId` is the da_franchisee_products.id,
+ * the id get-public-items returns and the widget's `item` parameter matches.
+ */
+export function shopItemUrl(franchiseeNumber: string, franchiseeProductId: string): string {
+  const params = new URLSearchParams({ franchisee: franchiseeNumber, item: franchiseeProductId });
   return `${BOOKING_BASE}/search?${params.toString()}`;
 }
 

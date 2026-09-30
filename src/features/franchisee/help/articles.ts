@@ -818,7 +818,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: 'online-shop',
     title: 'Your online shop: books and e-learning',
     summary:
-      'Sell books and e-learning from your booking page, on sale any time with no date to pick, and how e-learning buyers get their access.',
+      'Sell books and e-learning from your booking page, on sale any time with no date to pick, send a link to one item, and how e-learning buyers get their access.',
     keywords: [
       'e-learning',
       'elearning',
@@ -835,6 +835,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'add your own item',
       'show on my booking page',
       'access details',
+      'item link',
+      'link to one item',
+      'share an item',
+      'copy link',
     ],
     sections: [
       {
@@ -866,7 +870,20 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Show an item on your booking page',
         body: [
           'Nothing sells until you switch it on. Open the item from My shop and turn on "Show on my booking page". Anything left switched off stays invisible to customers, so you only ever show what you want to sell.',
-          'A shop item does not get a link of its own the way a class does. The link to send is your booking page, and it is waiting for you at the top of My shop in the "Your shop link" card, with Copy link and Send via WhatsApp buttons. Customers find your items in the "Available any time" section underneath your classes.',
+        ],
+      },
+      {
+        heading: 'Send a link to one item',
+        body: [
+          'Every item that is showing on your booking page has a link of its own, which opens straight onto that item, ready to buy. It is ideal for sending an e-learning course to a school, club or nursery without them scrolling past your classes.',
+          'In My shop, find the item and use the buttons in the Item link column: "Copy link" copies it to your clipboard, and "Send via WhatsApp" opens WhatsApp with the link in a message. The buttons only appear once the item is switched on with "Show on my booking page". If you later switch the item off, anyone using its link sees a message that it is not available, with your other classes and items underneath.',
+          'Customers who press Back on the item see your full booking page: your classes, then everything under "Available any time".',
+          'To send your whole shop instead, use the "Your shop link" card at the top of My shop, which also has Copy link and Send via WhatsApp buttons.',
+        ],
+        steps: [
+          'Go to Merchandise, then the My shop tab.',
+          'Check the item shows "Online" under On booking page. If not, click it and turn on "Show on my booking page".',
+          'In the Item link column for that item, click "Copy link" and paste it into your email, or click "Send via WhatsApp".',
         ],
       },
       {

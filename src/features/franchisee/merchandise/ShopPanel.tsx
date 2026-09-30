@@ -8,6 +8,11 @@
  *     retire. Hannah needed this to add her second e-learning course; Feola
  *     needed it to rename things.
  *
+ * Each item that is on the booking page has its own link (TRI-0045): Copy
+ * link and Send via WhatsApp in the Item link column open the booking page
+ * straight onto that item. Hidden items get no buttons, since the link would
+ * only land on the "not available" fallback.
+ *
  * Clicking a row opens ShopListingDialog to set price / VAT / visibility;
  * "Edit item" on one of their own opens OwnProductDialog for the item itself.
  *
@@ -19,12 +24,13 @@
 
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { GraduationCap, BookOpen, Store, Plus } from 'lucide-react';
+import { GraduationCap, BookOpen, Store, Plus, Copy, MessageCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import { DataTable, EmptyState, StatusPill } from '@/components/daisy';
 import { ShareLinkCard } from '@/components/daisy/ShareLinkCard';
 import { Button } from '@/components/ui/button';
 import { formatPence } from '@/lib/format';
-import { franchiseePageUrl } from '@/lib/publicUrls';
+import { franchiseePageUrl, shopItemUrl } from '@/lib/publicUrls';
 import { useOwnProfile } from '@/features/franchisee/profileQueries';
 import { useShopItems, type Product, type ShopItem } from './merchandiseQueries';
 import { ShopListingDialog } from './ShopListingDialog';
@@ -39,6 +45,24 @@ function isElearning(item: ShopItem): boolean {
   return item.product.kind === 'elearning';
 }
 
+/**
+ * Whether customers can buy this item from the booking page right now, so its
+ * own link will open it: switched on, and the catalogue product still active
+ * (get-public-items drops both cases).
+ */
+export function isItemOnline(item: ShopItem): boolean {
+  return item.listing?.is_online === true && item.product.active !== false;
+}
+
+async function copyLink(url: string) {
+  try {
+    await navigator.clipboard.writeText(url);
+    toast.success('Link copied to clipboard');
+  } catch {
+    toast.error('Could not copy to clipboard');
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -51,6 +75,8 @@ export function ShopPanel() {
   const [editingOwn, setEditingOwn] = useState<{ product?: Product } | null>(null);
 
   const onlineCount = items.filter((i) => i.listing?.is_online).length;
+  const franchiseeNumber = profile.data?.number ?? null;
+  const businessName = profile.data?.business_name ?? 'Daisy First Aid';
 
   const columns = useMemo<ColumnDef<ShopItem>[]>(
     () => [
@@ -135,6 +161,43 @@ export function ShopPanel() {
           ),
       },
       {
+        id: 'link',
+        header: 'Item link',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const listing = row.original.listing;
+          if (!franchiseeNumber || !listing || !isItemOnline(row.original)) return null;
+          const url = shopItemUrl(franchiseeNumber, listing.id);
+          const message = `${row.original.product.name} from ${businessName}: ${url}`;
+          return (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void copyLink(url);
+                }}
+              >
+                <Copy aria-hidden className="h-4 w-4" />
+                Copy link
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(message)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MessageCircle aria-hidden className="h-4 w-4" />
+                  Send via WhatsApp
+                </a>
+              </Button>
+            </div>
+          );
+        },
+      },
+      {
         id: 'actions',
         header: '',
         enableSorting: false,
@@ -166,17 +229,18 @@ export function ShopPanel() {
         ),
       },
     ],
-    [],
+    [franchiseeNumber, businessName],
   );
 
   return (
     <div className="flex flex-col gap-4">
-      {/* The link to send (TRI-0018): shop items have no link of their own, they
-          sit under "Available any time" on the franchisee's booking page. */}
+      {/* The link to send for the whole shop (TRI-0018): items sit under
+          "Available any time" on the franchisee's booking page. Each online
+          item also has its own link in the table below (TRI-0045). */}
       {profile.data?.number ? (
         <ShareLinkCard
           title="Your shop link"
-          description="Shop items do not get a link of their own. Send customers this page: they find your books and e-learning under Available any time, below your classes."
+          description="Send customers this page to see everything: your books and e-learning are under Available any time, below your classes. To send one item on its own, use Copy link in the Item link column below."
           url={franchiseePageUrl(profile.data.number)}
           urlLabel="Your booking page"
           whatsAppText={`Book classes or buy books and e-learning from ${profile.data.business_name ?? 'Daisy First Aid'}:`}
