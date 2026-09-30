@@ -286,6 +286,7 @@ export default function MedicalDeclarationsList() {
                     <th className="px-5 py-3 font-bold">Booking</th>
                     <th className="px-5 py-3 font-bold">Emails</th>
                     <th className="px-5 py-3 font-bold">Photos</th>
+                    <th className="px-5 py-3 font-bold">Certificate</th>
                     <th className="px-5 py-3 font-bold">Consent</th>
                     <th className="px-5 py-3 font-bold"></th>
                   </tr>
@@ -341,6 +342,20 @@ export default function MedicalDeclarationsList() {
                         >
                           {r.photo_consent === true ? '✓' : r.photo_consent === false ? '✗' : '—'}
                         </span>
+                      </td>
+                      <td
+                        className={
+                          r.certificate_email
+                            ? 'text-daisy-primary px-5 py-3 font-semibold'
+                            : 'text-daisy-muted px-5 py-3'
+                        }
+                        title={
+                          r.certificate_email
+                            ? 'Ticked "Email me about my certificate". Shared with the trainer for this.'
+                            : undefined
+                        }
+                      >
+                        {r.certificate_email ? '✓' : '—'}
                       </td>
                       <td className="px-5 py-3">
                         <StatusPill variant={r.consent ? 'paid' : 'failed'}>

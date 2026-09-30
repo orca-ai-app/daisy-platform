@@ -20,7 +20,10 @@ describe('HELP_ARTICLES integrity', () => {
 
   it('every article has at least one section', () => {
     for (const article of HELP_ARTICLES) {
-      expect(article.sections.length, `${article.slug} must have at least one section`).toBeGreaterThan(0);
+      expect(
+        article.sections.length,
+        `${article.slug} must have at least one section`,
+      ).toBeGreaterThan(0);
     }
   });
 
@@ -55,10 +58,7 @@ describe('HELP_ARTICLES integrity', () => {
         const hasContent =
           (section.body !== undefined && section.body.length > 0) ||
           (section.steps !== undefined && section.steps.length > 0);
-        expect(
-          hasContent,
-          `${article.slug} section[${i}] must have body or steps`,
-        ).toBe(true);
+        expect(hasContent, `${article.slug} section[${i}] must have body or steps`).toBe(true);
       }
     }
   });
@@ -73,5 +73,17 @@ describe('findArticle helper', () => {
 
   it('returns undefined for an unknown slug', () => {
     expect(findArticle('does-not-exist')).toBeUndefined();
+  });
+});
+
+describe('certificate emails help (migration 065)', () => {
+  it('the medical QR article explains the certificate tick and its limits', () => {
+    const article = findArticle('medical-qr');
+    const section = article?.sections.find((s) => s.heading === 'Certificate emails');
+    expect(section).toBeDefined();
+    const text = (section?.body ?? []).join(' ');
+    expect(text).toContain('Email me about my certificate');
+    expect(text).toContain('Copy certificate emails');
+    expect(text).toMatch(/not a mailing list/);
   });
 });

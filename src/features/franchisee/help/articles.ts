@@ -203,6 +203,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Open Courses and set the date dropdown at the top to "Past only", or choose the month.',
           'Open the class.',
           '"Who\'s booked" lists everyone who booked a place. The Medical declarations card lists everyone who filled in the medical form on the day, which is the best record of who actually attended, for example when sending certificates.',
+          'Attendees who ticked "Email me about my certificate" on the medical form show a certificate email under their name. Click "Copy certificate emails" to copy them all at once, then paste them into the BCC line of your email.',
         ],
       },
     ],
@@ -491,6 +492,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'photos',
       'photo consent',
       'consent',
+      'certificate',
+      'certificates',
+      'certificate email',
     ],
     sections: [
       {
@@ -527,6 +531,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'In the Customers section, the All contacts tab shows everyone who has submitted a medical form for your classes. You can see their name, the email they gave, and whether they opted in to marketing.',
           'On the class page itself, the Medical declarations card lists everyone who has filled the form in for that class. Anyone whose answers need attention shows a "please speak to attendee" badge: the detail stays private by design, the attendee tells the trainer what they need to know on the day. For a class a freelancer delivers, check the card and brief them on who to speak to, exactly as if you were teaching it yourself. Each person also carries a photo badge, "photos OK" or "no photos", so you can see at a glance who is happy to be photographed.',
           'Health answers are kept confidential. They are encrypted and only HQ can unlock them for clinical or safeguarding reasons. Every unlock is logged automatically.',
+        ],
+      },
+      {
+        heading: 'Certificate emails',
+        body: [
+          'The medical form has an optional tick, "Email me about my certificate". It starts unticked. An attendee who ticks it must give an email address, and the form tells them it will be used only to send certificate information for this class and shared with their trainer for that purpose.',
+          'On the class page, the Medical declarations card shows a "Certificate email" line under each attendee who ticked it. The "Copy certificate emails" button copies all of them for that class, ready to paste into BCC. Attendees who did not tick it show no address on the card.',
+          'Use these addresses only to send certificate information for that class. They are not a mailing list: do not add them to newsletters, offers or other marketing. Declarations made before the tick was added (1 October 2026) have no certificate email.',
         ],
       },
       {

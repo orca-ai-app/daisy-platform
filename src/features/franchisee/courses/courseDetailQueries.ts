@@ -407,6 +407,9 @@ export function courseInstanceStatusVariant(
 // NEVER selects declaration_data (encrypted, HQ-only). The trainer sees who
 // filled the form, photo consent, and the non-sensitive medical_flagged
 // indicator ("speak to the attendee") computed at submission.
+//
+// certificate_email (migration 065) is set only when the attendee ticked
+// "Email me about my certificate". It is the only address this card shows.
 // ---------------------------------------------------------------------------
 
 export interface CourseDeclarationRow {
@@ -415,6 +418,7 @@ export interface CourseDeclarationRow {
   attendee_name: string;
   photo_consent: boolean | null;
   medical_flagged: boolean | null;
+  certificate_email: string | null;
 }
 
 export function useCourseDeclarations(courseInstanceId: string | undefined) {
@@ -424,7 +428,7 @@ export function useCourseDeclarations(courseInstanceId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('da_medical_declarations')
-        .select('id, created_at, attendee_name, photo_consent, medical_flagged')
+        .select('id, created_at, attendee_name, photo_consent, medical_flagged, certificate_email')
         .eq('course_instance_id', courseInstanceId!)
         .order('created_at', { ascending: true });
       if (error) {

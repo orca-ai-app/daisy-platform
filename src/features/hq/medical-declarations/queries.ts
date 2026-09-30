@@ -42,6 +42,8 @@ export interface MedicalDeclarationRow {
   consent: boolean;
   email_opt_in: boolean | null;
   photo_consent: boolean | null;
+  /** Migration 065: set only when the attendee ticked "Email me about my certificate". */
+  certificate_email: string | null;
   booker_reference: string | null;
   booking_reference: string | null;
   franchisee_name: string | null;
@@ -99,6 +101,7 @@ export function useMedicalDeclarations() {
            consent:consent_given,
            email_opt_in,
            photo_consent,
+           certificate_email,
            booker_reference,
            booking:da_bookings ( booking_reference ),
            franchisee:da_franchisees ( name, number )`,
@@ -127,6 +130,7 @@ export function useMedicalDeclarations() {
         consent: row.consent,
         email_opt_in: row.email_opt_in,
         photo_consent: row.photo_consent,
+        certificate_email: row.certificate_email,
         booker_reference: row.booker_reference,
         booking_reference: row.booking?.booking_reference ?? null,
         franchisee_name: row.franchisee?.name ?? null,

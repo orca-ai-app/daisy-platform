@@ -8,7 +8,8 @@
 //   attendee_name: string,
 //   attendee_email?: string,
 //   declaration_data: object,      // raw health fields (PRD §10.3)
-//   consent_given: boolean
+//   consent_given: boolean,
+//   certificate_opt_in?: boolean   // migration 065; needs attendee_email
 // }
 // -> 201 { success: true }   (no sensitive data echoed back)
 //
@@ -24,6 +25,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { encryptJson } from '../_shared/medicalCrypto.ts';
 import { buildJourneyRows } from '../_shared/emailSchedule.ts';
+import { certificateFields } from './certificate.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -65,6 +67,9 @@ interface RequestBody {
   booker_reference?: unknown; // "who made the booking" (name or email, verbatim)
   email_opt_in?: unknown; // Jenni's Kartra opt-in checkbox
   photo_consent?: unknown; // photo/promo consent (plaintext — trainer visibility)
+  // Migration 065 (Oct 2026): "Email me about my certificate". The email is
+  // shared with the class trainer for certificate information only.
+  certificate_opt_in?: unknown;
 }
 
 Deno.serve(async (req: Request) => {
@@ -270,6 +275,12 @@ Deno.serve(async (req: Request) => {
 
   const attendeeEmail = reqStr(body.attendee_email)?.toLowerCase() ?? null;
   const emailOptIn = body.email_opt_in === true;
+
+  // Certificate opt-in (migration 065). The tick needs a usable address; the
+  // form enforces this too, so a 400 here only catches a hand-built request.
+  const certificate = certificateFields(body.certificate_opt_in, attendeeEmail);
+  if (!certificate.ok) return jsonResponse({ error: certificate.error }, 400);
+
   const photoConsent =
     typeof body.photo_consent === 'boolean' ? (body.photo_consent as boolean) : null;
 
@@ -317,6 +328,7 @@ Deno.serve(async (req: Request) => {
       ip_address: ip !== 'unknown' ? ip : null,
       user_agent: req.headers.get('user-agent'),
       submission_id: validSubmissionId,
+      ...(certificate.fields ?? {}),
     })
     .select('id')
     .single();
@@ -416,6 +428,7 @@ Deno.serve(async (req: Request) => {
         territory_postcode: territoryPostcode.toUpperCase(),
         booking_linked: bookingId !== null,
         attendee_enrolled: enrolled,
+        certificate_opt_in: certificate.fields !== null,
       },
       description: `Medical declaration submitted for instructor ${instructorNumber}`,
     })
