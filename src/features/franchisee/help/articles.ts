@@ -251,6 +251,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Public classes and the website',
         body: [
           'If you set a class to Public when creating it, it appears automatically on the Daisy website. Visitors can search by postcode and find it. You do not need to do anything extra.',
+          "When a customer searches a postcode or town, they see every public class within 15 miles, plus all the public classes of the trainer who covers that area, however far away. This protects each trainer's area, so your classes do not show in a neighbour's search when your venues are more than 15 miles from it.",
+          'To reach customers further away, share your own booking page or a filtered link instead. It lists all your classes, wherever the customer lives.',
           'Private classes do not appear in the postcode search. Share the booking link directly with the group or client.',
           'On a private class link the address box is optional, so a group can share one link even if some of them do not know where the class is. Whatever a booker enters shows on their booking under Class address. Put the address in the venue name when you create the class, and everyone sees it at the top of the booking page.',
         ],
