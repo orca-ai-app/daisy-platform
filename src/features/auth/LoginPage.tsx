@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useRole } from './RoleContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
+import { takeReturnTo } from './returnTo';
 
 /**
  * Google-only sign-in. Every franchisee and HQ email is a daisyfirstaid.com
@@ -26,7 +27,7 @@ export default function LoginPage() {
       navigate('/unauthorized', { replace: true });
       return;
     }
-    navigate(isHQ ? '/hq/dashboard' : '/franchisee/dashboard', { replace: true });
+    navigate(takeReturnTo(isHQ), { replace: true });
   }, [user, isHQ, notProvisioned, isLoading, navigate]);
 
   const onGoogle = async () => {

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { Navigate } from 'react-router';
+import { Navigate, useLocation } from 'react-router';
 import { useRole } from './RoleContext';
+import { rememberReturnTo } from './returnTo';
 
 interface RequireRoleProps {
   /**
@@ -42,6 +43,7 @@ interface RequireRoleProps {
  */
 export function RequireRole({ hq, franchisee, children }: RequireRoleProps) {
   const { user, isHQ, notProvisioned, isLoading } = useRole();
+  const location = useLocation();
 
   if (isLoading) {
     return (
@@ -50,7 +52,10 @@ export function RequireRole({ hq, franchisee, children }: RequireRoleProps) {
   }
 
   // Not signed in — send to login regardless of which route was attempted.
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    rememberReturnTo(location.pathname + location.search + location.hash);
+    return <Navigate to="/login" replace />;
+  }
 
   // Signed in but no provisioned role — friendly error screen.
   if (notProvisioned) return <Navigate to="/unauthorized" replace />;
