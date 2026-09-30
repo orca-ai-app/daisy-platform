@@ -5,6 +5,7 @@
 //
 // POST {
 //   postcode: string,
+//   franchisee_id?: string,           // trainer uuid OR number ("0086"); resolved to uuid
 //   num_attendees: number,            // >= 1
 //   contact_name: string,
 //   contact_email: string,
@@ -22,6 +23,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { resolveFranchiseeId, type ResolveResult } from './resolveFranchisee.ts';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -97,7 +99,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const postcode = reqStr(body.postcode);
-  const franchiseeId = reqStr(body.franchisee_id);
+  let franchiseeId = reqStr(body.franchisee_id);
   const contactName = reqStr(body.contact_name);
   const contactEmailRaw = reqStr(body.contact_email);
   const numAttendees = body.num_attendees;
@@ -113,6 +115,28 @@ Deno.serve(async (req: Request) => {
   }
   if (typeof numAttendees !== 'number' || !Number.isInteger(numAttendees) || numAttendees < 1) {
     return jsonResponse({ error: 'num_attendees must be a positive integer' }, 400);
+  }
+
+  // The widget sends the trainer's NUMBER ("0086", "OMG1"); the column is a
+  // uuid. Resolve it here or the insert fails and the customer sees an error.
+  if (franchiseeId) {
+    let resolved: ResolveResult;
+    try {
+      resolved = await resolveFranchiseeId(franchiseeId, async (num) => {
+        const byNumber = await admin
+          .from('da_franchisees')
+          .select('id')
+          .eq('number', num)
+          .maybeSingle();
+        if (byNumber.error) throw byNumber.error;
+        return (byNumber.data as { id: string } | null)?.id ?? null;
+      });
+    } catch (err) {
+      console.error('franchisee lookup failed', err);
+      return jsonResponse({ error: 'Could not submit your enquiry right now' }, 500);
+    }
+    if (!resolved.ok) return jsonResponse({ error: resolved.error }, 400);
+    franchiseeId = resolved.id;
   }
 
   const courseTemplateId = reqStr(body.course_template_id);
