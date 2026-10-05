@@ -808,6 +808,7 @@ export default function CoursesList() {
             data={rows}
             isLoading={isLoading}
             searchable={false}
+            sortable={false}
             onRowClick={(row) => navigate(`/franchisee/courses/${row.id}`)}
             emptyState={
               <EmptyState

@@ -35,6 +35,12 @@ interface DataTableProps<TRow> {
   searchValue?: string;
   /** Called when the user types in the search input (controlled mode). */
   onSearchChange?: (value: string) => void;
+  /**
+   * Header click-to-sort. Default true. Turn off when the parent pages the
+   * data server-side: sorting here would only reorder the rows on screen, so
+   * rows on other pages look missing (TRI-0049).
+   */
+  sortable?: boolean;
 }
 
 /**
@@ -61,6 +67,7 @@ export function DataTable<TRow>({
   className,
   searchValue,
   onSearchChange,
+  sortable = true,
 }: DataTableProps<TRow>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [internalFilter, setInternalFilter] = useState('');
@@ -73,6 +80,7 @@ export function DataTable<TRow>({
     columns,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,
+    enableSorting: sortable,
     onGlobalFilterChange: (updater) => {
       const next = typeof updater === 'function' ? updater(globalFilter) : updater;
       setGlobalFilter(next);
