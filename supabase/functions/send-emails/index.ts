@@ -34,6 +34,7 @@ import { buildUnsubscribeUrl } from '../_shared/unsubscribeToken.ts';
 import { processBroadcast } from '../_shared/broadcastSender.ts';
 import { logSystem } from '../_shared/log.ts';
 import { checkEmailHealth } from './health.ts';
+import { RECOVERY_DELAY_MINUTES, newResumeToken, recoverySkipReason } from './recovery.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -65,6 +66,9 @@ function venueLine(
   }
   return parts.join(', ');
 }
+
+/** Public booking site, where the /book/:token page lives. */
+const BOOKING_SITE = 'https://booking.daisyfirstaid.com';
 
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -297,25 +301,93 @@ Deno.serve(async (req: Request) => {
           .from('da_bookings')
           .select(
             `booking_reference, booking_status, payment_status, total_price_pence, quantity, discount_code, service_address, parking_notes,
+           created_at, customer_id, course_instance_id, resume_token,
            customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
              event_date, start_time, venue_name, venue_address, venue_postcode, status,
-             joining_details,
+             joining_details, spots_remaining, booking_token,
              template:da_course_templates ( name )
            ),
-           ticket_type:da_ticket_types ( name, vat_rate, vat_exclusive ),
-           franchisee:da_franchisees ( name, business_name, email, booking_email_message, vat_number )`,
+           ticket_type:da_ticket_types ( name, vat_rate, vat_exclusive, seats_consumed ),
+           franchisee:da_franchisees ( name, business_name, email, booking_email_message, vat_number, stripe_connected )`,
           )
           .eq('id', row.booking_id)
           .maybeSingle();
         if (booking.error || !booking.data) throw new Error('booking load failed');
         const b = booking.data as any;
 
+        // Abandoned checkout recovery (migration 066). The booking is cancelled
+        // by definition, so this runs before the lifecycle gate, with its own
+        // guards checked at send time. Any "no" cancels the row for good.
+        let resumeUrl = '';
+        if (row.template_key === 'checkout_recovery') {
+          const others = await admin
+            .from('da_bookings')
+            .select('id, payment_status, created_at')
+            .eq('customer_id', b.customer_id)
+            .eq('course_instance_id', b.course_instance_id)
+            .neq('id', row.booking_id);
+          if (others.error) throw new Error('recovery: other bookings load failed');
+          const otherRows = (others.data ?? []) as any[];
+          const hasOtherBooking = otherRows.some(
+            (o) =>
+              o.payment_status !== 'failed' ||
+              new Date(o.created_at).getTime() > new Date(b.created_at).getTime(),
+          );
+          let alreadyNudged = false;
+          if (otherRows.length > 0) {
+            const nudged = await admin
+              .from('da_email_sequences')
+              .select('id')
+              .eq('template_key', 'checkout_recovery')
+              .eq('status', 'sent')
+              .in(
+                'booking_id',
+                otherRows.map((o) => o.id),
+              )
+              .limit(1);
+            if (nudged.error) throw new Error('recovery: nudge history load failed');
+            alreadyNudged = (nudged.data ?? []).length > 0;
+          }
+          const email = (b.customer?.email ?? '').toLowerCase();
+          const skip = recoverySkipReason(
+            {
+              paymentStatus: b.payment_status,
+              courseStatus: b.course_instance?.status ?? null,
+              eventDate: b.course_instance?.event_date ?? null,
+              startTime: b.course_instance?.start_time ?? null,
+              spotsRemaining: b.course_instance?.spots_remaining ?? 0,
+              seatsNeeded: (b.quantity ?? 1) * (b.ticket_type?.seats_consumed ?? 1),
+              stripeConnected: b.franchisee?.stripe_connected === true,
+              suppressed: b.customer?.marketing_opt_out === true || suppressed.has(email),
+              hasOtherBooking,
+              alreadyNudged,
+            },
+            new Date(),
+          );
+          if (skip || !b.resume_token || !b.course_instance?.booking_token) {
+            await admin.from('da_email_sequences').update({ status: 'cancelled' }).eq('id', row.id);
+            await logSystem(admin, {
+              level: 'info',
+              source: 'send-emails',
+              entityType: 'booking',
+              entityId: row.booking_id,
+              message: `checkout recovery not sent for ${b.booking_reference}: ${skip ?? 'no resume link'}`,
+            });
+            cancelled++;
+            continue;
+          }
+          resumeUrl = `${BOOKING_SITE}/book/${encodeURIComponent(b.course_instance.booking_token)}?resume=${encodeURIComponent(b.resume_token)}`;
+        }
+
         // Lifecycle gate: a cancelled booking (or a cancelled class) must not
         // keep emailing the customer — without this, the "class starts in 1
         // hour" reminder and a year of recaps still fired after cancellation.
         // Cancel the row (mirrors the suppression path) rather than failing it.
-        if (b.booking_status === 'cancelled' || b.course_instance?.status === 'cancelled') {
+        if (
+          row.template_key !== 'checkout_recovery' &&
+          (b.booking_status === 'cancelled' || b.course_instance?.status === 'cancelled')
+        ) {
           await admin.from('da_email_sequences').update({ status: 'cancelled' }).eq('id', row.id);
           cancelled++;
           continue;
@@ -352,6 +424,7 @@ Deno.serve(async (req: Request) => {
           // Zoom link). Rendered on the confirmation, both reminders and the
           // course-updated email; blank everywhere else.
           joining_details: b.course_instance?.joining_details ?? '',
+          resume_url: resumeUrl,
           franchisee_name: b.franchisee?.name ?? 'Daisy First Aid',
           franchisee_email: b.franchisee?.email ?? '',
           booking_reference: b.booking_reference,
@@ -474,7 +547,9 @@ Deno.serve(async (req: Request) => {
   // (payment failed, booking cancelled) so spots go back on sale.
   const stale = await admin
     .from('da_bookings')
-    .select('id, booking_reference, course_instance_id, reserved_seats')
+    .select(
+      'id, booking_reference, course_instance_id, reserved_seats, customer_id, stripe_checkout_session_id',
+    )
     .eq('payment_status', 'pending')
     .not('reserved_seats', 'is', null)
     .lt('created_at', new Date(Date.now() - 35 * 60_000).toISOString());
@@ -512,6 +587,37 @@ Deno.serve(async (req: Request) => {
         // Webhook won the race — booking was finalised between select and
         // claim. Its hold is the real decrement now; nothing to release.
         continue;
+      }
+      // Queue the one recovery email (migration 066), for online checkouts
+      // only. Guards run again at send time. Never lets the sweep fail.
+      if (b.stripe_checkout_session_id && b.customer_id) {
+        try {
+          const tok = await admin
+            .from('da_bookings')
+            .update({ resume_token: newResumeToken() })
+            .eq('id', b.id)
+            .select('id');
+          if (tok.error) throw new Error(tok.error.message);
+          const q = await admin.from('da_email_sequences').insert({
+            customer_id: b.customer_id,
+            booking_id: b.id,
+            template_key: 'checkout_recovery',
+            sequence_day: 0,
+            scheduled_for: new Date(Date.now() + RECOVERY_DELAY_MINUTES * 60_000).toISOString(),
+            status: 'pending',
+          });
+          // 23505 = already queued (unique per booking): fine.
+          if (q.error && q.error.code !== '23505') throw new Error(q.error.message);
+        } catch (err) {
+          await logSystem(admin, {
+            level: 'warn',
+            source: 'send-emails',
+            entityType: 'booking',
+            entityId: b.id,
+            message: `checkout recovery not queued for ${b.booking_reference}`,
+            context: { error: String(err).slice(0, 300) },
+          });
+        }
       }
       const rel = await admin.rpc('release_spots', {
         instance_id: b.course_instance_id,

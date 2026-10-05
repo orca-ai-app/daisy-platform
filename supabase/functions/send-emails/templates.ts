@@ -58,6 +58,11 @@ export interface TemplateContext {
    */
   service_block_html?: string;
   service_block_text?: string;
+  /**
+   * checkout_recovery only (migration 066): the class's /book/:token page with
+   * ?resume=<token>, which re-fills the customer's details. Built in index.ts.
+   */
+  resume_url?: string;
 }
 
 /**
@@ -279,6 +284,16 @@ const TEMPLATES: Record<string, RawTemplate> = {
       <p>Your place is still confirmed. If the new details don't work for you, just reply to this email and we'll sort it out.</p>`,
     text: `Hi {{first_name}},\n\nThe details of your {{template_name}} class have changed. Here are the updated details:\n\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nReference: {{booking_reference}}\n\nYour place is still confirmed. If the new details don't work for you, just reply to this email.\n\n{{franchisee_name}} & the Daisy First Aid team`,
   },
+  checkout_recovery: {
+    subject: 'Your place on {{template_name}} is still available',
+    bodyHtml: `<p>Hi {{first_name}},</p>
+      <p>You started booking <strong>{{template_name}}</strong> but didn't get as far as paying, so nothing has been charged. There are still places available.</p>
+      <p><strong>When:</strong> {{event_date}} at {{start_time}}<br/>
+      <strong>Where:</strong> {{venue}}</p>
+      <p style="margin:22px 0"><a href="{{resume_url}}" style="display:inline-block;background:#006FAC;color:#ffffff;padding:12px 24px;border-radius:999px;text-decoration:none;font-weight:600">Finish my booking</a></p>
+      <p>Your details are already filled in. If you've changed your mind, there's nothing you need to do.</p>`,
+    text: `Hi {{first_name}},\n\nYou started booking {{template_name}} but didn't get as far as paying, so nothing has been charged. There are still places available.\n\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\n\nFinish your booking here: {{resume_url}}\n\nYour details are already filled in. If you've changed your mind, there's nothing you need to do.\n\n{{franchisee_name}} & the Daisy First Aid team`,
+  },
   post_course_welcome: {
     subject: 'Thank you for coming to your Daisy First Aid class',
     bodyHtml: `<p>Hi {{first_name}},</p>
@@ -445,7 +460,9 @@ export function renderTemplate(
       fill(t.subject.replace(/\s*\(\{\{booking_reference\}\}\)/, ''), ctx),
       fill(t.bodyHtml, ctx),
       ctx,
-      undefined,
+      key === 'checkout_recovery'
+        ? "You're receiving this because you started a booking with Daisy First Aid."
+        : undefined,
       messageHtml,
       signoff,
     ),

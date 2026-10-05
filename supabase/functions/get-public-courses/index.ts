@@ -81,6 +81,8 @@ interface RequestBody {
   franchisee_id?: unknown;
   limit?: unknown;
   booking_token?: unknown;
+  /** checkout_recovery link token (migration 066), only with booking_token. */
+  resume?: unknown;
   instructor_number?: unknown;
   on_date?: unknown;
 }
@@ -232,8 +234,48 @@ Deno.serve(async (req: Request) => {
         200,
       );
     }
+    // Abandoned checkout recovery (migration 066): ?resume=<token> on the
+    // /book/:token page re-fills what the customer entered last time. Only for
+    // an abandoned (failed) checkout on THIS class, within 14 days; anything
+    // else is silently ignored and the page behaves as normal.
+    const resumeToken = typeof body.resume === 'string' ? body.resume.trim() : '';
+    let resume: Record<string, unknown> | null = null;
+    if (/^[0-9a-f]{64}$/.test(resumeToken)) {
+      const r = await admin
+        .from('da_bookings')
+        .select(
+          `ticket_type_id, quantity, discount_code, service_address, parking_notes,
+           customer:da_customers ( first_name, last_name, email, phone, postcode )`,
+        )
+        .eq('resume_token', resumeToken)
+        .eq('course_instance_id', (single.data as any).id)
+        .eq('payment_status', 'failed')
+        .gt('created_at', new Date(Date.now() - 14 * 86_400_000).toISOString())
+        .maybeSingle();
+      if (r.error) console.error('resume lookup failed', r.error);
+      const d = r.data as any;
+      if (d) {
+        resume = {
+          ticket_type_id: d.ticket_type_id,
+          quantity: d.quantity,
+          discount_code: d.discount_code ?? '',
+          service_address: d.service_address ?? '',
+          parking_notes: d.parking_notes ?? '',
+          first_name: d.customer?.first_name ?? '',
+          last_name: d.customer?.last_name ?? '',
+          email: d.customer?.email ?? '',
+          phone: d.customer?.phone ?? '',
+          postcode: d.customer?.postcode ?? '',
+        };
+      }
+    }
     return jsonResponse(
-      { courses: [toCard(single.data)], territory_status: 'none', suggest_interest_form: false },
+      {
+        courses: [toCard(single.data)],
+        territory_status: 'none',
+        suggest_interest_form: false,
+        ...(resume ? { resume } : {}),
+      },
       200,
     );
   }
