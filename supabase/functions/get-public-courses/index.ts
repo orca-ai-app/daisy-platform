@@ -562,6 +562,24 @@ Deno.serve(async (req: Request) => {
   // the business name and page link (Emma/Jenni, 27 Aug), so enrich the kept
   // rows from da_franchisees in one query before shaping.
   const kept = rows.slice(0, limit);
+
+  // The RPC doesn't return delivered_at_address either. Without it a home
+  // class found by postcode search showed no address box, while checkout still
+  // required one, so the customer couldn't book (TRI-0050).
+  if (kept.length > 0) {
+    const ci = await admin
+      .from('da_course_instances')
+      .select('id, delivered_at_address')
+      .in(
+        'id',
+        kept.map((r) => r.id),
+      );
+    const homeIds = new Set(
+      ((ci.data ?? []) as any[]).filter((c) => c.delivered_at_address === true).map((c) => c.id),
+    );
+    for (const r of kept) r.delivered_at_address = homeIds.has(r.id);
+  }
+
   const franchiseeIds = [...new Set(kept.map((r) => r.franchisee_id).filter(Boolean))];
   if (franchiseeIds.length > 0) {
     const fr = await admin
