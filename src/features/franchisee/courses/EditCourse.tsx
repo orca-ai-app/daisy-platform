@@ -539,17 +539,21 @@ function EditCourseForm({
 
             {/* Postcode + capacity + price */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="ec-postcode">
-                  {isPrivate
-                    ? 'Postcode or district (e.g. GU1) — optional if venue TBC'
-                    : 'Postcode'}
-                </Label>
-                <Input id="ec-postcode" disabled={venueTbc} {...register('venue_postcode')} />
-                {errors.venue_postcode ? (
-                  <p className="text-daisy-orange text-xs">{errors.venue_postcode.message}</p>
-                ) : null}
-              </div>
+              {/* Online classes never take a postcode: they show only in the
+                  trainer's own area (Jenni, 5 Oct). */}
+              {instance.template?.is_online === true ? null : (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="ec-postcode">
+                    {isPrivate
+                      ? 'Postcode or district (e.g. GU1) — optional if venue TBC'
+                      : 'Postcode'}
+                  </Label>
+                  <Input id="ec-postcode" disabled={venueTbc} {...register('venue_postcode')} />
+                  {errors.venue_postcode ? (
+                    <p className="text-daisy-orange text-xs">{errors.venue_postcode.message}</p>
+                  ) : null}
+                </div>
+              )}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="ec-capacity">Capacity</Label>
                 <Input

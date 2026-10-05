@@ -457,7 +457,10 @@ Deno.serve(async (req: Request) => {
     const isOnline =
       ((beforeRow.template as { is_online?: boolean } | null)?.is_online ?? false) === true;
     if (isOnline) {
-      // No postcode requirements either way.
+      // Never a postcode, matching create-course-instance. A postcode gave an
+      // online class a map position, so it showed in neighbours' 15-mile
+      // searches instead of only the trainer's own area (Jenni chose A, 5 Oct).
+      if ('venue_postcode' in updateFields) updateFields.venue_postcode = null;
     } else if (visibility === 'public') {
       if (
         !effectivePostcode ||
