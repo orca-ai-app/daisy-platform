@@ -107,7 +107,7 @@ interface CustomerRow {
 
 // The journey builder lives in _shared/emailSchedule.ts (shared with
 // submit-medical-declaration's attendee enrolment). It anchors every send to
-// the course's REAL Europe/London start/end times: medical_reminder = start−1h,
+// the course's REAL Europe/London start/end times: medical_reminder = start−2h,
 // post_course_welcome = end+7h ("7 hours after the session ends" — Chris),
 // recaps = end + 28/70/112/154/196/238/280/322/329 days. Past sends are dropped.
 function buildEmailSequenceRows(

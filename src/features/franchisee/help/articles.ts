@@ -245,7 +245,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What customers see when they follow the link',
         body: [
           'The link opens the Daisy booking page for that specific class. Customers see the course name, date, time, and venue, and can choose a ticket type. They fill in their details and pay by card through Stripe.',
-          'After paying, the emails take care of themselves: the customer gets a confirmation, a reminder the day before and another an hour before, and you get a new-booking alert. The wording is the same for every franchisee, but you can add your own joining details to each class, and they go on all three customer emails. "Emails your customers get" shows each one.',
+          'After paying, the emails take care of themselves: the customer gets a confirmation, a reminder the day before and another two hours before, and you get a new-booking alert. The wording is the same for every franchisee, but you can add your own joining details to each class, and they go on all three customer emails. "Emails your customers get" shows each one.',
         ],
       },
       {
@@ -406,16 +406,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
-        heading: 'Reminder an hour before',
+        heading: 'Reminder two hours before',
         body: [
-          'When: one hour before the class starts.',
+          'When: two hours before the class starts. If someone books later than that, this one is skipped, as their confirmation has only just arrived.',
           'What it shows: the course name, time, date, where, and the joining details. It tells them you will have the QR code for the medical form at the class. The QR code itself is not in the email.',
         ],
         images: [
           {
             src: '/help/emails/email-3-hour-before.png',
-            alt: 'The one-hour reminder email',
-            caption: 'Reminder an hour before.',
+            alt: 'The two-hour reminder email',
+            caption: 'Reminder two hours before.',
           },
         ],
       },
@@ -735,7 +735,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'The hidden section customers saw after booking (Zoom links, joining details): use the Joining details box on the class. It goes out on the booking confirmation and both reminders, only to people who have booked, so a Zoom link is safe there. Never put a Zoom link in the class description, that shows before anyone pays.',
           'Booking several ticket types in one go: a customer books one ticket type per checkout here, so create a combined ticket at the blended price ("Group of 3") for the common mixes.',
           'The monthly income sheet: the Merchandise page and your bookings replace it, everything you sell is recorded as it happens.',
-          'Emailing customers before and after class yourself: the system already sends the confirmation, a day-before reminder, a reminder an hour before and a post-class email with recap links automatically, so check "Emails your customers get" before writing your own.',
+          'Emailing customers before and after class yourself: the system already sends the confirmation, a day-before reminder, a reminder two hours before and a post-class email with recap links automatically, so check "Emails your customers get" before writing your own.',
         ],
       },
     ],

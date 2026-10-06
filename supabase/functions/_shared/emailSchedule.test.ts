@@ -1,7 +1,7 @@
 /**
  * Unit tests for the shared journey builder — the timing-anchor fix.
  * Chris's spec: welcome fires 7 HOURS AFTER THE SESSION ENDS (not 07:00 on the
- * class day), medical_reminder 1h before the session starts, recaps at
+ * class day), medical_reminder 2h before the session starts (TRI-0048), recaps at
  * end + N days. Europe/London wall clock → UTC, BST-safe.
  */
 import { describe, it, expect } from 'vitest';
@@ -42,9 +42,9 @@ describe('buildJourneyRows — full set (booker at payment)', () => {
     expect(byKey.booking_confirmation).toBe(now.toISOString());
   });
 
-  it('medical_reminder = start − 1h (BST-corrected)', () => {
-    // start 09:00 UTC → reminder 08:00 UTC
-    expect(byKey.medical_reminder).toBe('2026-07-20T08:00:00.000Z');
+  it('medical_reminder = start − 2h (BST-corrected)', () => {
+    // 10:00 London in July = 09:00 UTC start → reminder 07:00 UTC (08:00 London)
+    expect(byKey.medical_reminder).toBe('2026-07-20T07:00:00.000Z');
   });
 
   it('day_before_reminder = start − 24h (same wall-clock time, day before)', () => {
@@ -101,8 +101,64 @@ describe('buildJourneyRows — post_course set (attendee from medical form)', ()
   });
 });
 
+describe('medical_reminder two hours before (TRI-0048)', () => {
+  it('GMT (December): 10:00 London class reminds at 08:00 UTC', () => {
+    const rows = buildJourneyRows({
+      ...BASE,
+      eventDate: '2026-12-05',
+      startTime: '10:00:00',
+      endTime: '12:00:00',
+      now: new Date('2026-11-20T12:00:00Z'),
+      set: 'full',
+    });
+    const reminder = rows.find((r) => r.template_key === 'medical_reminder');
+    expect(reminder?.scheduled_for).toBe('2026-12-05T08:00:00.000Z');
+  });
+
+  it('BST (October, before the clocks change): 18:30 London reminds at 15:30 UTC', () => {
+    const rows = buildJourneyRows({
+      ...BASE,
+      eventDate: '2026-10-20',
+      startTime: '18:30',
+      endTime: '20:30',
+      now: new Date('2026-10-06T12:00:00Z'),
+      set: 'full',
+    });
+    const reminder = rows.find((r) => r.template_key === 'medical_reminder');
+    expect(reminder?.scheduled_for).toBe('2026-10-20T15:30:00.000Z');
+  });
+
+  it('booking 1h30 before the class queues no medical_reminder', () => {
+    // 10:00 London on 20 Jul = 09:00 UTC; booked at 07:30 UTC.
+    const rows = buildJourneyRows({
+      ...BASE,
+      eventDate: '2026-07-20',
+      startTime: '10:00:00',
+      endTime: '12:00:00',
+      now: new Date('2026-07-20T07:30:00Z'),
+      set: 'full',
+    });
+    const keys = rows.map((r) => r.template_key);
+    expect(keys).not.toContain('medical_reminder');
+    expect(keys).toContain('booking_confirmation');
+  });
+
+  it('booking 2h30 before the class still queues it, two hours before', () => {
+    const rows = buildJourneyRows({
+      ...BASE,
+      eventDate: '2026-07-20',
+      startTime: '10:00:00',
+      endTime: '12:00:00',
+      now: new Date('2026-07-20T06:30:00Z'),
+      set: 'full',
+    });
+    const reminder = rows.find((r) => r.template_key === 'medical_reminder');
+    expect(reminder?.scheduled_for).toBe('2026-07-20T07:00:00.000Z');
+  });
+});
+
 describe('past-dropping', () => {
-  it('drops medical_reminder when booking happens after start−1h', () => {
+  it('drops medical_reminder when booking happens after start−2h', () => {
     const rows = buildJourneyRows({
       ...BASE,
       eventDate: '2026-07-20',
