@@ -25,6 +25,12 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { onePerOrder } from '../_shared/basket.ts';
+import {
+  POST_COURSE_KEYS,
+  PRE_CLASS_KEYS,
+  applyReanchor,
+  planReanchor,
+} from '../_shared/reanchor.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -615,6 +621,66 @@ Deno.serve(async (req: Request) => {
 
   if (activityInsert.error) {
     console.error('activity log insert failed', activityInsert.error);
+  }
+
+  // ---------------------------------------------------------------------
+  // Re-dated class: move its queued emails with it (October batch). Every
+  // still-pending reminder and follow-up for a booking on this class is
+  // re-anchored to the new date/times with the same rules as a fresh booking
+  // (_shared/reanchor.ts). Sent rows, the booking-time emails, course_updated
+  // and checkout_recovery are untouched. Never fails the update.
+  // ---------------------------------------------------------------------
+  if (['event_date', 'start_time', 'end_time'].some((k) => k in changedFields)) {
+    try {
+      const onClass = await admin
+        .from('da_bookings')
+        .select('id')
+        .eq('course_instance_id', body.id);
+      if (onClass.error) throw new Error(onClass.error.message);
+      const bookingIds = ((onClass.data ?? []) as Array<{ id: string }>).map((b) => b.id);
+      if (bookingIds.length > 0) {
+        const queued = await admin
+          .from('da_email_sequences')
+          .select('id, template_key, scheduled_for')
+          .in('booking_id', bookingIds)
+          .eq('status', 'pending')
+          .in('template_key', [...PRE_CLASS_KEYS, ...POST_COURSE_KEYS]);
+        if (queued.error) throw new Error(queued.error.message);
+        const plan = planReanchor(
+          (queued.data ?? []) as Array<{ id: string; template_key: string; scheduled_for: string }>,
+          {
+            eventDate: updatedRow.event_date as string,
+            startTime: (updatedRow.start_time as string | null) ?? null,
+            endTime: (updatedRow.end_time as string | null) ?? null,
+          },
+          new Date(),
+        );
+        const applied = await applyReanchor(admin, plan);
+        if (applied.error) throw new Error(applied.error);
+        if (plan.length > 0) {
+          console.log(
+            `update-course-instance: re-anchored emails for ${body.id}: moved ${applied.moved}, cancelled ${applied.cancelled}`,
+          );
+        }
+      }
+    } catch (err) {
+      console.error('re-anchor queued emails failed', err);
+      await admin
+        .from('da_activities')
+        .insert({
+          actor_type: 'system',
+          actor_id: null,
+          entity_type: 'course_instance',
+          entity_id: body.id,
+          action: 'email_reanchor_failed',
+          metadata: { error: String(err).slice(0, 300) },
+          description:
+            'Queued reminders were not moved to the new class time; they may go at the old time',
+        })
+        .then((r: { error: unknown }) => {
+          if (r.error) console.error('reanchor activity insert failed', r.error);
+        });
+    }
   }
 
   // ---------------------------------------------------------------------

@@ -165,7 +165,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Open the course from the Courses list and click "Edit course" at the top right. You can change the date, time, venue, capacity, and visibility. You cannot edit a cancelled course.',
           'The class description is what customers read on the booking page, so it is the place for venue detail: how to find the room, parking, baby change, what to bring. Leave it blank and the standard course description shows instead.',
           'When you change the date, time or address of a class people have booked, saving asks whether to tell them. Choose "Save and email" to send each booked customer the new details, or "Save without emailing" when the change does not affect them. Changing only the name or description never emails anyone.',
-          "One thing you cannot change is the course type. The type is the class's identity, bookings and certificates hang off it, so if a class was created on the wrong course, schedule a new class on the right one, open each booking and use Transfer to move it across, then cancel the old empty class. A transfer moves a booking exactly as it is, price and ticket included.",
+          'Either way, the reminders and follow-up emails people have not had yet move with the class, so they arrive at the right time for the new date and time. Anything already sent stays sent. If the new time is very soon, a reminder that is now overdue goes straight away, and one for a class that has already started is dropped.',
+          "One thing you cannot change is the course type. The type is the class's identity, bookings and certificates hang off it, so if a class was created on the wrong course, schedule a new class on the right one, open each booking and use Transfer to move it across, then cancel the old empty class. A transfer moves a booking exactly as it is, price and ticket included. Its reminders move with it, so the customer is reminded about the new class, not the old one, whether or not you tick the box to email them.",
         ],
       },
       {
@@ -320,7 +321,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Each ticket type in the order is its own row in Bookings. The first row has the reference the customer was given, for example DA-2026-00075-901, and the others add -2, -3 and so on (DA-2026-00075-901-2). Search for the reference and you see every row of the order.',
           'Shop items bought in the order appear under Merchandise as online sales, against that class.',
           'The customer gets one confirmation listing everything they bought, and you get one "New booking" email listing it all too. Reminders and follow-ups go once for the whole order, not once per ticket.',
-          'You can cancel one row on its own; the customer keeps getting reminders while any row of the order still stands. If you move one row to another class, it leaves the order and becomes a booking of its own on the new class, and the rest of the order stays where it was.',
+          'You can cancel one row on its own; the customer keeps getting reminders while any row of the order still stands. If you move one row to another class, it leaves the order and becomes a booking of its own on the new class, and the rest of the order stays where it was. The customer gets the day-before and two-hours-before reminders for the new class, whether or not you tick the box to email them, and keeps the reminders for the old class while any row of the order is still on it. An order still waiting for payment cannot be moved until it is paid.',
         ],
       },
       {
@@ -462,7 +463,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Bookings you add yourself',
         body: [
-          'A booking you add with "Add booking" (phone, cash, cheque or invoice) gets the reminder the day before, but no confirmation, no one-hour reminder and no follow-ups, because you have usually already spoken to them. Tell them anything they need yourself.',
+          'A booking you add with "Add booking" (phone, cash, cheque or invoice) gets the reminder the day before, but no confirmation, no two-hour reminder and no follow-ups, because you have usually already spoken to them. Tell them anything they need yourself.',
         ],
       },
       {
