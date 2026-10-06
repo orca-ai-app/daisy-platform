@@ -56,7 +56,6 @@ import {
   useCourseTicketTypes,
   useCancelCourseInstance,
   useUpdateCourseInstance,
-  useCourseDeclarations,
   useCourseBookings,
   useCourseBookingsCount,
   useCreateTicketType,
@@ -69,7 +68,7 @@ import type { TicketType } from './types';
 import { TicketPlacesHint } from './TicketPlacesHint';
 import { useOwnProfile } from '../profileQueries';
 import { MedicalQr } from '../components/MedicalQr';
-import { certificateEmailList } from './certificateEmails';
+import { CourseDeclarationsCard } from './CourseDeclarationsCard';
 import { bookingUrl } from '@/lib/publicUrls';
 import { RecordSaleDialog } from '../merchandise/RecordSaleDialog';
 
@@ -1110,111 +1109,6 @@ function CourseBookingsCard({ courseInstanceId }: { courseInstanceId: string }) 
         <p className="text-daisy-muted mt-2 text-xs">
           Click a name to open the booking. The person named is whoever made the booking — their
           ticket may cover more than one attendee.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// CourseDeclarationsCard — medical form submissions for this class
-// ---------------------------------------------------------------------------
-
-function CourseDeclarationsCard({ courseInstanceId }: { courseInstanceId: string }) {
-  const { data: declarations = [], isLoading } = useCourseDeclarations(courseInstanceId);
-  // Always render once loaded. Hiding the card while empty meant the guide
-  // described a card franchisees could not find (Julie, TRI-0017 follow-up).
-  if (isLoading) return null;
-  // Migration 065: only attendees who ticked "Email me about my certificate".
-  const certificateEmails = certificateEmailList(declarations);
-  const copyText = (text: string, done: string) => {
-    void navigator.clipboard
-      .writeText(text)
-      .then(() => toast.success(done))
-      .catch(() => toast.error('Could not copy, sorry'));
-  };
-  return (
-    <Card className="overflow-hidden">
-      <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint border-b px-5 py-4">
-        <CardTitle className="text-daisy-primary-deep text-[15px] font-extrabold tracking-[0.06em] uppercase">
-          Medical declarations ({declarations.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2 p-5">
-        {declarations.length === 0 ? (
-          <p className="text-daisy-muted text-sm">
-            No one has filled in the medical form for this class yet. Names and badges appear here
-            as attendees submit it, by scanning your QR code or typing your instructor number at the
-            medical form address.
-          </p>
-        ) : null}
-        {declarations.map((d) => (
-          <div key={d.id} className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-daisy-ink font-semibold">{d.attendee_name}</span>
-            {d.photo_consent === true ? (
-              <Badge variant="success" className="text-[11px]">
-                photos OK
-              </Badge>
-            ) : d.photo_consent === false ? (
-              <Badge variant="danger" className="text-[11px]">
-                no photos
-              </Badge>
-            ) : null}
-            {d.medical_flagged === true ? (
-              <Badge variant="danger" className="text-[11px]">
-                please speak to attendee
-              </Badge>
-            ) : d.medical_flagged === false ? (
-              <Badge variant="default" className="text-[11px]">
-                nothing flagged
-              </Badge>
-            ) : null}
-            {d.certificate_email ? (
-              <span className="text-daisy-muted flex w-full items-center gap-1 text-xs">
-                Certificate email:
-                <button
-                  type="button"
-                  title="Click to copy"
-                  onClick={() => copyText(d.certificate_email!, `Copied ${d.certificate_email}`)}
-                  className="hover:text-daisy-primary break-all underline-offset-2 hover:underline"
-                >
-                  {d.certificate_email}
-                </button>
-              </span>
-            ) : null}
-          </div>
-        ))}
-        {certificateEmails.length > 0 ? (
-          <div className="border-daisy-line-soft mt-2 flex flex-wrap items-center gap-2 border-t pt-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                copyText(
-                  certificateEmails.join(', '),
-                  `Copied ${certificateEmails.length} certificate email${certificateEmails.length === 1 ? '' : 's'}`,
-                )
-              }
-            >
-              Copy certificate emails ({certificateEmails.length})
-            </Button>
-            <span className="text-daisy-muted text-xs">
-              For certificate information about this class only. Paste into BCC.
-            </span>
-          </div>
-        ) : null}
-        <p className="text-daisy-muted mt-2 text-xs">
-          "Please speak to attendee" means they flagged a condition or requirement on the medical
-          form. The detail itself is encrypted and only HQ can unlock it — ask the attendee directly
-          at the start of class. If a freelancer is delivering this class, brief them from this card
-          the day before: who to have a quiet word with and who has said no photos. They do not need
-          portal access.
-        </p>
-        <p className="text-daisy-muted text-xs">
-          A certificate email shows only for attendees who ticked "Email me about my certificate" on
-          the form. Use it to send certificate information for this class and nothing else: it is
-          not a mailing list.
         </p>
       </CardContent>
     </Card>

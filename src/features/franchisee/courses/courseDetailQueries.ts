@@ -410,6 +410,12 @@ export function courseInstanceStatusVariant(
 //
 // certificate_email (migration 065) is set only when the attendee ticked
 // "Email me about my certificate". It is the only address this card shows.
+//
+// form_version + trainer_contact_opt_in (migration 067, B7): on the new form
+// the server copies the attendee's email into certificate_email, so this
+// query still never reads attendee_email. The card shows that email and the
+// "future classes" choice for form_version 2 rows only; older rows look
+// exactly as before. RLS (franchisee_own) limits rows to the caller's own.
 // ---------------------------------------------------------------------------
 
 export interface CourseDeclarationRow {
@@ -419,6 +425,10 @@ export interface CourseDeclarationRow {
   photo_consent: boolean | null;
   medical_flagged: boolean | null;
   certificate_email: string | null;
+  /** 1 = old form, 2 = B7 form (migration 067). */
+  form_version: number;
+  /** B7 form only: happy to hear about future classes and be asked for a review. */
+  trainer_contact_opt_in: boolean;
 }
 
 export function useCourseDeclarations(courseInstanceId: string | undefined) {
@@ -428,7 +438,9 @@ export function useCourseDeclarations(courseInstanceId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('da_medical_declarations')
-        .select('id, created_at, attendee_name, photo_consent, medical_flagged, certificate_email')
+        .select(
+          'id, created_at, attendee_name, photo_consent, medical_flagged, certificate_email, form_version, trainer_contact_opt_in',
+        )
         .eq('course_instance_id', courseInstanceId!)
         .order('created_at', { ascending: true });
       if (error) {

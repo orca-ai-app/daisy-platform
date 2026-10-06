@@ -23,26 +23,8 @@ import {
   useCustomerBookings,
   useMedicalContacts,
   type CustomerWithBookingCount,
-  type MedicalContact,
 } from './customersQueries';
-
-// ---------------------------------------------------------------------------
-// Unified row type used for the "All contacts" view
-// ---------------------------------------------------------------------------
-
-interface ContactRow {
-  /** Stable unique key for the React table. */
-  key: string;
-  id: string;
-  name: string;
-  email: string | null;
-  /** Undefined when the row originates from a medical form only. */
-  phone: string | null | undefined;
-  postcode: string | null | undefined;
-  booking_count: number;
-  /** True when the contact came only from a medical form (no booking record). */
-  from_medical_form: boolean;
-}
+import { buildContactRows, type ContactRow } from './contactRows';
 
 // ---------------------------------------------------------------------------
 // Customer booking-history panel
@@ -210,62 +192,10 @@ function AllContactsTab() {
   const isLoading = custLoading || medLoading;
 
   // Build unified contact rows: merge on lowercase email where both sides have one
-  const contactRows = useMemo<ContactRow[]>(() => {
-    // Start with booked customers — they always appear
-    const byEmail = new Map<string, ContactRow>();
-    const noEmailRows: ContactRow[] = [];
-
-    for (const c of customers) {
-      const emailKey = c.email.toLowerCase();
-      const row: ContactRow = {
-        key: `cust-${c.id}`,
-        id: c.id,
-        name: `${c.first_name} ${c.last_name}`,
-        email: c.email,
-        phone: c.phone,
-        postcode: c.postcode,
-        booking_count: c.booking_count,
-        from_medical_form: false,
-      };
-      byEmail.set(emailKey, row);
-    }
-
-    // Layer in medical contacts — merge if same email, otherwise add new rows
-    for (const mc of medContacts as MedicalContact[]) {
-      if (mc.attendee_email) {
-        const emailKey = mc.attendee_email.toLowerCase();
-        if (!byEmail.has(emailKey)) {
-          // Form-only contact
-          byEmail.set(emailKey, {
-            key: `med-${mc.id}`,
-            id: mc.id,
-            name: mc.attendee_name,
-            email: mc.attendee_email,
-            phone: undefined,
-            postcode: undefined,
-            booking_count: 0,
-            from_medical_form: true,
-          });
-        }
-        // If the email already exists as a booked customer, no merge needed —
-        // we keep the customer row with its booking count.
-      } else {
-        // No email — always show as a distinct form-only contact
-        noEmailRows.push({
-          key: `med-${mc.id}`,
-          id: mc.id,
-          name: mc.attendee_name,
-          email: null,
-          phone: undefined,
-          postcode: undefined,
-          booking_count: 0,
-          from_medical_form: true,
-        });
-      }
-    }
-
-    return [...Array.from(byEmail.values()), ...noEmailRows];
-  }, [customers, medContacts]);
+  const contactRows = useMemo<ContactRow[]>(
+    () => buildContactRows(customers, medContacts),
+    [customers, medContacts],
+  );
 
   const columns = useMemo<ColumnDef<ContactRow>[]>(
     () => [
@@ -302,6 +232,23 @@ function AllContactsTab() {
             >
               {row.original.email}
             </a>
+          ) : (
+            <span className="text-daisy-muted text-[13px]">—</span>
+          ),
+      },
+      {
+        id: 'future_classes',
+        header: 'Future classes',
+        accessorFn: (row) => (row.future_classes === null ? '' : row.future_classes ? 'yes' : 'no'),
+        cell: ({ row }) =>
+          row.original.future_classes === true ? (
+            <Badge variant="success" className="text-[11px]">
+              yes
+            </Badge>
+          ) : row.original.future_classes === false ? (
+            <Badge variant="default" className="text-[11px]">
+              no
+            </Badge>
           ) : (
             <span className="text-daisy-muted text-[13px]">—</span>
           ),
@@ -441,7 +388,9 @@ export default function CustomersList() {
         </div>
         <FieldHelp label="About All contacts">
           Booked customers have paid for a class. All contacts also includes people who filled in a
-          medical form but have not booked.
+          medical form but have not booked. Future classes is their answer on the medical form: yes
+          means they are happy to hear from you about future classes and to be asked for a review; a
+          dash means they were never asked.
         </FieldHelp>
       </div>
 
