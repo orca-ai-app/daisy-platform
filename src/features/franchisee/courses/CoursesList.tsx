@@ -102,6 +102,22 @@ const DATE_OPTIONS: ReadonlyArray<{ value: DatePreset; label: string }> = [
   { value: 'custom', label: 'Custom range' },
 ];
 
+/**
+ * True for a date choice that only covers days already gone: Past only, Last
+ * month, or a named month before this one. Past classes are marked Completed
+ * overnight (migration 063), so with Status still on its Scheduled default
+ * these choices always came back empty (Julie, 6 Oct). Picking one moves
+ * Status to All, unless the trainer has already chosen a status themselves.
+ */
+export function isBackwardDatePreset(value: string, today: Date = new Date()): boolean {
+  if (value === 'past' || value === 'last-month') return true;
+  const m = /^month:(\d{4})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  return y < today.getFullYear() || (y === today.getFullYear() && mo < today.getMonth() + 1);
+}
+
 // Item 2 of the filter bundle: jump straight to a named month. Values are
 // 'month:YYYY-MM' so they live in the same date <Select> (and the same URL
 // param) as the presets — one control, no conflicting state.
@@ -532,6 +548,11 @@ export default function CoursesList() {
           const next = new URLSearchParams(prev);
           if (value === FILTER_DEFAULTS[key] || value === '') next.delete(key);
           else next.set(key, value);
+          // A past-only date range with Status still on its Scheduled default
+          // would show nothing: show every status instead.
+          if (key === 'date' && isBackwardDatePreset(value) && !next.has('status')) {
+            next.set('status', 'all');
+          }
           const persisted: Record<string, string> = {};
           for (const k of FILTER_KEYS) {
             const v = next.get(k);
