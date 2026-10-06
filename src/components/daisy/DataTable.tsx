@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import {
   flexRender,
   getCoreRowModel,
@@ -41,6 +41,13 @@ interface DataTableProps<TRow> {
    * rows on other pages look missing (TRI-0049).
    */
   sortable?: boolean;
+  /**
+   * Optional heading rows (e.g. "October 2026" on the Courses list, TRI-0034).
+   * Return the group a row belongs to; a heading is drawn before the first
+   * row on screen and wherever the label changes, so it works in either sort
+   * direction and every page starts with one. Return null for no heading.
+   */
+  groupLabel?: (row: TRow) => string | null;
 }
 
 /**
@@ -68,6 +75,7 @@ export function DataTable<TRow>({
   searchValue,
   onSearchChange,
   sortable = true,
+  groupLabel,
 }: DataTableProps<TRow>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [internalFilter, setInternalFilter] = useState('');
@@ -93,6 +101,17 @@ export function DataTable<TRow>({
   });
 
   const rows = table.getRowModel().rows;
+
+  // Heading to draw before row i: its group label when it is the first row on
+  // screen or its group differs from the row above.
+  const headingAt = (i: number): string | null => {
+    if (!groupLabel) return null;
+    const label = groupLabel(rows[i].original);
+    if (!label) return null;
+    if (i > 0 && groupLabel(rows[i - 1].original) === label) return null;
+    return label;
+  };
+
   const showEmpty = !isLoading && rows.length === 0;
 
   // Skeleton row placeholders match the column count so the layout
@@ -139,58 +158,71 @@ export function DataTable<TRow>({
                 <Skeleton className="h-4 w-1/3" />
               </div>
             ))
-          : rows.map((row) => {
+          : rows.map((row, i) => {
               const cells = row.getVisibleCells();
+              const heading = headingAt(i);
               return (
-                <div
-                  key={row.id}
-                  role={onRowClick ? 'button' : undefined}
-                  tabIndex={onRowClick ? 0 : undefined}
-                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                  onKeyDown={
-                    onRowClick
-                      ? (e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            onRowClick(row.original);
+                <Fragment key={row.id}>
+                  {heading ? (
+                    <h3
+                      data-testid="group-heading-card"
+                      className="font-display text-daisy-ink pt-2 text-[15px] font-bold first:pt-0"
+                    >
+                      {heading}
+                    </h3>
+                  ) : null}
+                  <div
+                    role={onRowClick ? 'button' : undefined}
+                    tabIndex={onRowClick ? 0 : undefined}
+                    onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                    onKeyDown={
+                      onRowClick
+                        ? (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onRowClick(row.original);
+                            }
                           }
-                        }
-                      : undefined
-                  }
-                  className={cn(
-                    'border-daisy-line-soft bg-daisy-paper shadow-card flex flex-col gap-2 rounded-[12px] border p-4 text-[14px]',
-                    onRowClick &&
-                      'active:bg-daisy-primary-tint focus-visible:ring-daisy-primary cursor-pointer focus-visible:ring-2 focus-visible:outline-none',
-                  )}
-                >
-                  {cells.map((cell) => {
-                    const header = cell.column.columnDef.header;
-                    // Only string headers make sensible inline labels; a
-                    // custom header node (sort button, checkbox) is skipped.
-                    const meta = cell.column.columnDef.meta as { mobileLabel?: string } | undefined;
-                    const label = typeof header === 'string' ? header : (meta?.mobileLabel ?? null);
-                    return (
-                      <div
-                        key={cell.id}
-                        className="flex items-start justify-between gap-3 first:items-center"
-                      >
-                        {label ? (
-                          <span className="text-daisy-muted shrink-0 text-[11px] font-bold tracking-wider uppercase">
-                            {label}
-                          </span>
-                        ) : null}
-                        <span
-                          className={cn(
-                            'text-daisy-ink min-w-0 break-words',
-                            label ? 'text-right' : 'flex-1',
-                          )}
+                        : undefined
+                    }
+                    className={cn(
+                      'border-daisy-line-soft bg-daisy-paper shadow-card flex flex-col gap-2 rounded-[12px] border p-4 text-[14px]',
+                      onRowClick &&
+                        'active:bg-daisy-primary-tint focus-visible:ring-daisy-primary cursor-pointer focus-visible:ring-2 focus-visible:outline-none',
+                    )}
+                  >
+                    {cells.map((cell) => {
+                      const header = cell.column.columnDef.header;
+                      // Only string headers make sensible inline labels; a
+                      // custom header node (sort button, checkbox) is skipped.
+                      const meta = cell.column.columnDef.meta as
+                        | { mobileLabel?: string }
+                        | undefined;
+                      const label =
+                        typeof header === 'string' ? header : (meta?.mobileLabel ?? null);
+                      return (
+                        <div
+                          key={cell.id}
+                          className="flex items-start justify-between gap-3 first:items-center"
                         >
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                          {label ? (
+                            <span className="text-daisy-muted shrink-0 text-[11px] font-bold tracking-wider uppercase">
+                              {label}
+                            </span>
+                          ) : null}
+                          <span
+                            className={cn(
+                              'text-daisy-ink min-w-0 break-words',
+                              label ? 'text-right' : 'flex-1',
+                            )}
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Fragment>
               );
             })}
 
@@ -250,22 +282,38 @@ export function DataTable<TRow>({
                       ))}
                     </tr>
                   ))
-                : rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className={cn(
-                        'border-daisy-line border-b border-dashed transition-colors last:border-b-0',
-                        onRowClick && 'hover:bg-daisy-primary-tint cursor-pointer',
-                      )}
-                      onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="text-daisy-ink px-3 py-2.5 align-middle">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                : rows.map((row, i) => {
+                    const heading = headingAt(i);
+                    return (
+                      <Fragment key={row.id}>
+                        {heading ? (
+                          <tr className="bg-daisy-primary-tint/60 border-daisy-line-soft border-b">
+                            <th
+                              scope="colgroup"
+                              colSpan={row.getVisibleCells().length}
+                              data-testid="group-heading-row"
+                              className="font-display text-daisy-ink px-3 py-2 text-left text-[13px] font-bold"
+                            >
+                              {heading}
+                            </th>
+                          </tr>
+                        ) : null}
+                        <tr
+                          className={cn(
+                            'border-daisy-line border-b border-dashed transition-colors last:border-b-0',
+                            onRowClick && 'hover:bg-daisy-primary-tint cursor-pointer',
+                          )}
+                          onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                        >
+                          {row.getVisibleCells().map((cell) => (
+                            <td key={cell.id} className="text-daisy-ink px-3 py-2.5 align-middle">
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </td>
+                          ))}
+                        </tr>
+                      </Fragment>
+                    );
+                  })}
             </tbody>
           </table>
         </div>

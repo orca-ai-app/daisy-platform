@@ -54,6 +54,12 @@ export interface OwnCoursesFilters {
    * venue_postcode, case-insensitive substring, applied server-side.
    */
   location?: string;
+  /**
+   * Visibility filter (TRI-0037): 'public' = listed in the finder, 'private' =
+   * hidden/unpublished AND private-client classes. Server-side, so it works
+   * across pages. Defaults to 'all'.
+   */
+  visibility?: Visibility | 'all';
   page?: number;
   /** Defaults to 20. */
   pageSize?: number;
@@ -110,6 +116,7 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
     templateIds,
     sortDir = 'desc',
     location,
+    visibility = 'all',
     page = 0,
     pageSize = 20,
   } = filters;
@@ -127,6 +134,7 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
     templateIds,
     sortDir,
     location: locationTerm,
+    visibility,
     page,
     pageSize,
   };
@@ -179,6 +187,10 @@ export function useOwnCourses(filters: OwnCoursesFilters = {}) {
         // Inclusive upper bound: use lte so 'YYYY-MM-DD' comparison is
         // on the raw DATE string (Postgres handles string-to-date cast).
         qb = qb.lte('event_date', to);
+      }
+
+      if (visibility !== 'all') {
+        qb = qb.eq('visibility', visibility);
       }
 
       if (locationTerm) {

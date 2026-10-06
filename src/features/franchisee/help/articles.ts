@@ -137,6 +137,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'visibility',
       'public',
       'private',
+      'hidden',
+      'filter',
+      'month',
       'cancel',
       'edit',
     ],
@@ -187,6 +190,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'The Courses list opens on your upcoming classes only, so past classes are out of the way by default. To see earlier classes, use the date dropdown along the top: Past only, a named month, or All dates. The Status dropdown hides cancelled classes in the same way. Classes move to Completed automatically overnight once their date has passed, so Status set to Scheduled shows only classes still to run. The other filters are course type and a venue box. Your choices are remembered on that device, so set them once and the list stays how you like it.',
           'The date dropdown includes the next six months by name, so you can jump straight to, say, November. The venue box filters by venue name or postcode as you type, useful when you run classes across several locations.',
           'To see only your live online classes, type "online" in the venue box. Every online class has "Live online" as its venue, so this shows just those.',
+          'The Public/Private dropdown beside Status narrows the list by who can find the class. Public shows only classes listed in the course finder on the website. Private shows the rest: classes you have hidden from the finder and private client classes. All classes shows both.',
+          'The list puts a month heading, such as "October 2026", above each month\'s classes, whichever way round you sort it with the "Latest first" or "Soonest first" button. When a month carries on to the next page, that page starts with the same heading so you always know where you are. The Calendar view is unchanged.',
         ],
       },
       {
