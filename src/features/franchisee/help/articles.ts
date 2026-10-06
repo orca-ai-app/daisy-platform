@@ -137,6 +137,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'visibility',
       'public',
       'private',
+      'hidden',
+      'filter',
+      'month',
       'cancel',
       'edit',
     ],
@@ -187,6 +190,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'The Courses list opens on your upcoming classes only, so past classes are out of the way by default. To see earlier classes, use the date dropdown along the top: Past only, a named month, or All dates. The Status dropdown hides cancelled classes in the same way. Classes move to Completed automatically overnight once their date has passed, so Status set to Scheduled shows only classes still to run. The other filters are course type and a venue box. Your choices are remembered on that device, so set them once and the list stays how you like it.',
           'The date dropdown includes the next six months by name, so you can jump straight to, say, November. The venue box filters by venue name or postcode as you type, useful when you run classes across several locations.',
           'To see only your live online classes, type "online" in the venue box. Every online class has "Live online" as its venue, so this shows just those.',
+          'The Public/Private dropdown beside Status narrows the list by who can find the class. Public shows only classes listed in the course finder on the website. Private shows the rest: classes you have hidden from the finder and private client classes. All classes shows both.',
+          'The list puts a month heading, such as "October 2026", above each month\'s classes, whichever way round you sort it with the "Latest first" or "Soonest first" button. When a month carries on to the next page, that page starts with the same heading so you always know where you are. The Calendar view is unchanged.',
         ],
       },
       {
@@ -245,7 +250,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What customers see when they follow the link',
         body: [
           'The link opens the Daisy booking page for that specific class. Customers see the course name, date, time, and venue, and can choose a ticket type. They fill in their details and pay by card through Stripe.',
-          'After paying, the emails take care of themselves: the customer gets a confirmation, a reminder the day before and another an hour before, and you get a new-booking alert. The wording is the same for every franchisee, but you can add your own joining details to each class, and they go on all three customer emails. "Emails your customers get" shows each one.',
+          'After paying, the emails take care of themselves: the customer gets a confirmation, a reminder the day before and another two hours before, and you get a new-booking alert. The wording is the same for every franchisee, but you can add your own joining details to each class, and they go on all three customer emails. "Emails your customers get" shows each one.',
         ],
       },
       {
@@ -421,16 +426,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
-        heading: 'Reminder an hour before',
+        heading: 'Reminder two hours before',
         body: [
-          'When: one hour before the class starts.',
+          'When: two hours before the class starts. If someone books later than that, this one is skipped, as their confirmation has only just arrived.',
           'What it shows: the course name, time, date, where, and the joining details. It tells them you will have the QR code for the medical form at the class. The QR code itself is not in the email.',
         ],
         images: [
           {
             src: '/help/emails/email-3-hour-before.png',
-            alt: 'The one-hour reminder email',
-            caption: 'Reminder an hour before.',
+            alt: 'The two-hour reminder email',
+            caption: 'Reminder two hours before.',
           },
         ],
       },
@@ -752,7 +757,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'The hidden section customers saw after booking (Zoom links, joining details): use the Joining details box on the class. It goes out on the booking confirmation and both reminders, only to people who have booked, so a Zoom link is safe there. Never put a Zoom link in the class description, that shows before anyone pays.',
           'Booking several ticket types in one go: a customer books one ticket type per checkout here, so create a combined ticket at the blended price ("Group of 3") for the common mixes.',
           'The monthly income sheet: the Merchandise page and your bookings replace it, everything you sell is recorded as it happens.',
-          'Emailing customers before and after class yourself: the system already sends the confirmation, a day-before reminder, a reminder an hour before and a post-class email with recap links automatically, so check "Emails your customers get" before writing your own.',
+          'Emailing customers before and after class yourself: the system already sends the confirmation, a day-before reminder, a reminder two hours before and a post-class email with recap links automatically, so check "Emails your customers get" before writing your own.',
         ],
       },
     ],

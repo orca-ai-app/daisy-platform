@@ -2,7 +2,8 @@
  * /franchisee/courses — franchisee's own course instances (Wave 7C).
  *
  * Default view: DataTable (list). Toggle to MonthCalendar via view button.
- * Filters: status, date range (presets + custom), course type (grouped).
+ * Filters: status, visibility, date range (presets + custom), course type (grouped).
+ * The list shows a month heading before each month's classes (TRI-0034).
  * Sort: event_date desc by default (latest first, F5) with a direction toggle.
  *
  * Course type (G7): the filter offers five franchisee-facing groupings rather
@@ -60,7 +61,7 @@ import { useCourseTemplates } from './createCourseQueries';
 import { buildCourseTypeGroups } from './courseTypeGroups';
 import { CustomerLinkDialog } from './CustomerLinkDialog';
 import { formatPrice } from './money';
-import type { CourseInstanceStatus } from './types';
+import type { CourseInstanceStatus, Visibility } from './types';
 import { useOwnProfile } from '../profileQueries';
 
 // ---------------------------------------------------------------------------
@@ -81,6 +82,14 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: CourseInstanceStatus | 'all'; label
   { value: 'scheduled', label: 'Scheduled' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
+];
+
+// TRI-0037: Public = listed in the course finder. Private = everything that
+// is not: classes hidden from the finder and private-client classes.
+const VISIBILITY_OPTIONS: ReadonlyArray<{ value: Visibility | 'all'; label: string }> = [
+  { value: 'all', label: 'All classes' },
+  { value: 'public', label: 'Public' },
+  { value: 'private', label: 'Private' },
 ];
 
 const DATE_OPTIONS: ReadonlyArray<{ value: DatePreset; label: string }> = [
@@ -128,6 +137,8 @@ const FILTER_DEFAULTS: Record<string, string> = {
   // classes on open, with history a click away. An explicit 'all' is written
   // to the URL + storage like any other non-default choice, so it persists.
   status: 'scheduled',
+  // Public/Private filter (TRI-0037).
+  visibility: 'all',
   // Upcoming by default (TRI-0022): nothing ever moves a class to 'completed',
   // so the status filter alone cannot hide past dates. History is one click
   // away (Past only / a named month / All dates) and an explicit choice sticks.
@@ -145,6 +156,7 @@ const FILTER_DEFAULTS: Record<string, string> = {
 const FILTER_KEYS = Object.keys(FILTER_DEFAULTS);
 
 const STATUS_VALUES = new Set(STATUS_OPTIONS.map((o) => o.value as string));
+const VISIBILITY_VALUES = new Set(VISIBILITY_OPTIONS.map((o) => o.value as string));
 const DATE_VALUES = new Set(DATE_OPTIONS.map((o) => o.value as string));
 
 // ---------------------------------------------------------------------------
@@ -249,6 +261,16 @@ function formatDate(d: string | null): string {
   } catch {
     return d;
   }
+}
+
+/**
+ * Month heading for a 'YYYY-MM-DD' class date, e.g. "October 2026"
+ * (TRI-0034). Built from the string parts, never a UTC Date.
+ */
+export function courseMonthHeading(eventDate: string): string | null {
+  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(eventDate);
+  if (!m) return null;
+  return monthLabel(Number(m[1]), Number(m[2]));
 }
 
 function formatTime(t: string | null): string {
@@ -533,6 +555,10 @@ export default function CoursesList() {
   const status = (STATUS_VALUES.has(rawStatus) ? rawStatus : FILTER_DEFAULTS.status) as
     | CourseInstanceStatus
     | 'all';
+  const rawVisibility = searchParams.get('visibility') ?? FILTER_DEFAULTS.visibility;
+  const visibility = (
+    VISIBILITY_VALUES.has(rawVisibility) ? rawVisibility : FILTER_DEFAULTS.visibility
+  ) as Visibility | 'all';
   // Fall back to FILTER_DEFAULTS, never a literal: the default is omitted from
   // the URL, so a literal here silently overrides it (that is how 'upcoming'
   // failed to apply and snapped back to All dates when chosen, TRI-0022).
@@ -569,7 +595,7 @@ export default function CoursesList() {
   // page that no longer exists.
   useEffect(() => {
     setPage(0);
-  }, [status, from, to, templateFilter, sortDir, locationFilter]);
+  }, [status, visibility, from, to, templateFilter, sortDir, locationFilter]);
 
   // Debounced location typing: the URL param (and so the query) updates 300ms
   // after the last keystroke, not on every one.
@@ -585,6 +611,7 @@ export default function CoursesList() {
 
   const listFilters: OwnCoursesFilters = {
     status,
+    visibility,
     from,
     to,
     // A group selection resolves to its template ids; 'all' clears the filter.
@@ -704,6 +731,26 @@ export default function CoursesList() {
               </SelectContent>
             </Select>
 
+            {/* Public/Private filter (TRI-0037), beside status. */}
+            <div className="flex items-center gap-1">
+              <Select value={visibility} onValueChange={(v) => setFilter('visibility', v)}>
+                <SelectTrigger className="w-[150px]" aria-label="Filter by public or private">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VISIBILITY_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldHelp label="About public and private classes">
+                Public classes show in the course finder. Private covers classes hidden from the
+                finder and private client classes.
+              </FieldHelp>
+            </div>
+
             <Select value={datePreset} onValueChange={(v) => setFilter('date', v)}>
               <SelectTrigger className="w-[170px]">
                 <SelectValue />
@@ -809,6 +856,7 @@ export default function CoursesList() {
             isLoading={isLoading}
             searchable={false}
             sortable={false}
+            groupLabel={(row) => courseMonthHeading(row.event_date)}
             onRowClick={(row) => navigate(`/franchisee/courses/${row.id}`)}
             emptyState={
               <EmptyState

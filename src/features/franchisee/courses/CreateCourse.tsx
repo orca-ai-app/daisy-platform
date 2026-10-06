@@ -1314,7 +1314,7 @@ function Step4Pricing({ form }: { form: ReturnType<typeof useForm<FormValues>> }
         />
         <p className="text-daisy-muted text-xs">
           Only people who have booked see this. It goes on their booking confirmation, the
-          day-before reminder and the reminder an hour before. It never shows on the booking page,
+          day-before reminder and the reminder two hours before. It never shows on the booking page,
           so a Zoom link is safe here.
         </p>
       </div>
