@@ -555,7 +555,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'What you can see',
         body: [
-          'In the Customers section, the All contacts tab shows everyone who has submitted a medical form for your classes: their name, the email they gave, and, for forms filled in from October 2026, whether they are happy to hear from you about future classes.',
+          "In the Customers section, the All contacts tab lists everyone who has submitted a medical form for your classes. For forms filled in from October 2026 you'll also see the email they gave and whether they're happy to hear from you about future classes. Earlier forms show the name only, because those attendees were told their email was used only for the safe running of the class.",
           'On the class page itself, the Medical declarations card lists everyone who has filled the form in for that class. Anyone whose answers need attention shows a "please speak to attendee" badge: the detail stays private by design, the attendee tells the trainer what they need to know on the day. For a class a freelancer delivers, check the card and brief them on who to speak to, exactly as if you were teaching it yourself. Each person also carries a photo badge, "photos OK" or "no photos", so you can see at a glance who is happy to be photographed.',
           'Health answers are kept confidential. They are encrypted and only HQ can unlock them for clinical or safeguarding reasons. Every unlock is logged automatically.',
         ],
@@ -626,7 +626,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'All contacts',
         body: [
-          'The "All contacts" view combines booked customers with people who have submitted a medical form for your classes, deduplicated by email. Contacts who only appear from a medical form are labelled "from medical form".',
+          'The "All contacts" view combines booked customers with people who have submitted a medical form for your classes. People who only appear from a medical form are labelled "from medical form". Their email is shown only if they filled in the medical form from October 2026; earlier forms show the name only.',
           'The Future classes column shows the attendee\'s answer on the medical form: "yes" means they are happy to hear from you about future classes and to be asked for a review, "no" means they are not. A dash means they were never asked, because they filled in an older form or only booked.',
           'This gives you a fuller picture of people who have engaged with your sessions, even if they attended as part of a group booking made by someone else.',
         ],

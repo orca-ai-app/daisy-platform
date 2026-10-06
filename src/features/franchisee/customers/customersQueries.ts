@@ -102,8 +102,9 @@ export function useOwnCustomers() {
  * Medical-form contacts for the signed-in franchisee (RLS-scoped automatically).
  *
  * NEVER selects declaration_data. Used only to build the "All contacts" union
- * view in CustomersList. Contacts are identified by attendee_email; those with
- * no email are always included as distinct rows.
+ * view in CustomersList. attendee_email is only ever SHOWN for form_version 2
+ * (the new form tells attendees their trainer receives it); old-form attendees
+ * appear by name only (6 Oct 2026). See contactRows.ts.
  *
  * form_version + trainer_contact_opt_in (migration 067, B7): the "future
  * classes" choice from the new medical form. Shown for form_version 2 only.

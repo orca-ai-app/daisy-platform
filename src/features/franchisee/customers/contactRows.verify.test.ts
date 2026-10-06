@@ -1,7 +1,7 @@
 /**
  * All contacts rows (Wave 12) with the B7 "future classes" choice
- * (migration 067). Old-form declarations carry no choice and are otherwise
- * merged exactly as before.
+ * (migration 067). Old-form declarations carry no choice and are listed by
+ * name only, never with their email (6 Oct 2026).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -50,13 +50,13 @@ describe('buildContactRows', () => {
     );
   });
 
-  it('old-form attendees look exactly as before: no choice', () => {
+  it('old-form attendees appear by name only: no email, no choice', () => {
     const rows = buildContactRows([], [med({ form_version: 1, trainer_contact_opt_in: false })]);
     expect(rows[0]).toEqual({
       key: 'med-m1',
       id: 'm1',
       name: 'Amy Smith',
-      email: 'amy@example.com',
+      email: null,
       phone: undefined,
       postcode: undefined,
       booking_count: 0,
@@ -90,12 +90,25 @@ describe('buildContactRows', () => {
     expect(rows[0].future_classes).toBe(false);
   });
 
-  it('form-only contacts with no email are kept as separate rows with no choice', () => {
+  it('form-only contacts with no email are kept once per name, with no choice', () => {
     const rows = buildContactRows(
       [],
-      [med({ id: 'a', attendee_email: null }), med({ id: 'b', attendee_email: null })],
+      [
+        med({ id: 'a', attendee_email: null }),
+        med({ id: 'b', attendee_email: null, attendee_name: 'Ben Hall' }),
+        med({ id: 'c', attendee_email: null }),
+      ],
     );
     expect(rows.map((r) => r.key)).toEqual(['med-a', 'med-b']);
     expect(rows.every((r) => r.future_classes === null)).toBe(true);
+  });
+
+  it('never shows an old-form email, even for a repeat attendee', () => {
+    const rows = buildContactRows(
+      [],
+      [med({ id: 'x', form_version: 1 }), med({ id: 'y', form_version: 1 })],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].email).toBeNull();
   });
 });

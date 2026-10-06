@@ -6,7 +6,11 @@
  * happy to hear from their trainer about future classes and be asked for a
  * review. That choice is carried on the row (`future_classes`) for anyone with
  * a new-form declaration, including a booked customer with the same email.
- * Old-form declarations carry no choice (null), so they look exactly as before.
+ * Old-form declarations carry no choice (null).
+ *
+ * Old-form attendees appear by NAME ONLY: that form told them their details are
+ * used only for the safe running of the class, so their email is never shown
+ * to the trainer (6 Oct 2026). Only new-form emails are shown.
  */
 
 import type { CustomerWithBookingCount, MedicalContact } from './customersQueries';
@@ -70,9 +74,11 @@ export function buildContactRows(
     });
   }
 
-  // Layer in medical contacts: merge if same email, otherwise add new rows.
+  // Layer in medical contacts: new-form attendees merge by email; old-form
+  // attendees (and anyone without an email) are added by name, once.
+  const seenNames = new Set(Array.from(byEmail.values()).map((r) => r.name.trim().toLowerCase()));
   for (const mc of medContacts) {
-    if (mc.attendee_email) {
+    if (mc.attendee_email && isNewForm(mc)) {
       const emailKey = mc.attendee_email.toLowerCase();
       // If the email already exists as a booked customer we keep the customer
       // row with its booking count.
@@ -90,7 +96,9 @@ export function buildContactRows(
         });
       }
     } else {
-      // No email: always show as a distinct form-only contact.
+      const nameKey = (mc.attendee_name ?? '').trim().toLowerCase();
+      if (!nameKey || seenNames.has(nameKey)) continue;
+      seenNames.add(nameKey);
       noEmailRows.push({
         key: `med-${mc.id}`,
         id: mc.id,
