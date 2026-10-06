@@ -15,6 +15,16 @@
 // }
 // -> 201 { checkout_url, session_id, booking_reference }
 //
+// BASKET (B6, migration 068) — the course path also accepts, in place of
+// ticket_type_id + quantity:
+//   lines: [{ ticket_type_id, quantity }],          // several ticket types
+//   items?: [{ franchisee_product_id, quantity }]   // the same trainer's shop items
+// One pending booking row per ticket line (sharing order_id = the lead line's
+// id and, once created, the Stripe session), places reserved once for the whole
+// order, the discount shared across the ticket lines only, and the items
+// snapshotted on the lead line for the webhook to record when paid. One line
+// and no items is written exactly like the old single-ticket payload.
+//
 // ITEM path — POST {
 //   franchisee_product_id: string, // da_franchisee_products.id from get-public-items
 //   quantity?: number,             // default 1, max 20
@@ -51,6 +61,16 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=denonext';
 import { logSystem, newRequestId } from '../_shared/log.ts';
 import { buildJourneyRows } from '../_shared/emailSchedule.ts';
+import {
+  buildBookingRows,
+  buildStripeLineItems,
+  lineReference,
+  orderSeats,
+  priceOrder,
+  parseOrderItems,
+  parseOrderLines,
+  type OrderItemSnapshot,
+} from '../_shared/basket.ts';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -109,6 +129,9 @@ interface RequestBody {
   discount_code?: unknown;
   origin?: unknown;
   franchisee_product_id?: unknown;
+  // B6 basket: several ticket lines and the trainer's shop items.
+  lines?: unknown;
+  items?: unknown;
   // Private/home/workplace bookings only: where the class is delivered and any
   // parking or access notes (migration 058). Ignored for public venue classes.
   service_address?: unknown;
@@ -176,9 +199,10 @@ Deno.serve(async (req: Request) => {
   // --- ITEM path (migration 044) --------------------------------------------
   // Undated products — books, kits, e-learning. No course, no seats, no
   // booking row: stripe-webhook writes the da_product_sales row on payment.
+  // (Items bought WITH a class use the basket's `items` list instead.)
   const franchiseeProductId = reqStr(body.franchisee_product_id);
   if (franchiseeProductId) {
-    if (courseInstanceId || bookingToken || ticketTypeId) {
+    if (courseInstanceId || bookingToken || ticketTypeId || body.lines !== undefined) {
       return jsonResponse(
         { error: 'franchisee_product_id cannot be combined with a course booking' },
         400,
@@ -190,12 +214,17 @@ Deno.serve(async (req: Request) => {
   if (!courseInstanceId && !bookingToken) {
     return jsonResponse({ error: 'course_instance_id or booking_token is required' }, 400);
   }
-  if (!ticketTypeId) return jsonResponse({ error: 'ticket_type_id is required' }, 400);
 
-  const quantity = body.quantity;
-  if (typeof quantity !== 'number' || !Number.isInteger(quantity) || quantity < 1) {
-    return jsonResponse({ error: 'quantity must be a positive integer' }, 400);
-  }
+  // B6 basket: `lines` (several ticket types) and optional `items` (the same
+  // trainer's shop items), or the old single ticket_type_id + quantity, which
+  // parseOrderLines turns into one line so old embeds work unchanged.
+  const lineInputs = parseOrderLines(body);
+  if (typeof lineInputs === 'string') return jsonResponse({ error: lineInputs }, 400);
+  const itemInputs = parseOrderItems(body.items);
+  if (typeof itemInputs === 'string') return jsonResponse({ error: itemInputs }, 400);
+  // A plain booking (one ticket line, no items) is written exactly as it always
+  // was, with no order_id. Anything more is a multi-line order.
+  const isOrder = lineInputs.length > 1 || itemInputs.length > 0;
 
   const parsed = parseCustomer(body.customer ?? {});
   if (typeof parsed === 'string') return jsonResponse({ error: parsed }, 400);
@@ -243,21 +272,38 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // --- Ticket type ----------------------------------------------------------
+  // --- Ticket types ---------------------------------------------------------
   const ttRes = await admin
     .from('da_ticket_types')
     .select('id, name, price_pence, seats_consumed')
-    .eq('id', ticketTypeId)
     .eq('course_instance_id', instance.id)
-    .maybeSingle();
+    .in(
+      'id',
+      lineInputs.map((l) => l.ticket_type_id),
+    );
   if (ttRes.error) {
     console.error('ticket lookup failed', ttRes.error);
     return jsonResponse({ error: 'Could not load the ticket type' }, 500);
   }
-  if (!ttRes.data) return jsonResponse({ error: 'Ticket type not found for this course' }, 404);
-  const ticket = ttRes.data as any;
+  const ticketsById = new Map(((ttRes.data ?? []) as any[]).map((t) => [t.id, t]));
+  if (lineInputs.some((l) => !ticketsById.has(l.ticket_type_id))) {
+    return jsonResponse({ error: 'Ticket type not found for this course' }, 404);
+  }
+  // Lines in the order the customer chose them; the first is the lead.
+  const lines = lineInputs.map((l) => {
+    const t = ticketsById.get(l.ticket_type_id);
+    return {
+      ticket_type_id: l.ticket_type_id,
+      quantity: l.quantity,
+      name: t.name as string,
+      price_pence: t.price_pence as number,
+      seats_consumed: t.seats_consumed,
+    };
+  });
 
-  const seatsNeeded = ticket.seats_consumed * quantity;
+  // Places come out of the class's ONE shared pool: the sum over every line of
+  // quantity × places per ticket must fit.
+  const seatsNeeded = orderSeats(lines);
   if (instance.spots_remaining < seatsNeeded) {
     return jsonResponse({ error: 'Not enough spaces remaining on this course' }, 409);
   }
@@ -277,8 +323,58 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Online payment is not set up for this course yet' }, 400);
   }
 
+  // --- Shop items in the same order (B6) ------------------------------------
+  // Same rules as the single-item checkout, plus: the item must be sold by the
+  // trainer running the class, because the whole order is paid to one Stripe
+  // account.
+  const items: OrderItemSnapshot[] = [];
+  const itemDescriptions = new Map<string, string | null>();
+  if (itemInputs.length > 0) {
+    const fpRes = await admin
+      .from('da_franchisee_products')
+      .select(
+        `id, franchisee_id, product_id, price_pence, vat_rate, is_online,
+         product:da_products ( name, description, active, kind )`,
+      )
+      .in(
+        'id',
+        itemInputs.map((i) => i.franchisee_product_id),
+      );
+    if (fpRes.error) {
+      console.error('basket item lookup failed', fpRes.error);
+      return jsonResponse({ error: 'Could not load that item' }, 500);
+    }
+    const byId = new Map(((fpRes.data ?? []) as any[]).map((r) => [r.id, r]));
+    for (const input of itemInputs) {
+      const listing = byId.get(input.franchisee_product_id);
+      if (!listing) return jsonResponse({ error: 'Item not found' }, 404);
+      if (listing.franchisee_id !== instance.franchisee_id) {
+        return jsonResponse(
+          { error: 'Items in an order must be sold by the trainer running the class' },
+          400,
+        );
+      }
+      if (!listing.is_online || !listing.product?.active || !(listing.price_pence > 0)) {
+        return jsonResponse({ error: 'That item is not currently on sale' }, 409);
+      }
+      items.push({
+        franchisee_product_id: listing.id,
+        product_id: listing.product_id,
+        name: listing.product?.name ?? 'Daisy First Aid item',
+        kind: listing.product?.kind ?? 'physical',
+        quantity: input.quantity,
+        unit_price_pence: listing.price_pence,
+        vat_rate: listing.vat_rate == null ? null : Number(listing.vat_rate),
+      });
+      itemDescriptions.set(listing.id, listing.product?.description ?? null);
+    }
+  }
+
   // --- Pricing + discount ---------------------------------------------------
-  const grossPence = ticket.price_pence * quantity;
+  // The discount applies to the class tickets only (never shop items), worked
+  // out on the tickets' combined price exactly as for a single ticket, then
+  // shared across the lines in whole pence.
+  const grossPence = priceOrder(lines, 0, []).ticketsGross;
   let discountCode: string | null = null;
   let discountOffPence = 0;
   const codeInput = reqStr(body.discount_code);
@@ -312,7 +408,7 @@ Deno.serve(async (req: Request) => {
     // An unusable code is silently ignored (full price) — the widget validates
     // live before submit, so this is only a defensive backstop.
   }
-  const netPence = Math.max(0, grossPence - discountOffPence);
+  const { lineOff, lineNet, total: netPence } = priceOrder(lines, discountOffPence, items);
   const applicationFee = Math.floor((netPence * feePercent) / 100);
 
   // Stripe rejects payment sessions under its 30p card minimum. A 100%-off
@@ -416,9 +512,10 @@ Deno.serve(async (req: Request) => {
   const bookingReference = refRes.data as string;
 
   // --- Reserve the spots (migration 035) -------------------------------------
-  // Atomic conditional hold: two concurrent checkouts can no longer both pay
-  // for the last spot. Released by the rollback below, or by the hourly
-  // pending-expiry sweep (send-emails) if the checkout is abandoned.
+  // Atomic conditional hold for the WHOLE order in one call: two concurrent
+  // checkouts can no longer both pay for the last spot. Released by the
+  // rollback below, or by the pending-expiry sweep (send-emails) if the
+  // checkout is abandoned (each line releases its own reserved_seats).
   const reserve = await admin.rpc('reserve_spots', {
     instance_id: instance.id,
     seats: seatsNeeded,
@@ -444,29 +541,32 @@ Deno.serve(async (req: Request) => {
   const releaseHold = () =>
     admin.rpc('release_spots', { instance_id: instance.id, seats: seatsNeeded });
 
-  const bookingRes = await admin
-    .from('da_bookings')
-    .insert({
-      booking_reference: bookingReference,
+  // One row per ticket line. For an order the lead's id is minted here so every
+  // line can carry it as order_id in the same insert (one statement, so the
+  // lines land together or not at all).
+  // Shop items ride on the lead line until payment (migration 068).
+  const rowsToInsert = buildBookingRows({
+    isOrder,
+    newId: () => crypto.randomUUID(),
+    leadReference: bookingReference,
+    lines,
+    lineNet,
+    lineOff,
+    discountCode,
+    items,
+    common: {
       course_instance_id: instance.id,
       franchisee_id: instance.franchisee_id,
       customer_id: customerId,
       private_client_id: privateClientId,
-      ticket_type_id: ticketTypeId,
-      quantity,
-      total_price_pence: netPence,
-      discount_code: discountCode,
-      discount_amount_pence: discountOffPence,
-      payment_status: 'pending',
-      booking_status: 'confirmed',
-      reserved_seats: seatsNeeded,
       // Private/home/workplace bookings only (migration 058); null otherwise.
       service_address: serviceAddress,
       parking_notes: parkingNotes,
-    })
-    .select('id')
-    .single();
-  if (bookingRes.error || !bookingRes.data) {
+    },
+  });
+  const leadId = isOrder ? (rowsToInsert[0].id as string) : null;
+  const bookingRes = await admin.from('da_bookings').insert(rowsToInsert).select('id');
+  if (bookingRes.error || !bookingRes.data || bookingRes.data.length !== rowsToInsert.length) {
     await releaseHold();
     const requestId = newRequestId();
     await logSystem(admin, {
@@ -474,18 +574,23 @@ Deno.serve(async (req: Request) => {
       source: 'create-checkout-session',
       requestId,
       message: `pending booking insert failed: ${bookingRes.error?.message}`,
-      context: { booking_reference: bookingReference },
+      context: { booking_reference: bookingReference, lines: rowsToInsert.length },
     });
     return jsonResponse({ error: 'Could not start your booking', request_id: requestId }, 500);
   }
-  const bookingId = (bookingRes.data as any).id;
+  const bookingIds: string[] = isOrder
+    ? rowsToInsert.map((r) => (r as any).id as string)
+    : [(bookingRes.data[0] as any).id];
+  const bookingId = bookingIds[0];
+  const deleteRows = () => admin.from('da_bookings').delete().in('id', bookingIds);
 
   // --- FREE booking (100%-off discount): no Stripe at all -------------------
   // Nothing to charge, so finalise inline — the mirror of the webhook's
   // finalisePendingBooking: confirm the booking (the reserve_spots hold
   // becomes its permanent seat consumption), bump the discount use, queue the
   // email journey, log activity. The widget's payment tab lands straight on
-  // the branded success page via checkout_url.
+  // the branded success page via checkout_url. Shop items always cost
+  // something, so a free order is tickets only.
   if (netPence === 0) {
     const freeOrigin = safeOrigin(reqStr(body.origin));
     const upd = await admin
@@ -496,12 +601,12 @@ Deno.serve(async (req: Request) => {
         reserved_seats: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', bookingId)
+      .in('id', bookingIds)
       .eq('payment_status', 'pending')
       .select('id');
-    if (upd.error || !upd.data || upd.data.length === 0) {
+    if (upd.error || !upd.data || upd.data.length !== bookingIds.length) {
       await releaseHold();
-      await admin.from('da_bookings').delete().eq('id', bookingId);
+      await deleteRows();
       const requestId = newRequestId();
       await logSystem(admin, {
         level: 'error',
@@ -515,6 +620,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: 'Could not complete your booking', request_id: requestId }, 500);
     }
 
+    // Once per order: one discount use, one set of emails (on the lead line).
     if (discountCode) {
       const bump = await admin.rpc('increment_discount_use', { discount_code: discountCode });
       if (bump.error) console.error('free booking: discount increment failed', bump.error);
@@ -546,27 +652,30 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    await admin
-      .from('da_activities')
-      .insert({
-        actor_type: 'system',
-        actor_id: null,
-        entity_type: 'booking',
-        entity_id: bookingId,
-        action: 'booking_created',
-        metadata: {
-          booking_reference: bookingReference,
-          course_instance_id: instance.id,
-          franchisee_id: instance.franchisee_id,
-          payment_status: 'paid',
-          source: 'public_checkout_free',
-          discount_code: discountCode,
-        },
-        description: `Booking ${bookingReference} confirmed via online checkout (100% discount — no payment taken)`,
-      })
-      .then((r: { error: unknown }) => {
-        if (r.error) console.error('free booking: activity insert failed', r.error);
-      });
+    for (const [i, id] of bookingIds.entries()) {
+      await admin
+        .from('da_activities')
+        .insert({
+          actor_type: 'system',
+          actor_id: null,
+          entity_type: 'booking',
+          entity_id: id,
+          action: 'booking_created',
+          metadata: {
+            booking_reference: rowsToInsert[i].booking_reference as string,
+            course_instance_id: instance.id,
+            franchisee_id: instance.franchisee_id,
+            payment_status: 'paid',
+            source: 'public_checkout_free',
+            discount_code: discountCode,
+            ...(isOrder ? { order_id: leadId } : {}),
+          },
+          description: `Booking ${rowsToInsert[i].booking_reference} confirmed via online checkout (100% discount — no payment taken)`,
+        })
+        .then((r: { error: unknown }) => {
+          if (r.error) console.error('free booking: activity insert failed', r.error);
+        });
+    }
 
     return jsonResponse(
       {
@@ -594,19 +703,19 @@ Deno.serve(async (req: Request) => {
         // charged for a cancelled booking. Expire the session first (31 min:
         // Stripe's minimum is 30, +1 for clock skew).
         expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
-        line_items: [
-          {
-            price_data: {
-              currency: 'gbp',
-              unit_amount: netPence,
-              product_data: {
-                name: `${ticket.name} × ${quantity}`,
-                description: `Booking ${bookingReference} · ${instance.event_date}`,
-              },
-            },
-            quantity: 1,
-          },
-        ],
+        line_items: buildStripeLineItems(
+          lines.map((l, i) => ({
+            name: l.name,
+            quantity: l.quantity,
+            net_pence: lineNet[i],
+            reference: lineReference(bookingReference, i),
+          })),
+          items.map((it) => ({
+            ...it,
+            description: itemDescriptions.get(it.franchisee_product_id),
+          })),
+          instance.event_date,
+        ),
         // Stripe rejects application_fee_amount: 0 in some flows — omit the
         // key entirely when there is no fee.
         ...(applicationFee > 0
@@ -617,18 +726,21 @@ Deno.serve(async (req: Request) => {
         metadata: {
           booking_id: bookingId,
           course_instance_id: instance.id,
-          ticket_type_id: ticketTypeId,
-          quantity: String(quantity),
+          ticket_type_id: lines[0].ticket_type_id,
+          quantity: String(lines[0].quantity),
           franchisee_id: instance.franchisee_id,
           discount_code: discountCode ?? '',
           discount_amount_pence: String(discountOffPence),
+          // B6: the webhook confirms every line (and records the shop items)
+          // of this order on payment.
+          ...(isOrder ? { order_id: leadId!, order_lines: String(lines.length) } : {}),
         },
       },
       { stripeAccount: franchisee.stripe_account_id },
     );
   } catch (err: any) {
-    // Roll back the orphaned pending booking and release its hold.
-    await admin.from('da_bookings').delete().eq('id', bookingId);
+    // Roll back the orphaned pending booking(s) and release the hold.
+    await deleteRows();
     await releaseHold();
     const requestId = newRequestId();
     await logSystem(admin, {
@@ -649,11 +761,11 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Stamp the session id so the webhook can flip this pending booking.
+  // Stamp the session id so the webhook can flip the pending line(s).
   await admin
     .from('da_bookings')
     .update({ stripe_checkout_session_id: session.id })
-    .eq('id', bookingId);
+    .in('id', bookingIds);
 
   return jsonResponse(
     { checkout_url: session.url, session_id: session.id, booking_reference: bookingReference },
@@ -673,7 +785,7 @@ Deno.serve(async (req: Request) => {
 // and with no application fee (removed pre-launch — HQ bills monthly instead).
 // ---------------------------------------------------------------------------
 async function createItemSession(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   body: RequestBody,
   franchiseeProductId: string,
   stripeSecretKey: string,

@@ -24,6 +24,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { onePerOrder } from '../_shared/basket.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -630,7 +631,7 @@ Deno.serve(async (req: Request) => {
   if (body.notify_attendees === true && notifyRelevantChange) {
     const bookings = await admin
       .from('da_bookings')
-      .select('id, customer_id')
+      .select('id, customer_id, order_id')
       .eq('course_instance_id', body.id)
       .eq('booking_status', 'confirmed');
 
@@ -638,16 +639,21 @@ Deno.serve(async (req: Request) => {
       console.error('course_updated: confirmed bookings load failed', bookings.error);
     } else {
       const nowIso = new Date().toISOString();
-      const rows = ((bookings.data ?? []) as Array<{ id: string; customer_id: string }>).map(
-        (b) => ({
-          customer_id: b.customer_id,
-          booking_id: b.id,
-          template_key: 'course_updated',
-          sequence_day: 0,
-          scheduled_for: nowIso,
-          status: 'pending',
-        }),
-      );
+      // One email per order, not per ticket line (B6 basket, migration 068).
+      const rows = onePerOrder(
+        (bookings.data ?? []) as Array<{
+          id: string;
+          customer_id: string;
+          order_id: string | null;
+        }>,
+      ).map((b) => ({
+        customer_id: b.customer_id,
+        booking_id: b.id,
+        template_key: 'course_updated',
+        sequence_day: 0,
+        scheduled_for: nowIso,
+        status: 'pending',
+      }));
       if (rows.length > 0) {
         const queueInsert = await admin.from('da_email_sequences').insert(rows);
         if (queueInsert.error) {

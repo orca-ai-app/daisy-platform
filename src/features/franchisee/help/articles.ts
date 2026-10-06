@@ -299,6 +299,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'offline',
       'phone',
       'pending',
+      'order',
+      'basket',
+      'several tickets',
+      'more than one ticket',
     ],
     sections: [
       {
@@ -307,6 +311,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Go to Bookings. The list shows all bookings for your courses with the customer name, course, ticket type, total, payment status, and booking status.',
           'Use the search box to find a specific booking by reference. Use the drop-down filters to narrow by payment status, booking status, or date range.',
           'Click any row to open the full booking detail.',
+        ],
+      },
+      {
+        heading: 'Orders with more than one ticket',
+        body: [
+          'On your booking page a customer can choose several ticket types for a class in one go, for example 1 Double and 1 Single, and add items from your shop to the same order. They pay once, in one Stripe payment.',
+          'Each ticket type in the order is its own row in Bookings. The first row has the reference the customer was given, for example DA-2026-00075-901, and the others add -2, -3 and so on (DA-2026-00075-901-2). Search for the reference and you see every row of the order.',
+          'Shop items bought in the order appear under Merchandise as online sales, against that class.',
+          'The customer gets one confirmation listing everything they bought, and you get one "New booking" email listing it all too. Reminders and follow-ups go once for the whole order, not once per ticket.',
+          'You can cancel one row on its own; the customer keeps getting reminders while any row of the order still stands. If you move one row to another class, it leaves the order and becomes a booking of its own on the new class, and the rest of the order stays where it was.',
         ],
       },
       {
@@ -387,6 +401,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         body: [
           'When: straight after they pay.',
           "What it shows: the course name, the date and start time, where (the venue name, address and postcode from the class), their booking reference, the class's joining details if you have added any, and your message from Profile.",
+          'When someone books several ticket types, or adds shop items, in one order, they get a single confirmation with a "Your order" list of everything they bought and the total, not one email per ticket.',
         ],
         images: [
           {
@@ -473,6 +488,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What you get',
         body: [
           'A "New booking" email every time someone books one of your classes, with who, what, when and how much they paid. Bookings you add yourself send you one too.',
+          'An order with several ticket types or shop items sends you one email, listing every ticket and item in it and the total paid.',
         ],
       },
     ],
@@ -670,6 +686,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What customers see',
         body: [
           'On the booking page, customers enter their discount code in the code field before completing payment. The price updates in real time to show the reduced amount. Expired, inactive, or used-up codes are rejected with a clear message.',
+          'A code comes off the class tickets only, never shop items. When someone books several ticket types in one order, the code applies to all their tickets together and counts as one use.',
         ],
       },
     ],
@@ -871,6 +888,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'link to one item',
       'share an item',
       'copy link',
+      'add to your order',
+      'buy with a class',
     ],
     sections: [
       {
@@ -916,6 +935,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Go to Merchandise, then the My shop tab.',
           'Check the item shows "Online" under On booking page. If not, click it and turn on "Show on my booking page".',
           'In the Item link column for that item, click "Copy link" and paste it into your email, or click "Send via WhatsApp".',
+        ],
+      },
+      {
+        heading: 'Sold with a class booking',
+        body: [
+          'When someone books one of your classes online, the items showing on your booking page are offered under "Add to your order", so they can buy a book or an e-learning course in the same payment as their tickets. Only your own items are offered on your classes.',
+          "The sale appears under Merchandise as an online sale against that class. The customer's single booking confirmation lists the items, with the same wording about e-learning access as a sale on its own, so you still enrol e-learning buyers yourself.",
         ],
       },
       {

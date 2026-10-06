@@ -32,6 +32,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { lineNumber } from '../_shared/basket.ts';
 
 const UK_POSTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 // The outward half on its own ("SO31", "GU1", "RH10") — a district search.
@@ -119,6 +120,10 @@ function toCard(r: any) {
     visibility: r.visibility ?? null,
     distance_miles: r.distance_miles == null ? null : Math.round(r.distance_miles * 10) / 10,
     franchisee_name: r.franchisee_name ?? r.franchisee?.name ?? null,
+    // The trainer running the class (B6 basket): the widget offers that
+    // trainer's own shop items on the booking form, since the whole order is
+    // paid to their Stripe account. Same public id get-public-items returns.
+    franchisee_id: r.franchisee_id ?? null,
     // Who the customer is booking with (Emma, 27 Aug) + their page on the
     // website (Jenni, same thread; migration 051, backfilled from HQ's list).
     franchisee_business: r.franchisee_business ?? r.franchisee?.business_name ?? null,
@@ -208,7 +213,7 @@ Deno.serve(async (req: Request) => {
     // missing column is a hard 400 from PostgREST, so try it first and retry
     // without it rather than breaking every /book/:token page in between.
     const columns = (withOverride: boolean) =>
-      `id, booking_token, display_name,${withOverride ? ' description_override,' : ''} event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining, status, visibility,
+      `id, booking_token, franchisee_id, display_name,${withOverride ? ' description_override,' : ''} event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining, status, visibility,
          template:da_course_templates ( name, slug, description, age_range ),
          franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`;
@@ -244,7 +249,7 @@ Deno.serve(async (req: Request) => {
       const r = await admin
         .from('da_bookings')
         .select(
-          `ticket_type_id, quantity, discount_code, service_address, parking_notes,
+          `id, booking_reference, ticket_type_id, quantity, discount_code, service_address, parking_notes, order_id, order_items,
            customer:da_customers ( first_name, last_name, email, phone, postcode )`,
         )
         .eq('resume_token', resumeToken)
@@ -267,6 +272,29 @@ Deno.serve(async (req: Request) => {
           phone: d.customer?.phone ?? '',
           postcode: d.customer?.postcode ?? '',
         };
+        // B6 basket: the token sits on the order's lead line; hand back every
+        // ticket line and shop item so the form is restored as it was.
+        if (d.order_id) {
+          const ol = await admin
+            .from('da_bookings')
+            .select('ticket_type_id, quantity, booking_reference')
+            .eq('order_id', d.order_id);
+          if (ol.error) console.error('resume order lines lookup failed', ol.error);
+          const leadRef = d.booking_reference as string;
+          resume.lines = ((ol.data ?? []) as any[])
+            .sort(
+              (x, y) =>
+                lineNumber(x.booking_reference, leadRef) - lineNumber(y.booking_reference, leadRef),
+            )
+            .map((l) => ({
+              ticket_type_id: l.ticket_type_id,
+              quantity: l.quantity,
+            }));
+          resume.items = (Array.isArray(d.order_items) ? d.order_items : []).map((i: any) => ({
+            franchisee_product_id: i.franchisee_product_id,
+            quantity: i.quantity,
+          }));
+        }
       }
     }
     return jsonResponse(
@@ -374,7 +402,7 @@ Deno.serve(async (req: Request) => {
     const schedule = await admin
       .from('da_course_instances')
       .select(
-        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining,
+        `id, booking_token, franchisee_id, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining,
          template:da_course_templates ( name, slug, description, age_range ),
          franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`,
@@ -666,7 +694,7 @@ Deno.serve(async (req: Request) => {
     const own = await admin
       .from('da_course_instances')
       .select(
-        `id, booking_token, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining, lat, lng,
+        `id, booking_token, franchisee_id, display_name, description_override, event_date, start_time, end_time, venue_name, venue_postcode, delivered_at_address, capacity, spots_remaining, lat, lng,
          template:da_course_templates!inner ( name, slug, description, age_range, is_online ),
          franchisee:da_franchisees ( name, business_name, website_url, photo_url, about_trainer ),
          ticket_types:da_ticket_types ( id, name, price_pence, seats_consumed, session_label, vat_rate, vat_exclusive )`,
