@@ -528,7 +528,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'What you can see',
         body: [
-          'In the Customers section, the All contacts tab shows everyone who has submitted a medical form for your classes. You can see their name, the email they gave, and whether they opted in to marketing.',
+          "In the Customers section, the All contacts tab lists everyone who has submitted a medical form for your classes, by name. The email someone gives on the medical form is used for the safe running of the class and isn't shown there.",
           'On the class page itself, the Medical declarations card lists everyone who has filled the form in for that class. Anyone whose answers need attention shows a "please speak to attendee" badge: the detail stays private by design, the attendee tells the trainer what they need to know on the day. For a class a freelancer delivers, check the card and brief them on who to speak to, exactly as if you were teaching it yourself. Each person also carries a photo badge, "photos OK" or "no photos", so you can see at a glance who is happy to be photographed.',
           'Health answers are kept confidential. They are encrypted and only HQ can unlock them for clinical or safeguarding reasons. Every unlock is logged automatically.',
         ],
@@ -591,7 +591,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'All contacts',
         body: [
-          'The "All contacts" view combines booked customers with people who have submitted a medical form for your classes, deduplicated by email. Contacts who only appear from a medical form are labelled "from medical form".',
+          'The "All contacts" view combines booked customers with people who have submitted a medical form for your classes. People who only appear from a medical form are listed by name and labelled "from medical form"; their form email isn\'t shown.',
           'This gives you a fuller picture of people who have engaged with your sessions, even if they attended as part of a group booking made by someone else.',
         ],
       },

@@ -230,38 +230,24 @@ function AllContactsTab() {
       byEmail.set(emailKey, row);
     }
 
-    // Layer in medical contacts — merge if same email, otherwise add new rows
+    // Layer in medical-form attendees by name only (their form email is not a
+    // contact address). Skip anyone already listed as a booked customer or
+    // already added under the same name.
+    const seenNames = new Set(Array.from(byEmail.values()).map((r) => r.name.trim().toLowerCase()));
     for (const mc of medContacts as MedicalContact[]) {
-      if (mc.attendee_email) {
-        const emailKey = mc.attendee_email.toLowerCase();
-        if (!byEmail.has(emailKey)) {
-          // Form-only contact
-          byEmail.set(emailKey, {
-            key: `med-${mc.id}`,
-            id: mc.id,
-            name: mc.attendee_name,
-            email: mc.attendee_email,
-            phone: undefined,
-            postcode: undefined,
-            booking_count: 0,
-            from_medical_form: true,
-          });
-        }
-        // If the email already exists as a booked customer, no merge needed —
-        // we keep the customer row with its booking count.
-      } else {
-        // No email — always show as a distinct form-only contact
-        noEmailRows.push({
-          key: `med-${mc.id}`,
-          id: mc.id,
-          name: mc.attendee_name,
-          email: null,
-          phone: undefined,
-          postcode: undefined,
-          booking_count: 0,
-          from_medical_form: true,
-        });
-      }
+      const nameKey = (mc.attendee_name ?? '').trim().toLowerCase();
+      if (!nameKey || seenNames.has(nameKey)) continue;
+      seenNames.add(nameKey);
+      noEmailRows.push({
+        key: `med-${mc.id}`,
+        id: mc.id,
+        name: mc.attendee_name,
+        email: null,
+        phone: undefined,
+        postcode: undefined,
+        booking_count: 0,
+        from_medical_form: true,
+      });
     }
 
     return [...Array.from(byEmail.values()), ...noEmailRows];

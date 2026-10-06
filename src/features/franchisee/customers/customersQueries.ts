@@ -101,15 +101,15 @@ export function useOwnCustomers() {
 /**
  * Medical-form contacts for the signed-in franchisee (RLS-scoped automatically).
  *
- * NEVER selects declaration_data. Used only to build the "All contacts" union
- * view in CustomersList. Contacts are identified by attendee_email; those with
- * no email are always included as distinct rows.
+ * NEVER selects declaration_data, and never attendee_email: the medical form
+ * tells attendees their details are used only for the safe running of the
+ * class, so the email they give is not a contact address for the trainer
+ * (6 Oct 2026). Names only. Used to build the "All contacts" union view.
  */
 export interface MedicalContact {
   id: string;
   created_at: string;
   attendee_name: string;
-  attendee_email: string | null;
   email_opt_in: boolean | null;
   photo_consent: boolean | null;
 }
@@ -120,7 +120,7 @@ export function useMedicalContacts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('da_medical_declarations')
-        .select('id, created_at, attendee_name, attendee_email, email_opt_in, photo_consent')
+        .select('id, created_at, attendee_name, email_opt_in, photo_consent')
         .order('created_at', { ascending: false });
 
       if (error) {
