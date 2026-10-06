@@ -27,6 +27,11 @@
 //     so the customer gets a confirmation for the new course.
 //  8. Return updated row.
 //
+// B6 basket (migration 068): a ticket line moved out of a multi-line order
+// leaves that order (order_id cleared) and stands as its own booking on the
+// new course, so its emails describe that course alone. The rest of the order
+// stays where it was.
+//
 // NOTE: do NOT deploy — the verifier/orchestrator deploys all Edge Functions.
 
 // deno-lint-ignore-file no-explicit-any
@@ -165,7 +170,7 @@ Deno.serve(async (req: Request) => {
   const bookingResult = await admin
     .from('da_bookings')
     .select(
-      'id, franchisee_id, booking_reference, booking_status, course_instance_id, customer_id, ticket_type_id, quantity, notes',
+      'id, franchisee_id, booking_reference, booking_status, course_instance_id, customer_id, ticket_type_id, quantity, notes, order_id',
     )
     .eq('id', bookingId)
     .maybeSingle();
@@ -188,6 +193,7 @@ Deno.serve(async (req: Request) => {
     ticket_type_id: string;
     quantity: number;
     notes: string | null;
+    order_id: string | null;
   };
 
   // ---------------------------------------------------------------------------
@@ -330,6 +336,8 @@ Deno.serve(async (req: Request) => {
       ticket_type_id: matchedTicketTypeId ?? booking.ticket_type_id,
       notes: updatedNotes,
       updated_at: now.toISOString(),
+      // Leaves its basket order (B6): it is now a booking on its own course.
+      ...(booking.order_id ? { order_id: null } : {}),
     })
     .eq('id', bookingId)
     .select('*')

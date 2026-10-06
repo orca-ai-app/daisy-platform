@@ -35,6 +35,15 @@ import { processBroadcast } from '../_shared/broadcastSender.ts';
 import { logSystem } from '../_shared/log.ts';
 import { checkEmailHealth } from './health.ts';
 import { RECOVERY_DELAY_MINUTES, newResumeToken, recoverySkipReason } from './recovery.ts';
+import {
+  buildOrderBlock,
+  orderIsCancelled,
+  orderSeatsNeeded,
+  orderTotalPence,
+  orderVat,
+  type OrderLineView,
+} from './order.ts';
+import { isOrderLead, lineNumber, type OrderItemSnapshot } from '../_shared/basket.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -300,8 +309,8 @@ Deno.serve(async (req: Request) => {
         const booking = await admin
           .from('da_bookings')
           .select(
-            `booking_reference, booking_status, payment_status, total_price_pence, quantity, discount_code, service_address, parking_notes,
-           created_at, customer_id, course_instance_id, resume_token,
+            `id, booking_reference, booking_status, payment_status, total_price_pence, quantity, discount_code, service_address, parking_notes,
+           created_at, customer_id, course_instance_id, resume_token, order_id, order_items,
            customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
              event_date, start_time, venue_name, venue_address, venue_postcode, status,
@@ -316,6 +325,40 @@ Deno.serve(async (req: Request) => {
         if (booking.error || !booking.data) throw new Error('booking load failed');
         const b = booking.data as any;
 
+        // B6 basket (migration 068): a multi-line order's emails are queued on
+        // its lead line only, and speak for every line and shop item in it.
+        let orderLines: OrderLineView[] = [];
+        let orderItems: OrderItemSnapshot[] = [];
+        if (b.order_id) {
+          const ol = await admin
+            .from('da_bookings')
+            .select(
+              `id, booking_reference, quantity, total_price_pence, booking_status,
+               ticket_type:da_ticket_types ( name, vat_rate, seats_consumed )`,
+            )
+            .eq('order_id', b.order_id);
+          if (ol.error) throw new Error('order lines load failed');
+          const raw = (ol.data ?? []) as any[];
+          const leadRef =
+            raw.find((l) => l.id === b.order_id)?.booking_reference ?? b.booking_reference;
+          orderLines = raw
+            .sort(
+              (x, y) =>
+                lineNumber(x.booking_reference, leadRef) - lineNumber(y.booking_reference, leadRef),
+            )
+            .map((l) => ({
+              booking_reference: l.booking_reference,
+              quantity: l.quantity ?? 1,
+              total_price_pence: l.total_price_pence ?? 0,
+              booking_status: l.booking_status,
+              ticket_name: l.ticket_type?.name ?? 'Ticket',
+              seats_consumed: l.ticket_type?.seats_consumed ?? 1,
+              vat_rate: l.ticket_type?.vat_rate ?? null,
+            }));
+          orderItems = Array.isArray(b.order_items) ? (b.order_items as OrderItemSnapshot[]) : [];
+        }
+        const isOrder = orderLines.length > 0;
+
         // Abandoned checkout recovery (migration 066). The booking is cancelled
         // by definition, so this runs before the lifecycle gate, with its own
         // guards checked at send time. Any "no" cancels the row for good.
@@ -323,12 +366,16 @@ Deno.serve(async (req: Request) => {
         if (row.template_key === 'checkout_recovery') {
           const others = await admin
             .from('da_bookings')
-            .select('id, payment_status, created_at')
+            .select('id, payment_status, created_at, order_id')
             .eq('customer_id', b.customer_id)
             .eq('course_instance_id', b.course_instance_id)
             .neq('id', row.booking_id);
           if (others.error) throw new Error('recovery: other bookings load failed');
-          const otherRows = (others.data ?? []) as any[];
+          // The other lines of this same abandoned order are not "another
+          // booking": they were written a moment after the lead.
+          const otherRows = ((others.data ?? []) as any[]).filter(
+            (o) => !b.order_id || o.order_id !== b.order_id,
+          );
           const hasOtherBooking = otherRows.some(
             (o) =>
               o.payment_status !== 'failed' ||
@@ -357,7 +404,9 @@ Deno.serve(async (req: Request) => {
               eventDate: b.course_instance?.event_date ?? null,
               startTime: b.course_instance?.start_time ?? null,
               spotsRemaining: b.course_instance?.spots_remaining ?? 0,
-              seatsNeeded: (b.quantity ?? 1) * (b.ticket_type?.seats_consumed ?? 1),
+              seatsNeeded: isOrder
+                ? orderSeatsNeeded(orderLines)
+                : (b.quantity ?? 1) * (b.ticket_type?.seats_consumed ?? 1),
               stripeConnected: b.franchisee?.stripe_connected === true,
               suppressed: b.customer?.marketing_opt_out === true || suppressed.has(email),
               hasOtherBooking,
@@ -384,9 +433,13 @@ Deno.serve(async (req: Request) => {
         // keep emailing the customer — without this, the "class starts in 1
         // hour" reminder and a year of recaps still fired after cancellation.
         // Cancel the row (mirrors the suppression path) rather than failing it.
+        // An order counts as cancelled only once every line is.
+        const bookingCancelled = isOrder
+          ? orderIsCancelled(orderLines)
+          : b.booking_status === 'cancelled';
         if (
           row.template_key !== 'checkout_recovery' &&
-          (b.booking_status === 'cancelled' || b.course_instance?.status === 'cancelled')
+          (bookingCancelled || b.course_instance?.status === 'cancelled')
         ) {
           await admin.from('da_email_sequences').update({ status: 'cancelled' }).eq('id', row.id);
           cancelled++;
@@ -399,6 +452,26 @@ Deno.serve(async (req: Request) => {
         if (!recipient) throw new Error('no recipient email');
 
         const dbTemplate = dbTemplates.get(row.template_key);
+
+        // The order block rides on the confirmation and the franchisee alert.
+        const wantsOrderBlock =
+          isOrder &&
+          (row.template_key === 'booking_confirmation' ||
+            row.template_key === 'new_booking_notification');
+        const orderBlock = wantsOrderBlock
+          ? buildOrderBlock(orderLines, orderItems, toFranchisee ? 'franchisee' : 'customer')
+          : { html: '', text: '' };
+        const orderVatFigures = isOrder
+          ? orderVat([
+              ...orderLines
+                .filter((l) => l.booking_status !== 'cancelled')
+                .map((l) => ({ grossPence: l.total_price_pence, vatRate: l.vat_rate })),
+              ...orderItems.map((i) => ({
+                grossPence: i.unit_price_pence * i.quantity,
+                vatRate: i.vat_rate,
+              })),
+            ])
+          : null;
 
         // Suppression: opted-out customers get no marketing emails. Their queued
         // marketing rows are cancelled (not failed); transactional still sends.
@@ -433,17 +506,28 @@ Deno.serve(async (req: Request) => {
           // so the alert is actionable without opening the portal (Feola,
           // Hannah, launch week).
           amount_paid: toFranchisee
-            ? [
-                `£${(Math.round(b.total_price_pence ?? 0) / 100).toFixed(2)}` +
-                  (b.payment_status === 'pending' ? ' (awaiting payment)' : ''),
-                b.quantity > 1
-                  ? `${b.quantity} × ${b.ticket_type?.name ?? 'places'}`
-                  : (b.ticket_type?.name ?? ''),
-                b.discount_code ? `code ${b.discount_code}` : '',
-              ]
-                .filter(Boolean)
-                .join(' · ')
+            ? isOrder
+              ? [
+                  `£${(orderTotalPence(orderLines, orderItems) / 100).toFixed(2)}` +
+                    (b.payment_status === 'pending' ? ' (awaiting payment)' : ''),
+                  'see the order below',
+                  b.discount_code ? `code ${b.discount_code}` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : [
+                  `£${(Math.round(b.total_price_pence ?? 0) / 100).toFixed(2)}` +
+                    (b.payment_status === 'pending' ? ' (awaiting payment)' : ''),
+                  b.quantity > 1
+                    ? `${b.quantity} × ${b.ticket_type?.name ?? 'places'}`
+                    : (b.ticket_type?.name ?? ''),
+                  b.discount_code ? `code ${b.discount_code}` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
             : '',
+          order_block_html: orderBlock.html,
+          order_block_text: orderBlock.text,
           // The franchisee's own message (G2), rendered by the code
           // booking_confirmation template. It is deliberately blank on
           // new_booking_notification: that one goes TO the franchisee, who
@@ -470,13 +554,24 @@ Deno.serve(async (req: Request) => {
             : '',
           vat_block_html: toFranchisee
             ? ''
-            : buildVatBlockHtml({
-                totalPricePence: b.total_price_pence,
-                vatRate: b.ticket_type?.vat_rate ?? null,
-                businessName: b.franchisee?.business_name ?? b.franchisee?.name ?? '',
-                vatNumber: b.franchisee?.vat_number ?? null,
-                bookingReference: b.booking_reference,
-              }),
+            : isOrder
+              ? orderVatFigures
+                ? buildVatBlockHtml({
+                    totalPricePence: null,
+                    vatRate: null,
+                    businessName: b.franchisee?.business_name ?? b.franchisee?.name ?? '',
+                    vatNumber: b.franchisee?.vat_number ?? null,
+                    bookingReference: b.booking_reference,
+                    order: orderVatFigures,
+                  })
+                : ''
+              : buildVatBlockHtml({
+                  totalPricePence: b.total_price_pence,
+                  vatRate: b.ticket_type?.vat_rate ?? null,
+                  businessName: b.franchisee?.business_name ?? b.franchisee?.name ?? '',
+                  vatNumber: b.franchisee?.vat_number ?? null,
+                  bookingReference: b.booking_reference,
+                }),
         };
 
         let tmpl: { subject: string; html: string; text: string } | null;
@@ -548,7 +643,7 @@ Deno.serve(async (req: Request) => {
   const stale = await admin
     .from('da_bookings')
     .select(
-      'id, booking_reference, course_instance_id, reserved_seats, customer_id, stripe_checkout_session_id',
+      'id, booking_reference, course_instance_id, reserved_seats, customer_id, stripe_checkout_session_id, order_id',
     )
     .eq('payment_status', 'pending')
     .not('reserved_seats', 'is', null)
@@ -589,8 +684,10 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       // Queue the one recovery email (migration 066), for online checkouts
-      // only. Guards run again at send time. Never lets the sweep fail.
-      if (b.stripe_checkout_session_id && b.customer_id) {
+      // only. Guards run again at send time. Never lets the sweep fail. A
+      // basket order gets ONE, on its lead line, whose resume link restores
+      // every line (B6); its other lines just release their places.
+      if (b.stripe_checkout_session_id && b.customer_id && isOrderLead(b)) {
         try {
           const tok = await admin
             .from('da_bookings')

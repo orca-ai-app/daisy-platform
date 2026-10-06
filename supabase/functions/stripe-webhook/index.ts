@@ -18,7 +18,10 @@
 // Events handled:
 //   checkout.session.completed       — create booking, decrement spots, queue email sequences
 //                                      (or, when metadata.kind='product', record
-//                                      an online item sale — migration 044)
+//                                      an online item sale — migration 044; or,
+//                                      when metadata.order_id is set, confirm
+//                                      every line of a B6 basket order and record
+//                                      its shop items — migration 068)
 //   account.updated                  — sync da_franchisees.stripe_connected from charges_enabled
 //   account.application.deauthorized — franchisee revoked OAuth access; clear the link
 //
@@ -40,6 +43,7 @@ import Stripe from 'https://esm.sh/stripe@17.7.0?target=denonext';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { buildJourneyRows, type SequenceRow } from '../_shared/emailSchedule.ts';
 import { logSystem } from '../_shared/log.ts';
+import { orderFinalisePlan, type OrderItemSnapshot } from '../_shared/basket.ts';
 
 // Transient failure in an idempotent handler — safe (and necessary) for Stripe
 // to redeliver. Without the retry, a booking whose finalise write failed stays
@@ -282,9 +286,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
 // finds the booking already finalised and acks.
 // ---------------------------------------------------------------------------
 async function finalisePendingBooking(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   session: Stripe.Checkout.Session,
   bookingId: string,
+  // B6 basket: only the order's lead line bumps the discount use and queues
+  // the emails, so a multi-line order sends ONE confirmation, ONE franchisee
+  // alert and ONE journey. A plain single booking is its own lead.
+  opts: { lead: boolean } = { lead: true },
 ): Promise<void> {
   const now = new Date();
 
@@ -419,7 +427,7 @@ async function finalisePendingBooking(
 
   // Bump the discount use atomically — concurrent webhooks must not lose
   // increments or max-use codes over-redeem.
-  if (booking.discount_code) {
+  if (booking.discount_code && opts.lead) {
     const bump = await admin.rpc('increment_discount_use', {
       discount_code: booking.discount_code,
     });
@@ -436,7 +444,7 @@ async function finalisePendingBooking(
     }
   }
 
-  if (eventDateStr) {
+  if (eventDateStr && opts.lead) {
     const rows = buildEmailSequenceRows(
       booking.customer_id,
       booking.id,
@@ -506,19 +514,151 @@ async function finalisePendingBooking(
 }
 
 // ---------------------------------------------------------------------------
+// B6 basket order — every ticket line of the order, lead first, then the shop
+// items. Each line is finalised exactly as a single booking is (claim-guarded,
+// idempotent), so a redelivery after a partial failure picks up where it left
+// off without a second confirmation: the lead acks as already finalised and
+// queues nothing. The product sales are idempotent per (session, item).
+// ---------------------------------------------------------------------------
+async function finaliseOrder(
+  admin: any,
+  session: Stripe.Checkout.Session,
+  orderId: string,
+): Promise<void> {
+  const linesRes = await admin
+    .from('da_bookings')
+    .select('id, booking_reference')
+    .eq('order_id', orderId);
+  if (linesRes.error) {
+    throw new RetryableWebhookError(`order lines lookup failed: ${linesRes.error.message}`);
+  }
+  const plan = orderFinalisePlan(
+    (linesRes.data ?? []) as Array<{ id: string; booking_reference: string }>,
+    orderId,
+  );
+  if (plan.length === 0) {
+    console.error(`stripe-webhook: order ${orderId} not found (session ${session.id})`);
+    return;
+  }
+  for (const line of plan) {
+    await finalisePendingBooking(admin, session, line.id, { lead: line.lead });
+  }
+  await recordOrderItems(admin, session, orderId);
+}
+
+/**
+ * The shop items of a paid basket order, from the snapshot on the lead line,
+ * as online da_product_sales rows linked to the session and the class. The
+ * order's single confirmation lists them, so no separate
+ * product_purchase_confirmation is queued.
+ */
+async function recordOrderItems(
+  admin: any,
+  session: Stripe.Checkout.Session,
+  orderId: string,
+): Promise<void> {
+  const leadRes = await admin
+    .from('da_bookings')
+    .select('id, booking_reference, franchisee_id, customer_id, course_instance_id, order_items')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (leadRes.error) {
+    throw new RetryableWebhookError(`order items lookup failed: ${leadRes.error.message}`);
+  }
+  const lead = leadRes.data as any;
+  const items = (Array.isArray(lead?.order_items) ? lead.order_items : []) as OrderItemSnapshot[];
+  if (items.length === 0) return;
+
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : null;
+  // sold_at is a DATE — today in Europe/London (see recordProductSale).
+  const soldAt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
+
+  for (const item of items) {
+    const existing = await admin
+      .from('da_product_sales')
+      .select('id')
+      .eq('stripe_checkout_session_id', session.id)
+      .eq('franchisee_product_id', item.franchisee_product_id)
+      .maybeSingle();
+    if (existing.error) {
+      throw new RetryableWebhookError(
+        `order item idempotency check failed: ${existing.error.message}`,
+      );
+    }
+    if (existing.data) continue;
+
+    const totalPence = item.unit_price_pence * item.quantity;
+    const saleRes = await admin
+      .from('da_product_sales')
+      .insert({
+        franchisee_id: lead.franchisee_id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price_pence: item.unit_price_pence,
+        total_pence: totalPence,
+        payment_method: 'card',
+        channel: 'online',
+        sold_at: soldAt,
+        customer_id: lead.customer_id,
+        course_instance_id: lead.course_instance_id,
+        franchisee_product_id: item.franchisee_product_id,
+        stripe_checkout_session_id: session.id,
+        stripe_payment_intent_id: paymentIntentId,
+      })
+      .select('id')
+      .single();
+    if (saleRes.error?.code === '23505') continue; // a concurrent delivery got there first
+    if (saleRes.error || !saleRes.data) {
+      throw new RetryableWebhookError(`order item sale insert failed: ${saleRes.error?.message}`);
+    }
+    const saleId = (saleRes.data as { id: string }).id;
+    await admin
+      .from('da_activities')
+      .insert({
+        actor_type: 'system',
+        actor_id: null,
+        entity_type: 'product_sale',
+        entity_id: saleId,
+        action: 'product_sale_recorded',
+        metadata: {
+          product: item.name,
+          quantity: item.quantity,
+          total_pence: totalPence,
+          payment_method: 'card',
+          channel: 'online',
+          franchisee_id: lead.franchisee_id,
+          stripe_checkout_session_id: session.id,
+          order_id: orderId,
+          booking_reference: lead.booking_reference,
+        },
+        description: `Online sale with booking ${lead.booking_reference}: ${item.quantity} × ${item.name}`,
+      })
+      .then((r: { error: unknown }) => {
+        if (r.error) console.error('stripe-webhook: order item activity insert failed', r.error);
+      });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // checkout.session.completed
 // ---------------------------------------------------------------------------
 
-async function handleCheckoutSessionCompleted(
-  admin: ReturnType<typeof createClient>,
-  event: Stripe.Event,
-): Promise<void> {
+async function handleCheckoutSessionCompleted(admin: any, event: Stripe.Event): Promise<void> {
   const session = event.data.object as Stripe.Checkout.Session;
 
   // Sellable items (migration 044): an undated product purchase, not a booking.
   // Different table, different email — handled entirely separately.
   if ((session.metadata ?? {}).kind === 'product') {
     await recordProductSale(admin, session);
+    return;
+  }
+
+  // B6 basket (migration 068): several pending lines sharing order_id, plus
+  // shop items snapshotted on the lead. Confirm them all.
+  const orderId = (session.metadata ?? {}).order_id ?? null;
+  if (orderId) {
+    await finaliseOrder(admin, session, orderId);
     return;
   }
 
@@ -871,10 +1011,7 @@ async function handleCheckoutSessionCompleted(
 // session id is the key, checked before insert AND enforced by a unique index
 // so two concurrent deliveries cannot both write.
 // ---------------------------------------------------------------------------
-async function recordProductSale(
-  admin: ReturnType<typeof createClient>,
-  session: Stripe.Checkout.Session,
-): Promise<void> {
+async function recordProductSale(admin: any, session: Stripe.Checkout.Session): Promise<void> {
   const meta = session.metadata ?? {};
   const franchiseeProductId = meta.franchisee_product_id ?? null;
   if (!franchiseeProductId) {
@@ -1049,10 +1186,7 @@ async function recordProductSale(
 // account.updated — sync stripe_connected from charges_enabled
 // ---------------------------------------------------------------------------
 
-async function handleAccountUpdated(
-  admin: ReturnType<typeof createClient>,
-  event: Stripe.Event,
-): Promise<void> {
+async function handleAccountUpdated(admin: any, event: Stripe.Event): Promise<void> {
   // event.account is the connected account ID (set by Stripe for Connect events).
   const stripeAccountId = event.account ?? null;
   if (!stripeAccountId) {
@@ -1091,10 +1225,7 @@ async function handleAccountUpdated(
 // their own Stripe dashboard. Clear the link so the portal reflects it.
 // ---------------------------------------------------------------------------
 
-async function handleAccountDeauthorized(
-  admin: ReturnType<typeof createClient>,
-  event: Stripe.Event,
-): Promise<void> {
+async function handleAccountDeauthorized(admin: any, event: Stripe.Event): Promise<void> {
   // For connected-account events, event.account is the account that deauthorized.
   const stripeAccountId = event.account ?? null;
   if (!stripeAccountId) {

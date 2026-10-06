@@ -63,6 +63,14 @@ export interface TemplateContext {
    * ?resume=<token>, which re-fills the customer's details. Built in index.ts.
    */
   resume_url?: string;
+  /**
+   * B6 basket (migration 068): the "Your order" block listing every ticket line
+   * and shop item, built in index.ts (order.ts) and already escaped. Set only
+   * on booking_confirmation and new_booking_notification for a multi-line
+   * order; empty for a plain single booking, whose emails are unchanged.
+   */
+  order_block_html?: string;
+  order_block_text?: string;
 }
 
 /**
@@ -104,12 +112,27 @@ export function buildVatBlockHtml(input: {
   businessName: string;
   vatNumber: string | null;
   bookingReference: string;
+  /**
+   * B6 basket: the whole order's figures (send-emails/order.ts orderVat). When
+   * set, it replaces totalPricePence + vatRate; `rate` is null when the order
+   * mixes VAT rates, and the row then reads just "VAT".
+   */
+  order?: { gross: number; vat: number; rate: number | null } | null;
 }): string {
-  const gross = typeof input.totalPricePence === 'number' ? input.totalPricePence : null;
-  const rate = typeof input.vatRate === 'number' && input.vatRate > 0 ? input.vatRate : null;
-  if (gross == null || rate == null) return '';
-  const ex = Math.round(gross / (1 + rate / 100));
-  const vat = gross - ex;
+  let gross: number | null;
+  let rate: number | null;
+  let vat: number;
+  if (input.order) {
+    gross = input.order.gross;
+    rate = input.order.rate;
+    vat = input.order.vat;
+  } else {
+    gross = typeof input.totalPricePence === 'number' ? input.totalPricePence : null;
+    rate = typeof input.vatRate === 'number' && input.vatRate > 0 ? input.vatRate : null;
+    if (gross == null || rate == null) return '';
+    vat = gross - Math.round(gross / (1 + rate / 100));
+  }
+  const ex = gross - vat;
   const gbp = (p: number) => `£${(p / 100).toFixed(2)}`;
   const vatNoLine = input.vatNumber
     ? `<tr><td style="padding:2px 12px 2px 0;color:#5a7a8f">VAT number</td><td style="padding:2px 0;color:#1a4359">${escapeHtml(input.vatNumber)}</td></tr>`
@@ -121,7 +144,7 @@ export function buildVatBlockHtml(input: {
         ${vatNoLine}
         <tr><td style="padding:2px 12px 2px 0;color:#5a7a8f">Reference</td><td style="padding:2px 0;color:#1a4359">${escapeHtml(input.bookingReference)}</td></tr>
         <tr><td style="padding:2px 12px 2px 0;color:#5a7a8f">Amount ex VAT</td><td style="padding:2px 0;color:#1a4359">${gbp(ex)}</td></tr>
-        <tr><td style="padding:2px 12px 2px 0;color:#5a7a8f">VAT @ ${rate}%</td><td style="padding:2px 0;color:#1a4359">${gbp(vat)}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#5a7a8f">${rate == null ? 'VAT' : `VAT @ ${rate}%`}</td><td style="padding:2px 0;color:#1a4359">${gbp(vat)}</td></tr>
         <tr><td style="padding:2px 12px 2px 0;color:#5a7a8f;font-weight:700">Total paid</td><td style="padding:2px 0;color:#1a4359;font-weight:700">${gbp(gross)}</td></tr>
       </table>
     </div>`;
@@ -242,8 +265,9 @@ const TEMPLATES: Record<string, RawTemplate> = {
       <p><strong>When:</strong> {{event_date}} at {{start_time}}<br/>
       <strong>Where:</strong> {{venue}}<br/>
       <strong>Reference:</strong> {{booking_reference}}</p>
+      {{order_block_html}}
       <p>We look forward to seeing you. If you need anything, just reply to this email.</p>`,
-    text: `Hi {{first_name}},\n\nThank you for booking {{template_name}}. Your place is confirmed.\n\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nReference: {{booking_reference}}\n\nWe look forward to seeing you.\n\n{{franchisee_name}} & the Daisy First Aid team`,
+    text: `Hi {{first_name}},\n\nThank you for booking {{template_name}}. Your place is confirmed.\n\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nReference: {{booking_reference}}{{order_block_text}}\n\nWe look forward to seeing you.\n\n{{franchisee_name}} & the Daisy First Aid team`,
   },
   new_booking_notification: {
     subject: 'New booking: {{template_name}} ({{booking_reference}})',
@@ -254,8 +278,9 @@ const TEMPLATES: Record<string, RawTemplate> = {
       <strong>Where:</strong> {{venue}}<br/>
       <strong>Amount paid:</strong> {{amount_paid}}<br/>
       <strong>Reference:</strong> {{booking_reference}}</p>
+      {{order_block_html}}
       {{service_block_html}}`,
-    text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nAmount paid: {{amount_paid}}\nReference: {{booking_reference}}{{service_block_text}}`,
+    text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nAmount paid: {{amount_paid}}\nReference: {{booking_reference}}{{order_block_text}}{{service_block_text}}`,
   },
   day_before_reminder: {
     subject: 'See you tomorrow — {{template_name}} ({{booking_reference}})',
