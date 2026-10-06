@@ -87,3 +87,33 @@ describe('certificate emails help (migration 065)', () => {
     expect(text).toMatch(/not a mailing list/);
   });
 });
+
+describe('attendee emails help (migration 067, B7)', () => {
+  const article = findArticle('medical-qr');
+  const text = (heading: string) =>
+    (article?.sections.find((s) => s.heading === heading)?.body ?? []).join(' ');
+
+  it('quotes the new form wording and the Copy emails button', () => {
+    const t = text('Certificate emails');
+    expect(t).toContain(
+      'Your trainer will use this to send your certificate and anything from the class.',
+    );
+    expect(t).toContain('Copy emails');
+  });
+
+  it('explains the future classes box and that only a yes may be marketed to', () => {
+    const t = text('Future classes and reviews');
+    expect(t).toContain(
+      "I'm happy to hear from my trainer about future classes and to be asked for a review.",
+    );
+    expect(t).toContain('Copy future-class emails');
+    expect(t).toMatch(/only email someone about future classes.*if they said yes/i);
+  });
+
+  it('the Customers article explains the Future classes column', () => {
+    const body = (findArticle('customers-contacts')?.sections ?? [])
+      .flatMap((s) => s.body ?? [])
+      .join(' ');
+    expect(body).toContain('Future classes column');
+  });
+});

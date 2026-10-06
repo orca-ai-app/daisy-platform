@@ -208,7 +208,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Open Courses and set the date dropdown at the top to "Past only", or choose the month.',
           'Open the class.',
           '"Who\'s booked" lists everyone who booked a place. The Medical declarations card lists everyone who filled in the medical form on the day, which is the best record of who actually attended, for example when sending certificates.',
-          'Attendees who ticked "Email me about my certificate" on the medical form show a certificate email under their name. Click "Copy certificate emails" to copy them all at once, then paste them into the BCC line of your email.',
+          'Attendees who gave an email on the medical form show it under their name. Click "Copy emails" to copy them all at once, then paste them into the BCC line of your email. Forms filled in before October 2026 show an email only if the attendee ticked "Email me about my certificate"; copy those with "Copy certificate emails".',
         ],
       },
     ],
@@ -500,6 +500,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'certificate',
       'certificates',
       'certificate email',
+      'attendee email',
+      'attendee emails',
+      'copy emails',
+      'future classes',
+      'review',
+      'reviews',
     ],
     sections: [
       {
@@ -533,7 +539,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'What you can see',
         body: [
-          'In the Customers section, the All contacts tab shows everyone who has submitted a medical form for your classes. You can see their name, the email they gave, and whether they opted in to marketing.',
+          'In the Customers section, the All contacts tab shows everyone who has submitted a medical form for your classes: their name, the email they gave, and, for forms filled in from October 2026, whether they are happy to hear from you about future classes.',
           'On the class page itself, the Medical declarations card lists everyone who has filled the form in for that class. Anyone whose answers need attention shows a "please speak to attendee" badge: the detail stays private by design, the attendee tells the trainer what they need to know on the day. For a class a freelancer delivers, check the card and brief them on who to speak to, exactly as if you were teaching it yourself. Each person also carries a photo badge, "photos OK" or "no photos", so you can see at a glance who is happy to be photographed.',
           'Health answers are kept confidential. They are encrypted and only HQ can unlock them for clinical or safeguarding reasons. Every unlock is logged automatically.',
         ],
@@ -541,9 +547,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Certificate emails',
         body: [
-          'The medical form has an optional tick, "Email me about my certificate". It starts unticked. An attendee who ticks it must give an email address, and the form tells them it will be used only to send certificate information for this class and shared with their trainer for that purpose.',
-          'On the class page, the Medical declarations card shows a "Certificate email" line under each attendee who ticked it. The "Copy certificate emails" button copies all of them for that class, ready to paste into BCC. Attendees who did not tick it show no address on the card.',
-          'Use these addresses only to send certificate information for that class. They are not a mailing list: do not add them to newsletters, offers or other marketing. Declarations made before the tick was added (1 October 2026) have no certificate email.',
+          'The medical form tells attendees, right under the email box: "Your trainer will use this to send your certificate and anything from the class." Giving an email is optional.',
+          'On the class page, the Medical declarations card shows the email under each attendee who gave one. The "Copy emails" button copies all of them for that class, ready to paste into BCC. Use them for the certificate and anything to do with that class, such as handouts, a missed item or a follow-up about the session.',
+          'Forms filled in before this change keep the promise they were made with. Between 1 October 2026 and the change, the form had a tick, "Email me about my certificate": those attendees show a "Certificate email" line, copied with "Copy certificate emails", and that address is for certificate information about that class only, not a mailing list. Forms filled in before 1 October 2026 show no email on the card.',
+        ],
+      },
+      {
+        heading: 'Future classes and reviews',
+        body: [
+          'The medical form also has an optional box, unticked to start with: "I\'m happy to hear from my trainer about future classes and to be asked for a review." Each attendee who gave an email shows "future classes: yes" or "future classes: no" on the class page, and the same answer shows in the Future classes column under Customers, All contacts.',
+          'Only email someone about future classes, or ask them for a review, if they said yes. "Copy future-class emails" on the class page copies just those people. Everyone else\'s email is for their certificate and that class only. Always paste into BCC so attendees never see each other\'s addresses.',
+          'The box is separate from "I\'d like to receive emails with useful content", which signs the attendee up to Daisy\'s own follow-up emails and is handled by HQ.',
         ],
       },
       {
@@ -597,13 +611,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'All contacts',
         body: [
           'The "All contacts" view combines booked customers with people who have submitted a medical form for your classes, deduplicated by email. Contacts who only appear from a medical form are labelled "from medical form".',
+          'The Future classes column shows the attendee\'s answer on the medical form: "yes" means they are happy to hear from you about future classes and to be asked for a review, "no" means they are not. A dash means they were never asked, because they filled in an older form or only booked.',
           'This gives you a fuller picture of people who have engaged with your sessions, even if they attended as part of a group booking made by someone else.',
         ],
       },
       {
         heading: 'Emailing your attendees',
         body: [
-          'If you email attendees yourself, use the people on this page who opted in to hearing from you, and always BCC so addresses are never shared between customers. The medical form itself is never a contact list: it is health data, collected only to run the class safely, and using it for anything else is not allowed under GDPR, whatever the system.',
+          'If you email attendees about future classes or ask for a review, only use people whose Future classes column says "yes", and always BCC so addresses are never shared between customers. The health answers on the medical form are never a contact list: they are collected only to run the class safely, they stay encrypted, and only HQ can see them.',
           'A quick way to collect addresses: on a class page\'s "Who\'s booked" list, click an email address and it copies to your clipboard.',
         ],
       },

@@ -9,7 +9,9 @@
 //   attendee_email?: string,
 //   declaration_data: object,      // raw health fields (PRD §10.3)
 //   consent_given: boolean,
-//   certificate_opt_in?: boolean   // migration 065; needs attendee_email
+//   certificate_opt_in?: boolean,  // migration 065 (v1 form only); needs attendee_email
+//   form_version?: 2,              // migration 067: the new form says so
+//   trainer_contact_opt_in?: boolean // migration 067 (v2 only); needs attendee_email
 // }
 // -> 201 { success: true }   (no sensitive data echoed back)
 //
@@ -25,7 +27,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { encryptJson } from '../_shared/medicalCrypto.ts';
 import { buildJourneyRows } from '../_shared/emailSchedule.ts';
-import { certificateFields } from './certificate.ts';
+import { attendeeContactFields } from './attendeeContact.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -70,6 +72,12 @@ interface RequestBody {
   // Migration 065 (Oct 2026): "Email me about my certificate". The email is
   // shared with the class trainer for certificate information only.
   certificate_opt_in?: unknown;
+  // Migration 067 (PRD October batch B7): the new form sends form_version 2,
+  // its email is shared with the trainer for the certificate and anything
+  // from the class, and trainer_contact_opt_in is the "future classes and a
+  // review" box. Anything without form_version 2 is stored exactly as before.
+  form_version?: unknown;
+  trainer_contact_opt_in?: unknown;
 }
 
 Deno.serve(async (req: Request) => {
@@ -276,10 +284,11 @@ Deno.serve(async (req: Request) => {
   const attendeeEmail = reqStr(body.attendee_email)?.toLowerCase() ?? null;
   const emailOptIn = body.email_opt_in === true;
 
-  // Certificate opt-in (migration 065). The tick needs a usable address; the
-  // form enforces this too, so a 400 here only catches a hand-built request.
-  const certificate = certificateFields(body.certificate_opt_in, attendeeEmail);
-  if (!certificate.ok) return jsonResponse({ error: certificate.error }, 400);
+  // Certificate opt-in (migration 065) for the old form, or the form v2
+  // contact fields (migration 067). Ticks need a usable address; the form
+  // enforces this too, so a 400 here only catches a hand-built request.
+  const contact = attendeeContactFields(body, attendeeEmail);
+  if (!contact.ok) return jsonResponse({ error: contact.error }, 400);
 
   const photoConsent =
     typeof body.photo_consent === 'boolean' ? (body.photo_consent as boolean) : null;
@@ -328,7 +337,7 @@ Deno.serve(async (req: Request) => {
       ip_address: ip !== 'unknown' ? ip : null,
       user_agent: req.headers.get('user-agent'),
       submission_id: validSubmissionId,
-      ...(certificate.fields ?? {}),
+      ...(contact.columns ?? {}),
     })
     .select('id')
     .single();
@@ -428,7 +437,12 @@ Deno.serve(async (req: Request) => {
         territory_postcode: territoryPostcode.toUpperCase(),
         booking_linked: bookingId !== null,
         attendee_enrolled: enrolled,
-        certificate_opt_in: certificate.fields !== null,
+        certificate_opt_in: contact.columns !== null && 'certificate_opt_in' in contact.columns,
+        form_version: contact.formVersion,
+        trainer_contact_opt_in:
+          contact.columns !== null &&
+          'trainer_contact_opt_in' in contact.columns &&
+          contact.columns.trainer_contact_opt_in,
       },
       description: `Medical declaration submitted for instructor ${instructorNumber}`,
     })

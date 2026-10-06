@@ -104,6 +104,9 @@ export function useOwnCustomers() {
  * NEVER selects declaration_data. Used only to build the "All contacts" union
  * view in CustomersList. Contacts are identified by attendee_email; those with
  * no email are always included as distinct rows.
+ *
+ * form_version + trainer_contact_opt_in (migration 067, B7): the "future
+ * classes" choice from the new medical form. Shown for form_version 2 only.
  */
 export interface MedicalContact {
   id: string;
@@ -112,6 +115,10 @@ export interface MedicalContact {
   attendee_email: string | null;
   email_opt_in: boolean | null;
   photo_consent: boolean | null;
+  /** 1 = old form, 2 = B7 form (migration 067). */
+  form_version: number;
+  /** B7 form only: happy to hear about future classes and be asked for a review. */
+  trainer_contact_opt_in: boolean;
 }
 
 export function useMedicalContacts() {
@@ -120,7 +127,9 @@ export function useMedicalContacts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('da_medical_declarations')
-        .select('id, created_at, attendee_name, attendee_email, email_opt_in, photo_consent')
+        .select(
+          'id, created_at, attendee_name, attendee_email, email_opt_in, photo_consent, form_version, trainer_contact_opt_in',
+        )
         .order('created_at', { ascending: false });
 
       if (error) {
