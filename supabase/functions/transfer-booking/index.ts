@@ -30,13 +30,33 @@
 // B6 basket (migration 068): a ticket line moved out of a multi-line order
 // leaves that order (order_id cleared) and stands as its own booking on the
 // new course, so its emails describe that course alone. The rest of the order
-// stays where it was.
+// stays where it was. Moving the order's lead line hands the lead (and the
+// order's reminders) to the next line still on the old course. A line of an
+// order still awaiting payment cannot be moved (the webhook confirms the
+// order by its lead).
+//
+// Reminders follow the booking (October batch), notify or not: its pending
+// reminders and follow-ups are re-anchored to the new course's times
+// (_shared/reanchor.ts), and any pre-class reminder it is missing for the new
+// course is queued: day-before for every booking, plus the "class is soon"
+// reminder for an online booking (one with a booking confirmation). Nothing
+// is left queued against the old course unless another line of the same
+// order is still on it.
 //
 // NOTE: do NOT deploy — the verifier/orchestrator deploys all Edge Functions.
 
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { lineNumber } from '../_shared/basket.ts';
+import {
+  POST_COURSE_KEYS,
+  PRE_CLASS_KEYS,
+  applyReanchor,
+  missingPreClassReminders,
+  planReanchor,
+  type ClassTimes,
+} from '../_shared/reanchor.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -170,7 +190,7 @@ Deno.serve(async (req: Request) => {
   const bookingResult = await admin
     .from('da_bookings')
     .select(
-      'id, franchisee_id, booking_reference, booking_status, course_instance_id, customer_id, ticket_type_id, quantity, notes, order_id',
+      'id, franchisee_id, booking_reference, booking_status, course_instance_id, customer_id, ticket_type_id, quantity, notes, order_id, payment_status',
     )
     .eq('id', bookingId)
     .maybeSingle();
@@ -194,6 +214,7 @@ Deno.serve(async (req: Request) => {
     quantity: number;
     notes: string | null;
     order_id: string | null;
+    payment_status: string;
   };
 
   // ---------------------------------------------------------------------------
@@ -212,13 +233,19 @@ Deno.serve(async (req: Request) => {
   if (targetInstanceId === booking.course_instance_id) {
     return jsonResponse({ error: 'The booking is already on this course.' }, 409);
   }
+  if (booking.order_id && booking.payment_status === 'pending') {
+    return jsonResponse(
+      { error: 'This order is still waiting for payment. Move it once it has been paid.' },
+      409,
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Load source + target course instances
   // ---------------------------------------------------------------------------
   const sourceResult = await admin
     .from('da_course_instances')
-    .select('id, event_date')
+    .select('id, event_date, start_time, end_time')
     .eq('id', booking.course_instance_id)
     .maybeSingle();
 
@@ -226,11 +253,16 @@ Deno.serve(async (req: Request) => {
     console.error('source instance lookup failed', sourceResult.error);
     return jsonResponse({ error: 'Failed to load the booking’s current course' }, 500);
   }
-  const source = sourceResult.data as { id: string; event_date: string };
+  const source = sourceResult.data as {
+    id: string;
+    event_date: string;
+    start_time: string | null;
+    end_time: string | null;
+  };
 
   const targetResult = await admin
     .from('da_course_instances')
-    .select('id, franchisee_id, event_date, status, spots_remaining')
+    .select('id, franchisee_id, event_date, start_time, end_time, status, spots_remaining')
     .eq('id', targetInstanceId)
     .maybeSingle();
 
@@ -245,6 +277,8 @@ Deno.serve(async (req: Request) => {
     id: string;
     franchisee_id: string;
     event_date: string;
+    start_time: string | null;
+    end_time: string | null;
     status: string;
     spots_remaining: number;
   };
@@ -383,6 +417,31 @@ Deno.serve(async (req: Request) => {
     });
 
   // ---------------------------------------------------------------------------
+  // Reminders follow the booking to the new course (whether or not the
+  // customer is notified). Best-effort: the move has already happened, so a
+  // failure is logged loudly rather than undoing it.
+  // ---------------------------------------------------------------------------
+  try {
+    await moveReminders(admin, booking, source, target, now);
+  } catch (err) {
+    console.error('transfer: reminders not moved', err);
+    await admin
+      .from('da_activities')
+      .insert({
+        actor_type: 'system',
+        actor_id: null,
+        entity_type: 'booking',
+        entity_id: bookingId,
+        action: 'email_reanchor_failed',
+        metadata: { error: String(err).slice(0, 300), to_course_instance_id: targetInstanceId },
+        description: `Reminders for booking ${booking.booking_reference} were not moved to the new course`,
+      })
+      .then((r: { error: unknown }) => {
+        if (r.error) console.error('reanchor activity insert failed', r.error);
+      });
+  }
+
+  // ---------------------------------------------------------------------------
   // Queue a fresh booking confirmation for the new course (optional).
   // Same row shape as stripe-webhook's da_email_sequences inserts.
   // ---------------------------------------------------------------------------
@@ -422,4 +481,134 @@ async function releaseSeats(admin: any, instanceId: string, seats: number): Prom
     .update({ spots_remaining: restored })
     .eq('id', instanceId);
   if (upd.error) console.error('releaseSeats: failed to restore spots', upd.error);
+}
+
+/** Whether a booking had the online email journey (a booking confirmation). */
+async function hadOnlineJourney(admin: any, bookingId: string): Promise<boolean> {
+  const r = await admin
+    .from('da_email_sequences')
+    .select('id')
+    .eq('booking_id', bookingId)
+    .eq('template_key', 'booking_confirmation')
+    .limit(1);
+  if (r.error) throw new Error(`journey lookup failed: ${r.error.message}`);
+  return (r.data ?? []).length > 0;
+}
+
+/**
+ * Re-anchor a booking's pending class emails to `cls` and queue any pre-class
+ * reminder it is missing there.
+ */
+async function anchorBookingTo(
+  admin: any,
+  bookingId: string,
+  customerId: string,
+  cls: ClassTimes,
+  online: boolean,
+  now: Date,
+): Promise<void> {
+  const queued = await admin
+    .from('da_email_sequences')
+    .select('id, template_key, scheduled_for')
+    .eq('booking_id', bookingId)
+    .eq('status', 'pending')
+    .in('template_key', [...PRE_CLASS_KEYS, ...POST_COURSE_KEYS]);
+  if (queued.error) throw new Error(`queue lookup failed: ${queued.error.message}`);
+  const rows = (queued.data ?? []) as Array<{
+    id: string;
+    template_key: string;
+    scheduled_for: string;
+  }>;
+  const applied = await applyReanchor(admin, planReanchor(rows, cls, now));
+  if (applied.error) throw new Error(applied.error);
+  const add = missingPreClassReminders(
+    rows.map((r) => r.template_key),
+    online ? PRE_CLASS_KEYS : ['day_before_reminder'],
+    cls,
+    now,
+  );
+  if (add.length > 0) {
+    const ins = await admin.from('da_email_sequences').insert(
+      add.map((a) => ({
+        customer_id: customerId,
+        booking_id: bookingId,
+        template_key: a.template_key,
+        sequence_day: 0,
+        scheduled_for: a.scheduled_for,
+        status: 'pending',
+      })),
+    );
+    if (ins.error) throw new Error(`reminder queue failed: ${ins.error.message}`);
+  }
+}
+
+/**
+ * The moved booking's reminders now follow the target course. For a line of a
+ * basket order the order's emails live on its lead line, so:
+ *   - a moved non-lead line has none of its own: it gets the lead's kind of
+ *     reminders for the new course, and the lead keeps the order's reminders
+ *     for the old course (send-emails stops them if every line there is
+ *     cancelled);
+ *   - a moved lead takes its own reminders to the new course, and the next
+ *     line still on the old course becomes the order's lead, with the order's
+ *     items and its own pre-class reminders for the old course.
+ */
+async function moveReminders(
+  admin: any,
+  booking: { id: string; customer_id: string; order_id: string | null; booking_reference: string },
+  source: { id: string; event_date: string; start_time: string | null; end_time: string | null },
+  target: { event_date: string; start_time: string | null; end_time: string | null },
+  now: Date,
+): Promise<void> {
+  const targetTimes: ClassTimes = {
+    eventDate: target.event_date,
+    startTime: target.start_time,
+    endTime: target.end_time,
+  };
+  const leadId = booking.order_id ?? booking.id;
+  const online = await hadOnlineJourney(admin, leadId);
+  await anchorBookingTo(admin, booking.id, booking.customer_id, targetTimes, online, now);
+
+  if (booking.order_id !== booking.id) return; // single booking or non-lead line
+
+  // The lead has left: hand the order to the next line still on the old course.
+  const rest = await admin
+    .from('da_bookings')
+    .select('id, booking_reference, customer_id, booking_status, course_instance_id')
+    .eq('order_id', booking.id)
+    .neq('id', booking.id);
+  if (rest.error) throw new Error(`order lines lookup failed: ${rest.error.message}`);
+  const lines = ((rest.data ?? []) as any[])
+    .filter((l) => l.course_instance_id === source.id)
+    .sort(
+      (a, b) =>
+        lineNumber(a.booking_reference, booking.booking_reference) -
+        lineNumber(b.booking_reference, booking.booking_reference),
+    );
+  if (lines.length === 0) return;
+  const newLead = lines.find((l) => l.booking_status !== 'cancelled') ?? lines[0];
+
+  const lead = await admin.from('da_bookings').select('order_items').eq('id', booking.id).single();
+  if (lead.error) throw new Error(`order items lookup failed: ${lead.error.message}`);
+  const regroup = await admin
+    .from('da_bookings')
+    .update({ order_id: newLead.id })
+    .eq('order_id', booking.id)
+    .neq('id', booking.id);
+  if (regroup.error) throw new Error(`order regroup failed: ${regroup.error.message}`);
+  if ((lead.data as any)?.order_items) {
+    await admin
+      .from('da_bookings')
+      .update({ order_items: (lead.data as any).order_items })
+      .eq('id', newLead.id);
+    await admin.from('da_bookings').update({ order_items: null }).eq('id', booking.id);
+  }
+  await anchorBookingTo(
+    admin,
+    newLead.id,
+    newLead.customer_id,
+    { eventDate: source.event_date, startTime: source.start_time, endTime: source.end_time },
+    online,
+    now,
+  );
 }
