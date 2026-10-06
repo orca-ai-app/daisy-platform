@@ -1095,7 +1095,13 @@ function CourseBookingsCard({ courseInstanceId }: { courseInstanceId: string }) 
                 {b.quantity > 1 ? ` ×${b.quantity}` : ''}
               </Badge>
             ) : null}
-            {b.booking_status === 'cancelled' ? (
+            {b.booking_status === 'cancelled' && b.payment_status === 'failed' ? (
+              // An online checkout that was never paid: the place was held,
+              // then released. Not a cancellation by the customer (Julie, 6 Oct).
+              <Badge variant="warning" className="text-[11px]">
+                didn&apos;t finish paying
+              </Badge>
+            ) : b.booking_status === 'cancelled' ? (
               <Badge variant="danger" className="text-[11px]">
                 cancelled
               </Badge>

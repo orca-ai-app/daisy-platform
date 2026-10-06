@@ -53,7 +53,10 @@ function greetingFor(name: string | null | undefined): string {
   return `Good ${part}, ${first}`;
 }
 
-function bookingStatusLabel(status: string): string {
+function bookingStatusLabel(status: string, paymentStatus?: string): string {
+  // An unpaid online checkout is cancelled automatically when it expires; the
+  // customer didn't cancel, they didn't finish paying (Julie, 6 Oct).
+  if (status === 'cancelled' && paymentStatus === 'failed') return "Didn't finish paying";
   switch (status) {
     case 'confirmed':
       return 'Confirmed';
@@ -282,7 +285,7 @@ export default function Dashboard() {
                       {formatPence(row.total_price_pence)}
                     </span>
                     <span className="text-daisy-muted text-xs tracking-wide uppercase">
-                      {bookingStatusLabel(row.booking_status)}
+                      {bookingStatusLabel(row.booking_status, row.payment_status)}
                     </span>
                   </li>
                 ))}

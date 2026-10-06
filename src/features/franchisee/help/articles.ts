@@ -315,6 +315,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        heading: "Didn't finish paying",
+        body: [
+          "If a customer starts booking online but doesn't finish paying, their place is held for about half an hour and then released so someone else can book it. On the class page under Who's booked, and on your dashboard, they show as \"didn't finish paying\". In the Bookings list the payment shows as failed and the booking as cancelled. The customer didn't cancel, and nothing was charged.",
+          "About an hour later they're sent one email saying their place is still available, with a button that takes them back to the booking with their details already filled in. You don't need to chase them. If they come back and pay, the booking appears as normal.",
+        ],
+      },
+      {
         heading: 'Orders with more than one ticket',
         body: [
           'On your booking page a customer can choose several ticket types for a class in one go, for example 1 Double and 1 Single, and add items from your shop to the same order. They pay once, in one Stripe payment.',
