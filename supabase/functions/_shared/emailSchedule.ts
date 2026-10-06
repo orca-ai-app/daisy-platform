@@ -8,7 +8,8 @@
 //
 // Schedule (docs/M3-email-journey.md — Jenni's Kartra journey):
 //   booking time:  new_booking_notification (→ franchisee), booking_confirmation
-//   start − 1h:    medical_reminder (only when still in the future)
+//   start − 2h:    medical_reminder (only when still in the future; was 1h
+//                  until Oct 2026, TRI-0048)
 //   end + 7h:      post_course_welcome
 //   end + N days:  recap_anaphylaxis 28 · recap_choking 70 · recap_head_injuries 112
 //                  recap_cpr 154 · recap_febrile_convulsions 196 · recap_burns 238
@@ -55,6 +56,9 @@ export function londonToUtc(dateStr: string, timeStr: string | null): Date {
   const offset = londonOffsetMinutes(guess);
   return new Date(guess.getTime() - offset * 60_000);
 }
+
+/** Hours before the class starts that the "your class is soon" email goes. */
+export const MEDICAL_REMINDER_HOURS_BEFORE = 2;
 
 function plusHours(d: Date, h: number): Date {
   return new Date(d.getTime() + h * 3_600_000);
@@ -111,8 +115,10 @@ export function buildJourneyRows(input: JourneyInput): SequenceRow[] {
     push('new_booking_notification', now, 0);
     push('booking_confirmation', now, 0);
 
-    // Pre-class reminder — only if that moment is still ahead of us.
-    const reminderAt = plusHours(startUtc, -1);
+    // Pre-class reminder two hours before (TRI-0048, Oct 2026: one hour was
+    // too late for people already setting off). Only if that moment is still
+    // ahead of us; migration 069 moved the rows queued under the old rule.
+    const reminderAt = plusHours(startUtc, -MEDICAL_REMINDER_HOURS_BEFORE);
     if (reminderAt.getTime() > now.getTime()) {
       push('medical_reminder', reminderAt, 0);
     }
