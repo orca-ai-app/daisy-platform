@@ -461,7 +461,7 @@ Deno.serve(async (req: Request) => {
   }
   const limit =
     typeof body.limit === 'number' && Number.isInteger(body.limit) && body.limit > 0
-      ? Math.min(body.limit, 100)
+      ? Math.min(body.limit, 500)
       : 50;
 
   // --- Resolve radius from settings (fallback 15) ---------------------------
@@ -707,7 +707,8 @@ Deno.serve(async (req: Request) => {
       .eq('template.is_online', false)
       .gte('event_date', londonToday())
       .order('event_date', { ascending: true })
-      .limit(30);
+      // The owner's whole schedule, not just the next 30 (TRI-0053).
+      .limit(500);
     if (own.error) {
       console.error('territory-owner classes lookup failed', own.error);
     } else {
