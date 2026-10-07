@@ -330,6 +330,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Shop items bought in the order appear under Merchandise as online sales, against that class.',
           'The customer gets one confirmation listing everything they bought, and you get one "New booking" email listing it all too. Reminders and follow-ups go once for the whole order, not once per ticket.',
           'You can cancel one row on its own; the customer keeps getting reminders while any row of the order still stands. If you move one row to another class, it leaves the order and becomes a booking of its own on the new class, and the rest of the order stays where it was. The customer gets the day-before and two-hours-before reminders for the new class, whether or not you tick the box to email them, and keeps the reminders for the old class while any row of the order is still on it. An order still waiting for payment cannot be moved until it is paid.',
+          "A booking doesn't collect a name and email for each person on it: the booker's details are the ones on the booking. Each attendee gives their own name and email on the medical form at the class, and they show on the class page under Medical declarations, ready for certificates and anything from that class.",
         ],
       },
       {
