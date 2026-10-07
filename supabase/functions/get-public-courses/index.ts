@@ -413,7 +413,9 @@ Deno.serve(async (req: Request) => {
       .gte('event_date', londonToday())
       .order('event_date', { ascending: true })
       .order('start_time', { ascending: true })
-      .limit(50);
+      // A trainer's whole published schedule. The old cap of 50 cut Nicola's
+      // 125 classes off at 9 November (TRI-0053); 500 is a safety ceiling only.
+      .limit(500);
     if (schedule.error) {
       console.error('franchisee schedule lookup failed', schedule.error);
       return jsonResponse({ error: 'Could not load classes right now' }, 500);
