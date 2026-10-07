@@ -182,7 +182,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'On a course page, scroll to the ticket types section. Click "Add ticket type" to create one. You can also edit or delete existing ticket types using the pencil and bin icons on each row.',
           'Use "Max available" to cap how many of a ticket type can sell, for example 1 of a discounted Group ticket. Leave it blank for no limit. You can set it when creating the class or from the course page afterwards.',
           '"Spaces" means the number of places left on the course based on capacity minus the seats consumed by confirmed bookings. When spaces reach zero, the course shows as full.',
-          'A customer books one ticket type per checkout. If people often want a mix, for example two adults and a child, create a combined ticket at the blended price, "Group of 3", and it books all the places in one go.',
+          "Customers can choose a mix of ticket types in one checkout, for example a Couple and a Single, so you don't need combined tickets for the usual mixes.",
+          'You can add a ticket type to a class at any time, including after it is published and after people have booked: open the class (not Edit) and use "Add ticket type" in the Ticket types section. It shows on your booking page straight away.',
         ],
       },
       {
@@ -778,7 +779,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         body: [
           'Most of us built our own way of doing things on BookWhen. Here is where each habit goes on the new system.',
           'The hidden section customers saw after booking (Zoom links, joining details): use the Joining details box on the class. It goes out on the booking confirmation and both reminders, only to people who have booked, so a Zoom link is safe there. Never put a Zoom link in the class description, that shows before anyone pays.',
-          'Booking several ticket types in one go: a customer books one ticket type per checkout here, so create a combined ticket at the blended price ("Group of 3") for the common mixes.',
+          'Booking several ticket types in one go: customers can choose a mix of ticket types and add your shop items in one checkout.',
           'The monthly income sheet: the Merchandise page and your bookings replace it, everything you sell is recorded as it happens.',
           'Emailing customers before and after class yourself: the system already sends the confirmation, a day-before reminder, a reminder two hours before and a post-class email with recap links automatically, so check "Emails your customers get" before writing your own.',
         ],
