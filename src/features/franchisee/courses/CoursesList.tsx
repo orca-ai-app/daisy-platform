@@ -18,6 +18,7 @@
  */
 
 import { toast } from 'sonner';
+import { formatInTimeZone } from 'date-fns-tz';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -572,8 +573,20 @@ export default function CoursesList() {
   );
 
   // Read current values (unknown values fall back to defaults).
-  const rawStatus = searchParams.get('status') ?? FILTER_DEFAULTS.status;
-  const status = (STATUS_VALUES.has(rawStatus) ? rawStatus : FILTER_DEFAULTS.status) as
+  // Date first: with no status chosen, a date range that only covers past days
+  // shows every status. Past classes are Completed, so the Scheduled default
+  // would always be empty there. Worked out here rather than only when the
+  // dropdown changes, so a remembered "Past only" works too (TRI-0058).
+  const rawDateForStatus = searchParams.get('date') ?? FILTER_DEFAULTS.date;
+  const rawToForStatus = searchParams.get('to') ?? '';
+  const pastOnlyRange =
+    isBackwardDatePreset(rawDateForStatus) ||
+    (rawDateForStatus === 'custom' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(rawToForStatus) &&
+      rawToForStatus < formatInTimeZone(new Date(), 'Europe/London', 'yyyy-MM-dd'));
+  const statusDefault = pastOnlyRange ? 'all' : FILTER_DEFAULTS.status;
+  const rawStatus = searchParams.get('status') ?? statusDefault;
+  const status = (STATUS_VALUES.has(rawStatus) ? rawStatus : statusDefault) as
     | CourseInstanceStatus
     | 'all';
   const rawVisibility = searchParams.get('visibility') ?? FILTER_DEFAULTS.visibility;
@@ -843,8 +856,18 @@ export default function CoursesList() {
                   </label>
                   <Input
                     type="date"
-                    value={customFrom}
-                    onChange={(e) => setFilter('from', e.target.value)}
+                    // Uncontrolled: a half-typed date reads as '' and, saved
+                    // to the URL on every keystroke, wiped what was typed
+                    // (TRI-0058). Only a complete date is saved; clearing the
+                    // box is saved when it loses focus.
+                    defaultValue={customFrom}
+                    onChange={(e) => {
+                      if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value))
+                        setFilter('from', e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '') setFilter('from', '');
+                    }}
                     className="h-10 w-[150px]"
                     aria-label="From date"
                   />
@@ -855,8 +878,18 @@ export default function CoursesList() {
                   </label>
                   <Input
                     type="date"
-                    value={customTo}
-                    onChange={(e) => setFilter('to', e.target.value)}
+                    // Uncontrolled: a half-typed date reads as '' and, saved
+                    // to the URL on every keystroke, wiped what was typed
+                    // (TRI-0058). Only a complete date is saved; clearing the
+                    // box is saved when it loses focus.
+                    defaultValue={customTo}
+                    onChange={(e) => {
+                      if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value))
+                        setFilter('to', e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '') setFilter('to', '');
+                    }}
                     className="h-10 w-[150px]"
                     aria-label="To date"
                   />
