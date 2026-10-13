@@ -689,7 +689,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Editing or deactivating a code',
         body: [
           'Click Edit at the end of any row in the Discounts list. The same dialog opens with the existing values filled in, and you can change anything, including the dates and the maximum number of uses.',
-          'There is no delete: a code that has been used stays on record against those bookings.',
+          'There is no delete button. To get rid of a code, untick "Active" and save, as below.',
           'To stop a code working without deleting it, untick "Active" and save. Inactive codes are stored but cannot be redeemed at checkout.',
         ],
       },
