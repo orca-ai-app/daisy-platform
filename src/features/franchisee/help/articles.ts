@@ -162,7 +162,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Editing a course',
         body: [
-          'Open the course from the Courses list and click "Edit course" at the top right. You can change the date, time, venue, capacity, and visibility. You cannot edit a cancelled course.',
+          'Open the course from the Courses list and click "Edit course" at the top right. You can change the date, time, venue and capacity. You cannot edit a cancelled course.',
+          'To make a class private, open it and click "Unpublish" at the top of the class page. It disappears from the class finder on the website but stays on your Courses list (marked Hidden), and its booking link still works, so you can send it to the people it\'s for. Click "Publish" to put it back.',
           'The class description is what customers read on the booking page, so it is the place for venue detail: how to find the room, parking, baby change, what to bring. Leave it blank and the standard course description shows instead.',
           'When you change the date, time or address of a class people have booked, saving asks whether to tell them. Choose "Save and email" to send each booked customer the new details, or "Save without emailing" when the change does not affect them. Changing only the name or description never emails anyone.',
           'Either way, the reminders and follow-up emails people have not had yet move with the class, so they arrive at the right time for the new date and time. Anything already sent stays sent. If the new time is very soon, a reminder that is now overdue goes straight away, and one for a class that has already started is dropped.',
