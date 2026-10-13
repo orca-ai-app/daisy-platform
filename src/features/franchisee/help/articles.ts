@@ -688,7 +688,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Editing or deactivating a code',
         body: [
-          'Click the edit icon on any row in the Discounts list. The same dialog opens with the existing values pre-filled.',
+          'Click Edit at the end of any row in the Discounts list. The same dialog opens with the existing values filled in, and you can change anything, including the dates and the maximum number of uses.',
+          'There is no delete: a code that has been used stays on record against those bookings.',
           'To stop a code working without deleting it, untick "Active" and save. Inactive codes are stored but cannot be redeemed at checkout.',
         ],
       },
@@ -696,7 +697,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What customers see',
         body: [
           'On the booking page, customers enter their discount code in the code field before completing payment. The price updates in real time to show the reduced amount. Expired, inactive, or used-up codes are rejected with a clear message.',
-          'A code comes off the class tickets only, never shop items. When someone books several ticket types in one order, the code applies to all their tickets together and counts as one use.',
+          "A code comes off class bookings only. It can't be used on shop items such as e-learning or books. When someone books several ticket types in one order, the code applies to all their tickets together and counts as one use.",
         ],
       },
     ],
