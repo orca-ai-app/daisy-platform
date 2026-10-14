@@ -515,7 +515,10 @@ Deno.serve(async (req: Request) => {
           franchisee_name: b.franchisee?.name ?? 'Daisy First Aid',
           franchisee_email: b.franchisee?.email ?? '',
           booking_reference: b.booking_reference,
-          unsubscribe_url: await buildUnsubscribeUrl(row.customer_id),
+          // Never on the trainer's own alert: it is the CUSTOMER's signed link,
+          // so a trainer clicking Unsubscribe (or their mail app's button,
+          // via List-Unsubscribe) would unsubscribe their customer.
+          unsubscribe_url: toFranchisee ? '' : await buildUnsubscribeUrl(row.customer_id),
           // Franchisee alert only: what was paid, for what, with any code —
           // so the alert is actionable without opening the portal (Feola,
           // Hannah, launch week).

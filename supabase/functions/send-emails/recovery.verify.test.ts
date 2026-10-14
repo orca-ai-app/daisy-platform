@@ -92,3 +92,22 @@ describe('checkout_recovery email', () => {
     expect(out.html).not.toContain('DA-2026-00031-900');
   });
 });
+
+describe('trainer new-booking alert footer', () => {
+  it('has no unsubscribe link and says why the trainer gets it', () => {
+    const out = renderTemplate('new_booking_notification', {
+      first_name: 'Amber',
+      customer_name: 'Amber Jones',
+      template_name: 'Baby & Child First Aid',
+      event_date: 'Tuesday 20 October 2026',
+      start_time: '10:00',
+      venue: 'Guildford Hall',
+      franchisee_name: 'Feola',
+      franchisee_email: 'feola@daisyfirstaid.com',
+      booking_reference: 'DA-2026-00031-900',
+      unsubscribe_url: '',
+    })!;
+    expect(out.html).not.toContain('Unsubscribe');
+    expect(out.html).toContain('a customer booked one of your Daisy First Aid classes');
+  });
+});

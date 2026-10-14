@@ -554,7 +554,9 @@ export function renderTemplate(
       ctx,
       key === 'checkout_recovery'
         ? "You're receiving this because you started a booking with Daisy First Aid."
-        : undefined,
+        : key === 'new_booking_notification'
+          ? "You're receiving this because a customer booked one of your Daisy First Aid classes."
+          : undefined,
       messageHtml,
       signoff,
     ),
