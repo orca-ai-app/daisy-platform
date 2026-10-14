@@ -134,7 +134,12 @@ async function sendViaPostmark(
         TrackOpens: true,
         Metadata: metadata,
         Headers: unsubscribeUrl
-          ? [{ Name: 'List-Unsubscribe', Value: `<${unsubscribeUrl}>` }]
+          ? [
+              { Name: 'List-Unsubscribe', Value: `<${unsubscribeUrl}>` },
+              // RFC 8058 one-click: mail apps POST to the link, which acts at
+              // once; a plain visit only shows a button (unsubscribe fn).
+              { Name: 'List-Unsubscribe-Post', Value: 'List-Unsubscribe=One-Click' },
+            ]
           : undefined,
         // Marketing (journey) mail goes on the 'broadcasts' stream per Postmark
         // policy; transactional stays on 'outbound'.

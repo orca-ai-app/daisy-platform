@@ -49,6 +49,14 @@ function page(title: string, body: string, status = 200): Response {
   );
 }
 
+function escapeAttr(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 Deno.serve(async (req: Request) => {
@@ -70,6 +78,32 @@ Deno.serve(async (req: Request) => {
       403,
     );
   }
+
+  // Opening the link (GET) never changes anything: it shows a button, and only
+  // pressing it (POST) acts. Mail security scanners open every link in an
+  // email, and four customers were unsubscribed seconds after an email
+  // arrived (Oct 2026). RFC 8058 one-click from a mail app is also a POST
+  // (List-Unsubscribe-Post header), so that still works in one step.
+  if (req.method === 'GET') {
+    const isResub = action === 'resubscribe';
+    return page(
+      isResub
+        ? 'Resubscribe to Daisy First Aid emails?'
+        : 'Unsubscribe from Daisy First Aid emails?',
+      `<p style="font-size:15px;line-height:1.6">${
+        isResub
+          ? 'Press the button to start receiving our first aid tips and refresher emails again.'
+          : 'Press the button to stop receiving first aid tips and offers from Daisy First Aid. Booking confirmations for any classes you book will still reach you.'
+      }</p>
+       <form method="post" action="${escapeAttr(`${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/unsubscribe${url.search}&confirmed=1`)}" style="margin:20px 0 4px">
+         <button type="submit" style="background:${DAISY_BLUE};color:#ffffff;border:0;border-radius:999px;padding:12px 24px;font-size:15px;font-weight:600;cursor:pointer">${
+           isResub ? 'Resubscribe' : 'Unsubscribe'
+         }</button>
+       </form>`,
+    );
+  }
+  const via = url.searchParams.has('confirmed') ? 'button' : 'post';
+  const userAgent = (req.headers.get('user-agent') ?? '').slice(0, 200);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -135,7 +169,7 @@ Deno.serve(async (req: Request) => {
       entity_type: kind === 'c' ? 'customer' : 'email_list_member',
       entity_id: id,
       action: 'marketing_resubscribed',
-      metadata: {},
+      metadata: { via, user_agent: userAgent },
       description: 'Recipient resubscribed to marketing emails',
     });
     return page(
@@ -192,7 +226,7 @@ Deno.serve(async (req: Request) => {
     entity_type: kind === 'c' ? 'customer' : 'email_list_member',
     entity_id: id,
     action: 'marketing_unsubscribed',
-    metadata: {},
+    metadata: { via, user_agent: userAgent },
     description: 'Recipient unsubscribed from marketing emails',
   });
 

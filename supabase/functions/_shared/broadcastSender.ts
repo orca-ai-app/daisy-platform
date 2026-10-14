@@ -292,7 +292,12 @@ export async function processBroadcast(
         Metadata: { bcast_recipient_id: r.id },
         Headers:
           !operational && unsubscribeUrl
-            ? [{ Name: 'List-Unsubscribe', Value: `<${unsubscribeUrl}>` }]
+            ? [
+                { Name: 'List-Unsubscribe', Value: `<${unsubscribeUrl}>` },
+                // RFC 8058 one-click: mail apps POST to the link, which acts at
+                // once; a plain visit only shows a button (unsubscribe fn).
+                { Name: 'List-Unsubscribe-Post', Value: 'List-Unsubscribe=One-Click' },
+              ]
             : undefined,
         MessageStream: stream,
       });
