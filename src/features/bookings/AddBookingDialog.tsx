@@ -63,6 +63,11 @@ function formatDate(d: string | null): string {
  * after the class has run (the nightly job marks past classes completed,
  * migration 063). RLS scopes own vs all.
  */
+/** True for a class whose date has passed (Europe/London), i.e. "Already run". */
+export function isRunClass(eventDate: string, todayLondon: string): boolean {
+  return eventDate < todayLondon;
+}
+
 function useBookableInstances(enabled: boolean) {
   return useQuery<BookableInstance[]>({
     enabled,
@@ -188,6 +193,10 @@ export default function AddBookingDialog({
   onCreated: (bookingId: string) => void;
 }) {
   const [instanceId, setInstanceId] = useState('');
+  // Upcoming classes, or ones that ran in the last 30 days. Kept apart so a
+  // long schedule doesn't bury last weekend's class at the very bottom of the
+  // list (Nicola, TRI-0065: 140+ upcoming classes above it).
+  const [showRun, setShowRun] = useState(false);
   const [ticketTypeId, setTicketTypeId] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [firstName, setFirstName] = useState('');
@@ -198,6 +207,7 @@ export default function AddBookingDialog({
   const [notes, setNotes] = useState('');
 
   const instances = useBookableInstances(open);
+  const todayLondon = formatInTimeZone(new Date(), 'Europe/London', 'yyyy-MM-dd');
   const ticketTypes = useInstanceTicketTypes(instanceId);
   const mutation = useCreateBooking();
 
@@ -208,6 +218,7 @@ export default function AddBookingDialog({
 
   function reset() {
     setInstanceId('');
+    setShowRun(false);
     setTicketTypeId('');
     setQuantity(1);
     setFirstName('');
@@ -283,6 +294,26 @@ export default function AddBookingDialog({
             <Label htmlFor="ab-course" className={labelCls}>
               Course
             </Label>
+            <div className="flex gap-2" role="group" aria-label="Which classes">
+              {[
+                { run: false, label: 'Upcoming' },
+                { run: true, label: 'Already run (last 30 days)' },
+              ].map((o) => (
+                <Button
+                  key={o.label}
+                  type="button"
+                  size="sm"
+                  variant={showRun === o.run ? 'default' : 'outline'}
+                  aria-pressed={showRun === o.run}
+                  onClick={() => {
+                    setShowRun(o.run);
+                    setInstanceId('');
+                  }}
+                >
+                  {o.label}
+                </Button>
+              ))}
+            </div>
             <Select value={instanceId} onValueChange={setInstanceId}>
               <SelectTrigger id="ab-course">
                 <SelectValue
@@ -290,12 +321,14 @@ export default function AddBookingDialog({
                 />
               </SelectTrigger>
               <SelectContent>
-                {(instances.data ?? []).map((i) => (
-                  <SelectItem key={i.id} value={i.id}>
-                    {i.display_name ?? i.template_name ?? 'Course'} · {formatDate(i.event_date)}
-                    {i.venue_postcode ? ` · ${i.venue_postcode}` : ''} ({i.spots_remaining} left)
-                  </SelectItem>
-                ))}
+                {(instances.data ?? [])
+                  .filter((i) => isRunClass(i.event_date, todayLondon) === showRun)
+                  .map((i) => (
+                    <SelectItem key={i.id} value={i.id}>
+                      {i.display_name ?? i.template_name ?? 'Course'} · {formatDate(i.event_date)}
+                      {i.venue_postcode ? ` · ${i.venue_postcode}` : ''} ({i.spots_remaining} left)
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
             {!instances.isLoading && (instances.data?.length ?? 0) === 0 ? (
