@@ -837,6 +837,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Recording a standalone sale',
         body: [
           'Use the Merchandise page whenever a book is sold on its own, for example cash on the day, a card payment at a class, or a book posted to a customer.',
+          'Orders customers place online from your shop are recorded for you, so do not record them again. You get an email for every online shop order, and it shows on the Sales tab with the buyer\'s name, email and phone. E-learning buyers need setting up on elearnhere within 48 hours. See "Your online shop: books and e-learning".',
         ],
         steps: [
           'Go to Merchandise in the navigation and click "Record sale".',
@@ -874,7 +875,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
     ],
-    related: ['managing-courses', 'bookings', 'getting-help'],
+    related: ['online-shop', 'managing-courses', 'bookings', 'getting-help'],
   },
   {
     slug: 'online-shop',
@@ -903,6 +904,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'copy link',
       'add to your order',
       'buy with a class',
+      'shop order',
+      'new shop order',
+      'who bought',
+      'buyer',
+      'order email',
+      'elearnhere',
+      '48 hours',
     ],
     sections: [
       {
@@ -951,10 +959,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        heading: 'When someone buys from your shop',
+        body: [
+          'You get an email for every online shop order, titled "New shop order", with the item, the quantity, what they paid, and the buyer\'s name, email address and phone number.',
+          "The order also shows in the portal: go to Merchandise, then the Sales tab. Online orders show the buyer's name, email and phone in the Buyer column, with the date of the order, and you can search the list by the buyer's name or email.",
+          'For e-learning, the customer has been told their access details will follow within 48 hours. Please set them up on elearnhere within that time.',
+        ],
+      },
+      {
         heading: 'Sold with a class booking',
         body: [
           'When someone books one of your classes online, the items showing on your booking page are offered under "Add to your order", so they can buy a book or an e-learning course in the same payment as their tickets. Only your own items are offered on your classes.',
-          "The sale appears under Merchandise as an online sale against that class. The customer's single booking confirmation lists the items, with the same wording about e-learning access as a sale on its own, so you still enrol e-learning buyers yourself.",
+          "The sale appears under Merchandise as an online sale against that class. The customer's single booking confirmation lists the items, with the same wording about e-learning access as a sale on its own, so you still enrol e-learning buyers yourself. Your new booking email lists the items too, so there is no separate shop order email for these.",
         ],
       },
       {

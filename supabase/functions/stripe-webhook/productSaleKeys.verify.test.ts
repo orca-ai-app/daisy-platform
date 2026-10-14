@@ -61,13 +61,15 @@ describe('migration 044 template_key CHECK', () => {
 });
 
 describe('the key the webhook queues for a product sale is constraint-safe', () => {
-  it('recordProductSale queues exactly the keys migration 044 allows', () => {
+  it('recordProductSale queues the buyer confirmation and, since migration 071, the trainer alert', () => {
     const start = webhookSrc.indexOf('async function recordProductSale');
     expect(start).toBeGreaterThan(-1);
     const block = webhookSrc.slice(start);
     const queued = [...block.matchAll(/template_key:\s*'([a-z0-9_]+)'/g)].map((m) => m[1]);
-    expect(queued).toEqual(['product_purchase_confirmation']);
-    expect(queued.filter((k) => !keys044.has(k))).toEqual([]);
+    expect(queued).toEqual(['product_purchase_confirmation', 'product_sale_notification']);
+    // product_sale_notification is pinned against migration 071 in
+    // productSaleNotification.verify.test.ts; the buyer's key against 044 here.
+    expect(keys044.has('product_purchase_confirmation')).toBe(true);
   });
 
   it("uses 'card' — an existing da_product_sales payment_method value (migration 038)", () => {

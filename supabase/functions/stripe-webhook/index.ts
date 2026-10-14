@@ -1143,13 +1143,41 @@ async function recordProductSale(admin: any, session: Stripe.Checkout.Session): 
         context: { error: emailRes.error.message, session_id: session.id },
       });
     }
+
+    // The trainer's alert (migration 071). Without it nobody knew a shop order
+    // had landed, and an e-learning buyer, promised access "within 48 hours",
+    // waited until someone happened to look. Same anchor as the buyer's row;
+    // send-emails routes this key to the franchisee. Basket items are not
+    // queued here: their order alert (new_booking_notification) lists them.
+    const alertRes = await admin.from('da_email_sequences').insert({
+      customer_id: customerId,
+      booking_id: null,
+      product_sale_id: saleId,
+      template_key: 'product_sale_notification',
+      sequence_day: 0,
+      scheduled_for: new Date().toISOString(),
+      status: 'pending',
+    });
+    if (alertRes.error) {
+      console.error('stripe-webhook: product sale trainer alert queue failed', alertRes.error);
+      await logSystem(admin, {
+        level: 'error',
+        source: 'stripe-webhook',
+        entityType: 'product_sale',
+        entityId: saleId,
+        message:
+          'product_sale_notification FAILED to queue — the trainer is not told about this shop order',
+        context: { error: alertRes.error.message, session_id: session.id },
+      });
+    }
   } else {
     await logSystem(admin, {
       level: 'warn',
       source: 'stripe-webhook',
       entityType: 'product_sale',
       entityId: saleId,
-      message: 'product sale recorded with no customer — no confirmation email could be queued',
+      message:
+        'product sale recorded with no customer — no confirmation or trainer alert could be queued',
       context: { session_id: session.id },
     });
   }

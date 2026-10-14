@@ -25,6 +25,13 @@ export interface TemplateContext {
   product_name?: string;
   product_quantity?: string;
   /**
+   * product_sale_notification only (migration 071): the buyer's contact
+   * details for the trainer's alert, so they can set the buyer up without
+   * opening the portal. Free text, escaped at render time.
+   */
+  customer_email?: string;
+  customer_phone?: string;
+  /**
    * da_products.kind for the purchased item. Decides whether the buyer is told
    * their access details follow separately (e-learning) or that their
    * instructor will be in touch (physical). Missing = treated as physical.
@@ -237,7 +244,7 @@ function wrap(
     </div>
     <p style="color:#9bb0bd;font-size:11px;text-align:center;margin-top:16px">
       ${reason ?? "You're receiving this because you booked a Daisy First Aid class."}
-      <a href="${ctx.unsubscribe_url}" style="color:#9bb0bd">Unsubscribe</a>.
+      ${ctx.unsubscribe_url ? `<a href="${ctx.unsubscribe_url}" style="color:#9bb0bd">Unsubscribe</a>.` : ''}
     </p>
   </div></body></html>`;
 }
@@ -434,11 +441,71 @@ function renderProductPurchase(ctx: TemplateContext): {
   };
 }
 
+// The trainer's alert for a standalone online shop order (migration 071).
+// Before this, nothing told the trainer a shop order had landed, so e-learning
+// buyers, promised access "within 48 hours", waited until someone happened to
+// look. Goes TO the franchisee, so it carries the buyer's contact details, a
+// plain "Kind regards" sign-off (as new_booking_notification) and no
+// unsubscribe link: the buyer's link would unsubscribe the buyer, and this is
+// a transactional business alert the trainer must not be able to turn off.
+// Basket items bought with a class are covered by new_booking_notification.
+function renderProductSaleNotification(ctx: TemplateContext): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const productName = ctx.product_name || 'shop item';
+  const customerName = ctx.customer_name || 'A customer';
+  const email = ctx.customer_email ?? '';
+  const phone = ctx.customer_phone ?? '';
+  const quantity = ctx.product_quantity || '1';
+  const amount = ctx.amount_paid ?? '';
+  const isElearning = ctx.product_kind === 'elearning';
+  const subject = `New shop order: ${productName} (${customerName})`;
+
+  const elearningLine =
+    'This customer has been told their e-learning access details will follow within 48 hours. Please set them up on elearnhere.';
+
+  const bodyHtml = `<p>A new order has come in from your online shop.</p>
+      <p><strong>Product:</strong> ${escapeHtml(productName)}<br/>
+      <strong>Quantity:</strong> ${escapeHtml(quantity)}<br/>
+      <strong>Amount paid:</strong> ${escapeHtml(amount)}</p>
+      <p><strong>Customer:</strong> ${escapeHtml(customerName)}<br/>
+      <strong>Email:</strong> ${email ? `<a href="mailto:${escapeHtml(email)}" style="color:${DAISY_BLUE}">${escapeHtml(email)}</a>` : 'not given'}<br/>
+      <strong>Phone:</strong> ${phone ? escapeHtml(phone) : 'not given'}</p>
+      ${
+        isElearning
+          ? `<p style="background:#edf5fa;border-radius:10px;padding:14px 16px"><strong>${elearningLine}</strong></p>`
+          : '<p>Please get in touch with the customer about getting this to them.</p>'
+      }
+      <p style="font-size:13px;color:#5a7a8f">You can also find this order in the portal under Merchandise, on the Sales tab.</p>`;
+
+  const text = `A new order has come in from your online shop.\n\nProduct: ${productName}\nQuantity: ${quantity}\nAmount paid: ${amount}\n\nCustomer: ${customerName}\nEmail: ${email || 'not given'}\nPhone: ${phone || 'not given'}\n\n${
+    isElearning
+      ? elearningLine
+      : 'Please get in touch with the customer about getting this to them.'
+  }\n\nYou can also find this order in the portal under Merchandise, on the Sales tab.\n\nKind regards,\nDaisy First Aid`;
+
+  return {
+    subject,
+    html: wrap(
+      'New shop order',
+      bodyHtml,
+      { ...ctx, unsubscribe_url: '' },
+      "You're receiving this because a customer bought from your Daisy First Aid shop.",
+      '',
+      'Kind regards,<br/>Daisy First Aid',
+    ),
+    text,
+  };
+}
+
 export function renderTemplate(
   key: string,
   ctx: TemplateContext,
 ): { subject: string; html: string; text: string } | null {
   if (key === 'product_purchase_confirmation') return renderProductPurchase(ctx);
+  if (key === 'product_sale_notification') return renderProductSaleNotification(ctx);
 
   const recap = RECAP_TOPICS[key];
   if (recap) {

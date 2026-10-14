@@ -109,11 +109,19 @@ export function saleChannel(sale: Pick<ProductSale, 'channel'>): ProductSaleChan
   return sale.channel === 'online' ? 'online' : 'in_person';
 }
 
-/** A sale row joined to its product name and (optional) linked class. */
+/**
+ * A sale row joined to its product name, (optional) linked class and, for an
+ * online sale, the buyer. The buyer is null on in-person rows, and on any row
+ * whose customer RLS hides (migration 071 lets a trainer read customers who
+ * bought from their shop, alongside those with a booking).
+ */
 export interface ProductSaleRow extends ProductSale {
   product_name: string;
   course_event_date: string | null;
   course_venue_name: string | null;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  buyer_phone: string | null;
 }
 
 export interface CreateProductSalePayload {
@@ -221,6 +229,12 @@ export function useProducts() {
 type ProductSaleJoined = ProductSale & {
   product: { name: string } | null;
   course_instance: { event_date: string | null; venue_name: string | null } | null;
+  customer: {
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
 };
 
 /**
@@ -239,7 +253,8 @@ export function useOwnProductSales() {
         .select(
           `*,
            product:da_products ( name ),
-           course_instance:da_course_instances ( event_date, venue_name )`,
+           course_instance:da_course_instances ( event_date, venue_name ),
+           customer:da_customers ( first_name, last_name, email, phone )`,
         )
         .order('sold_at', { ascending: false })
         .order('created_at', { ascending: false });
@@ -254,6 +269,10 @@ export function useOwnProductSales() {
         product_name: row.product?.name ?? 'Unknown product',
         course_event_date: row.course_instance?.event_date ?? null,
         course_venue_name: row.course_instance?.venue_name ?? null,
+        buyer_name:
+          `${row.customer?.first_name ?? ''} ${row.customer?.last_name ?? ''}`.trim() || null,
+        buyer_email: row.customer?.email ?? null,
+        buyer_phone: row.customer?.phone ?? null,
       }));
     },
   });
