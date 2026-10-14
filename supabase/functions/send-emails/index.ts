@@ -7,9 +7,10 @@
 // POST {} (Bearer CRON_SECRET) -> { processed, sent, failed }
 //
 // Most rows belong to a booking. Rows carrying product_sale_id instead
-// (sellable items, migration 044 — product_purchase_confirmation) resolve via
+// (sellable items, migration 044 — product_purchase_confirmation to the buyer,
+// and product_sale_notification to the trainer, migration 071) resolve via
 // da_product_sales → product + franchisee + customer, and render the code
-// template with the e-learning access link.
+// templates.
 //
 // For each pending row due now: load booking + customer + course + franchisee,
 // render the template — da_email_templates row (HQ-editable blocks, migrations
@@ -242,18 +243,22 @@ Deno.serve(async (req: Request) => {
               `id, quantity, total_pence,
                product:da_products ( name, kind, fulfilment_url, fulfilment_notes ),
                franchisee:da_franchisees ( name, email, booking_email_message ),
-               customer:da_customers ( first_name, last_name, email )`,
+               customer:da_customers ( first_name, last_name, email, phone )`,
             )
             .eq('id', row.product_sale_id)
             .maybeSingle();
           if (sale.error || !sale.data) throw new Error('product sale load failed');
           const s = sale.data as any;
 
-          const recipient = s.customer?.email;
+          // product_sale_notification (migration 071) is the trainer's alert
+          // for a standalone shop order and goes to the franchisee; the
+          // purchase confirmation goes to the buyer.
+          const toFranchisee = row.template_key === 'product_sale_notification';
+          const recipient = toFranchisee ? s.franchisee?.email : s.customer?.email;
           if (!recipient) throw new Error('no recipient email');
 
-          // Purchase confirmations are transactional — never suppressed, and
-          // never sent on the broadcasts stream.
+          // Both keys are transactional — never suppressed, and never sent on
+          // the broadcasts stream.
           const saleCtx: TemplateContext = {
             first_name: s.customer?.first_name ?? 'there',
             customer_name: `${s.customer?.first_name ?? ''} ${s.customer?.last_name ?? ''}`.trim(),
@@ -264,7 +269,9 @@ Deno.serve(async (req: Request) => {
             franchisee_name: s.franchisee?.name ?? 'Daisy First Aid',
             franchisee_email: s.franchisee?.email ?? '',
             booking_reference: '',
-            unsubscribe_url: await buildUnsubscribeUrl(row.customer_id),
+            // The trainer's alert carries no unsubscribe: the buyer's link
+            // would unsubscribe the buyer, and the alert must not be turned off.
+            unsubscribe_url: toFranchisee ? '' : await buildUnsubscribeUrl(row.customer_id),
             product_name: s.product?.name ?? 'your order',
             product_quantity: String(s.quantity ?? 1),
             // Decides the access wording: e-learning access is arranged by
@@ -273,7 +280,14 @@ Deno.serve(async (req: Request) => {
             fulfilment_url: s.product?.fulfilment_url ?? '',
             fulfilment_notes: s.product?.fulfilment_notes ?? '',
             // The franchisee's own message, if they have written one (G2).
-            booking_email_message: s.franchisee?.booking_email_message ?? '',
+            // Blank on the trainer's alert: they wrote it.
+            booking_email_message: toFranchisee ? '' : (s.franchisee?.booking_email_message ?? ''),
+            // Trainer's alert only: who bought, and what they paid.
+            customer_email: toFranchisee ? (s.customer?.email ?? '') : '',
+            customer_phone: toFranchisee ? (s.customer?.phone ?? '') : '',
+            amount_paid: toFranchisee
+              ? `£${(Math.round(s.total_pence ?? 0) / 100).toFixed(2)}`
+              : '',
           };
 
           const saleTmpl = renderTemplate(row.template_key, saleCtx);
@@ -283,12 +297,12 @@ Deno.serve(async (req: Request) => {
             postmarkToken,
             fromEmail,
             recipient,
-            s.franchisee?.email ?? null,
+            toFranchisee ? null : (s.franchisee?.email ?? null),
             saleTmpl.subject,
             saleTmpl.html,
             saleTmpl.text,
             { sequence_id: row.id, template_key: row.template_key },
-            saleCtx.unsubscribe_url,
+            saleCtx.unsubscribe_url || undefined,
             'outbound',
           );
           if (!saleResult.ok) throw new Error(saleResult.error ?? 'Postmark send failed');

@@ -131,6 +131,16 @@ export default function MerchandisePage() {
         cell: ({ row }) => <span className="font-semibold">{row.original.product_name}</span>,
       },
       {
+        // Online sales only: who bought, so the trainer can contact them (an
+        // e-learning buyer is waiting to be set up). Migration 071 lets the
+        // trainer read these customers.
+        id: 'buyer',
+        header: 'Buyer',
+        accessorFn: (row) =>
+          [row.buyer_name, row.buyer_email, row.buyer_phone].filter(Boolean).join(' '),
+        cell: ({ row }) => <BuyerCell sale={row.original} />,
+      },
+      {
         accessorKey: 'quantity',
         header: 'Qty',
         cell: ({ row }) => (
@@ -296,7 +306,7 @@ export default function MerchandisePage() {
             data={sales}
             isLoading={isLoading}
             searchable
-            searchPlaceholder="Search by product…"
+            searchPlaceholder="Search by product or buyer…"
             emptyState={
               <EmptyState
                 icon={<ShoppingBag />}
@@ -319,6 +329,39 @@ export default function MerchandisePage() {
         <DeleteSaleDialog sale={deleting} open onClose={() => setDeleting(null)} />
       ) : null}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// BuyerCell
+// ---------------------------------------------------------------------------
+
+function BuyerCell({ sale }: { sale: ProductSaleRow }) {
+  if (!sale.buyer_name && !sale.buyer_email) {
+    return <span className="text-daisy-muted text-[13px]">—</span>;
+  }
+  return (
+    <span className="flex flex-col text-[13px]">
+      {sale.buyer_name ? <span className="font-semibold">{sale.buyer_name}</span> : null}
+      {sale.buyer_email ? (
+        <a
+          href={`mailto:${sale.buyer_email}`}
+          className="text-daisy-primary break-all underline-offset-2 hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {sale.buyer_email}
+        </a>
+      ) : null}
+      {sale.buyer_phone ? (
+        <a
+          href={`tel:${sale.buyer_phone.replace(/\s+/g, '')}`}
+          className="text-daisy-muted underline-offset-2 hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {sale.buyer_phone}
+        </a>
+      ) : null}
+    </span>
   );
 }
 
