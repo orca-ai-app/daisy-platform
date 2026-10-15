@@ -17,6 +17,7 @@ function helpIndexJson(): string {
       title: a.title,
       summary: a.summary,
       keywords: a.keywords,
+      upcoming: a.upcoming === true,
       url: `/franchisee/help/${a.slug}`,
       sections: a.sections.map((s) => ({
         heading: s.heading ?? '',

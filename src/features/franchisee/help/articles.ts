@@ -31,6 +31,12 @@ export interface HelpArticle {
   sections: HelpSection[];
   related?: string[];
   videoUrl?: string;
+  /**
+   * True for the "What's coming" article: features agreed but not live yet.
+   * Published in help-index.json so the triage form can say "already planned"
+   * rather than "already in the guide" when someone asks for one of them.
+   */
+  upcoming?: boolean;
 }
 
 export const HELP_ARTICLES: HelpArticle[] = [
@@ -981,6 +987,84 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     related: ['selling-merchandise', 'managing-courses', 'getting-help'],
+  },
+
+  {
+    slug: 'whats-coming',
+    title: "What's coming",
+    summary:
+      'Changes that are agreed and on their way, with the date each one arrives. If you were about to ask for one of these, it is already planned.',
+    upcoming: true,
+    keywords: [
+      'coming soon',
+      'planned',
+      'roadmap',
+      'november',
+      'december',
+      "who's coming",
+      'attendee',
+      'attendees',
+      'attendee details',
+      'each person',
+      'every person',
+      'names and emails',
+      'email addresses',
+      'individual email',
+      'candidates',
+      'learners',
+      'learner details',
+      'learner',
+      "learner's",
+      "learner's details",
+      'individuals',
+      'individual',
+      'email address',
+      'booking form',
+      'multiple places',
+      'more than one place',
+      'several people',
+      'places',
+      'group booking',
+      'nursery',
+      'level 3',
+      'how did you hear',
+      'heard about us',
+      'referral',
+      'word of mouth',
+      'advertising',
+      'tracking',
+      'new franchisee',
+      'leaver',
+    ],
+    sections: [
+      {
+        heading: "Every attendee's name and email on a booking (1 November)",
+        body: [
+          'When a customer books more than one place, for example a nursery booking several staff onto a Level 3 course, the booking form will show an optional "Who\'s coming?" box for the names and email addresses of everyone they are booking for.',
+          "You'll see what they enter on the booking, under Who's booked on the class page, in your new-booking email and in your bookings export, so you won't need to chase the booker for each candidate's details. It's optional for the customer, so some bookings will still come in with the booker's details only.",
+        ],
+      },
+      {
+        heading: '"How did you hear about us?" on bookings (1 November)',
+        body: [
+          'The booking form will ask customers, optionally, how they heard about you: Facebook, Instagram, Google, the Daisy website, a recommendation, a nursery, school or workplace, having been before, or something else.',
+          'Their answer shows on the booking, in your new-booking email and in your bookings export, so you can see which advertising and referrals bring bookings in.',
+        ],
+      },
+      {
+        heading: 'Adding new franchisees and removing leavers (1 December, for HQ)',
+        body: [
+          "HQ will be able to set up a new franchisee with their postcode areas, and release a leaver's areas, straight from the HQ portal.",
+        ],
+      },
+      {
+        heading: 'Asking for something else',
+        body: [
+          'If what you need is not on this page or elsewhere in Help, use the triage form. New features go to Jenni and HQ to decide, and once agreed they are added here with a date.',
+        ],
+      },
+    ],
+    related: ['bookings', 'getting-help'],
   },
 
   {
