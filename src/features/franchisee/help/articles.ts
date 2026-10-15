@@ -1035,6 +1035,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'tracking',
       'new franchisee',
       'leaver',
+      'mobile number',
+      'phone number',
+      'customer email',
+      'booking email',
+      'venue',
+      'location',
+      'bookings page',
     ],
     sections: [
       {
@@ -1055,6 +1062,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Adding new franchisees and removing leavers (1 December, for HQ)',
         body: [
           "HQ will be able to set up a new franchisee with their postcode areas, and release a leaver's areas, straight from the HQ portal.",
+        ],
+      },
+      {
+        heading: "Customer's email and mobile in your new-booking email (1 December)",
+        body: [
+          "Your new-booking email will include the customer's email address and mobile number, and replying to it will go straight to the customer, so you don't need to open the portal to get in touch.",
+        ],
+      },
+      {
+        heading: 'Class venue and time on the Bookings list (1 December)',
+        body: [
+          "The Bookings list will show the venue and start time under each class name, so you can see at a glance where everyone is booked. To see everyone on one class, open the class and look under Who's booked.",
         ],
       },
       {
