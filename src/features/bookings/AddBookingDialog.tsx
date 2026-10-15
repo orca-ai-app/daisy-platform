@@ -59,7 +59,8 @@ function formatDate(d: string | null): string {
 
 /**
  * Courses with at least one space left: every scheduled class, plus classes
- * completed in the last 30 days so a cash/cheque booking can still be recorded
+ * completed in the last 90 days so a cash/cheque booking can still be recorded, and
+ * trainers can catch up classes from before launch (Caroline, TRI-0067)
  * after the class has run (the nightly job marks past classes completed,
  * migration 063). RLS scopes own vs all.
  */
@@ -75,7 +76,7 @@ function useBookableInstances(enabled: boolean) {
     queryFn: async () => {
       const today = formatInTimeZone(new Date(), 'Europe/London', 'yyyy-MM-dd');
       const cutoff = formatInTimeZone(
-        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
         'Europe/London',
         'yyyy-MM-dd',
       );
@@ -106,7 +107,7 @@ function useBookableInstances(enabled: boolean) {
             template_name: r.template?.name ?? null,
             display_name: r.display_name?.trim() || null,
           }))
-          // Upcoming classes first (soonest at the top), then the last 30 days
+          // Upcoming classes first (soonest at the top), then the last 90 days
           // (most recent first), so the list opens on what is still to run.
           .sort((a, b) => {
             const aPast = a.event_date < today;
@@ -193,7 +194,7 @@ export default function AddBookingDialog({
   onCreated: (bookingId: string) => void;
 }) {
   const [instanceId, setInstanceId] = useState('');
-  // Upcoming classes, or ones that ran in the last 30 days. Kept apart so a
+  // Upcoming classes, or ones that ran in the last 90 days. Kept apart so a
   // long schedule doesn't bury last weekend's class at the very bottom of the
   // list (Nicola, TRI-0065: 140+ upcoming classes above it).
   const [showRun, setShowRun] = useState(false);
@@ -297,7 +298,7 @@ export default function AddBookingDialog({
             <div className="flex gap-2" role="group" aria-label="Which classes">
               {[
                 { run: false, label: 'Upcoming' },
-                { run: true, label: 'Already run (last 30 days)' },
+                { run: true, label: 'Already run (last 90 days)' },
               ].map((o) => (
                 <Button
                   key={o.label}

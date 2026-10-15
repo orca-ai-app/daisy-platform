@@ -344,11 +344,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Adding an offline booking',
         body: [
           'Use "Add booking" when someone books by phone, pays by cheque, or you need to invoice them. The booking is created with a payment status of "pending" so you can mark it paid once money arrives.',
-          'The class list opens on your upcoming classes. To add someone to a class that has already happened, in the last 30 days, click "Already run (last 30 days)" above the list first.',
+          'The class list opens on your upcoming classes. To add someone to a class that has already happened, in the last 90 days, click "Already run (last 90 days)" above the list first.',
         ],
         steps: [
           'Click "Add booking" at the top right of the Bookings page.',
-          'Choose the class from the list. It includes classes that ran in the last 30 days, so you can still record someone who paid on the day.',
+          'Choose the class from the list. It includes classes that ran in the last 90 days, so you can still record someone who paid on the day.',
           'Choose the ticket type.',
           'Enter the quantity.',
           "Fill in the customer's name, email, and phone number.",
