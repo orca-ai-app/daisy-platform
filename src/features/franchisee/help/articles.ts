@@ -705,7 +705,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What customers see',
         body: [
           'On the booking page, customers enter their discount code in the code field before completing payment. The price updates in real time to show the reduced amount. Expired, inactive, or used-up codes are rejected with a clear message.',
-          "A code comes off class bookings only. It can't be used on shop items such as e-learning or books. When someone books several ticket types in one order, the code applies to all their tickets together and counts as one use.",
+          "A code comes off class bookings only. It can't be used on shop items such as e-learning or books. That changes on 1 January, when codes will work on shop items too (see What's coming). When someone books several ticket types in one order, the code applies to all their tickets together and counts as one use.",
         ],
       },
     ],
@@ -1035,6 +1035,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'tracking',
       'new franchisee',
       'leaver',
+      'discount',
+      'discount code',
+      'e-learning discount',
+      'discounts to e-learning',
+      'discount on e-learning',
+      'discounts on e-learning',
+      'discount for e-learning',
+      'codes on shop items',
+      'promo code',
+      'voucher',
       'mobile number',
       'phone number',
       'customer email',
@@ -1074,6 +1084,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Class venue and time on the Bookings list (1 December)',
         body: [
           "The Bookings list will show the venue and start time under each class name, so you can see at a glance where everyone is booked. To see everyone on one class, open the class and look under Who's booked.",
+        ],
+      },
+      {
+        heading: 'Discount codes on e-learning and shop items (1 January)',
+        body: [
+          'Discount codes will work on your shop items, including e-learning courses and books, as well as on classes. You will be able to make a code for particular items, or for everything, and customers will enter it at checkout in the same way.',
         ],
       },
       {
