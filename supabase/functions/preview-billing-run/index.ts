@@ -27,6 +27,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { groupTerritories } from './territoryUnits.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -131,6 +132,7 @@ interface Territory {
   franchisee_id: string | null;
   postcode_prefix: string;
   name: string;
+  territory_number: number | null;
 }
 
 interface BookingRow {
@@ -151,7 +153,7 @@ async function calculateFranchiseePreview(
 ): Promise<FranchiseePreview> {
   const territoriesRes = await admin
     .from('da_territories')
-    .select('id, franchisee_id, postcode_prefix, name')
+    .select('id, franchisee_id, postcode_prefix, name, territory_number')
     .eq('franchisee_id', franchisee.id)
     .order('postcode_prefix', { ascending: true });
 
@@ -159,7 +161,9 @@ async function calculateFranchiseePreview(
     throw new Error(`Failed to load territories: ${territoriesRes.error.message}`);
   }
 
-  const territories = (territoriesRes.data ?? []) as Territory[];
+  const territoryRows = (territoriesRes.data ?? []) as Territory[];
+  // Bill per territory number, not per postcode row (see territoryUnits.ts).
+  const territories = groupTerritories(territoryRows);
 
   // Merchandise revenue for the period (migration 038) — one figure per
   // franchisee, pooled into the fee test below.
@@ -255,7 +259,7 @@ async function calculateFranchiseePreview(
       // when it is owned_by_other) — billing the territory owner for revenue
       // that was never theirs.
       .eq('franchisee_id', franchisee.id)
-      .eq('da_course_instances.territory_id', territory.id)
+      .in('da_course_instances.territory_id', territory.rowIds)
       .gte('da_course_instances.event_date', periodStart)
       .lte('da_course_instances.event_date', periodEnd);
 
@@ -269,7 +273,7 @@ async function calculateFranchiseePreview(
     territoryRevenues.push(
       rows.reduce((acc, row) => {
         if (!row.course_instance) return acc;
-        if (row.course_instance.territory_id !== territory.id) return acc;
+        if (!territory.rowIds.includes(row.course_instance.territory_id ?? '')) return acc;
         return acc + (row.total_price_pence ?? 0);
       }, 0),
     );
@@ -281,7 +285,7 @@ async function calculateFranchiseePreview(
   // per-territory pass above, so without this it escaped the fee run entirely.
   // Billed at the flat 10% via a pseudo-row — same never-silently-dropped
   // treatment as merchandise with no territory.
-  const ownTerritoryIds = new Set(territories.map((t) => t.id));
+  const ownTerritoryIds = new Set(territoryRows.map((t) => t.id));
   const outsideRes = await admin
     .from('da_bookings')
     .select(
@@ -328,7 +332,7 @@ async function calculateFranchiseePreview(
 
     breakdown.push({
       territory_id: territory.id,
-      postcode_prefix: territory.postcode_prefix,
+      postcode_prefix: territory.postcodes,
       territory_name: territory.name,
       base_fee_pence: baseFeePencePerTerritory,
       revenue_pence: revenuePence,
