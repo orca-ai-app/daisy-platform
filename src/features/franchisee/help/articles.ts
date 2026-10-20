@@ -1035,6 +1035,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'tracking',
       'new franchisee',
       'leaver',
+      'follow up emails',
+      'follow-up emails',
+      'scheduled emails',
+      'stop emails',
+      'refresher emails',
+      "children's class",
       'discount',
       'discount code',
       'e-learning discount',
@@ -1090,6 +1096,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'Discount codes on e-learning and shop items (1 January)',
         body: [
           'Discount codes will work on your shop items, including e-learning courses and books, as well as on classes. You will be able to make a code for particular items, or for everything, and customers will enter it at checkout in the same way.',
+        ],
+      },
+      {
+        heading: 'Choosing which classes get follow-up emails (1 January)',
+        body: [
+          "HQ will be able to switch the follow-up emails (the thank-you, refreshers and quiz sent in the months after a class) on or off for each type of course, so classes like children's or workplace courses don't get emails written for parents. You'll also be able to stop the follow-up emails for a single booking from its booking page. This is the change for when scheduled emails to a booker don't suit the class, for example a children's class.",
         ],
       },
       {
