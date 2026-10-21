@@ -66,6 +66,8 @@ interface RequestBody {
   venue_preference?: unknown;
   course_template_id?: unknown;
   notes?: unknown;
+  /** Course family label from a trainer's Request a class form (TRI-0072). */
+  course_type?: unknown;
 }
 
 Deno.serve(async (req: Request) => {
@@ -140,6 +142,13 @@ Deno.serve(async (req: Request) => {
   }
 
   const courseTemplateId = reqStr(body.course_template_id);
+  // Optional course family picked on the form ("Paediatric", "Workplace"...).
+  // Kept with the notes so it shows wherever the request is read.
+  const courseType = (reqStr(body.course_type) ?? '').slice(0, 60) || null;
+  const notesIn = reqStr(body.notes);
+  const notesStored = courseType
+    ? `Course: ${courseType}${notesIn ? `\n${notesIn}` : ''}`
+    : notesIn;
 
   const insert = await admin
     .from('da_interest_forms')
@@ -153,7 +162,7 @@ Deno.serve(async (req: Request) => {
       preferred_dates: reqStr(body.preferred_dates),
       venue_preference: reqStr(body.venue_preference),
       course_template_id: courseTemplateId,
-      notes: reqStr(body.notes),
+      notes: notesStored,
       status: 'new',
     })
     .select('id')
@@ -216,6 +225,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const rows: Array<[string, string]> = [
+      ...(courseType ? ([['Course', courseType]] as Array<[string, string]>) : []),
       ...(postcode ? ([['Postcode', postcode.toUpperCase()]] as Array<[string, string]>) : []),
       ['Group size', String(numAttendees)],
       ['Name', contactName],
