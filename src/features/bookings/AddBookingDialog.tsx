@@ -417,7 +417,7 @@ export default function AddBookingDialog({
               placeholder="name@example.com"
             />
             <p className="text-daisy-muted text-xs">
-              Confirmation and reminder emails go to this address, so check it is right.
+              The day-before reminder goes to this address, so check it is right.
             </p>
           </div>
 
