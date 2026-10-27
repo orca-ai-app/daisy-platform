@@ -119,6 +119,12 @@ describe('courseMonthHeading', () => {
     expect(courseMonthHeading('2026-10-31')).toBe('October 2026');
     expect(courseMonthHeading('2027-01-01')).toBe('January 2027');
   });
+  it('keeps the first of the month in its own month on any device time zone', () => {
+    // A phone ahead of the UK (e.g. on holiday in Asia) once showed
+    // 1 October as "September 2026" (Feola, 27 Oct). Run with TZ=Asia/Bangkok to check.
+    expect(courseMonthHeading('2026-10-01')).toBe('October 2026');
+    expect(courseMonthHeading('2026-11-01')).toBe('November 2026');
+  });
   it('returns null for a malformed date', () => {
     expect(courseMonthHeading('')).toBeNull();
   });

@@ -268,13 +268,13 @@ function formatDate(d: string | null): string {
   if (parts.length !== 3) return d;
   const [y, m, day] = parts.map(Number);
   try {
-    // Build a local Date from integer parts — getMonth() is 0-based.
+    // UTC midnight formatted in UTC: a device outside the UK cannot shift the day.
     return new Intl.DateTimeFormat('en-GB', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
-      timeZone: 'Europe/London',
-    }).format(new Date(y, m - 1, day));
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(y, m - 1, day)));
   } catch {
     return d;
   }
@@ -309,8 +309,8 @@ function monthLabel(year: number, month: number): string {
   return new Intl.DateTimeFormat('en-GB', {
     month: 'long',
     year: 'numeric',
-    timeZone: 'Europe/London',
-  }).format(new Date(year, month - 1, 1));
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
 // ---------------------------------------------------------------------------

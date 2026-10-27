@@ -39,8 +39,8 @@ function formatDate(d: string): string {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
-      timeZone: 'Europe/London',
-    }).format(new Date(y, m - 1, day));
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(y, m - 1, day)));
   } catch {
     return d;
   }
