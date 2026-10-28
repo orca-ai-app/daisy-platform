@@ -690,6 +690,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'Choose whether it is a percentage off or a fixed pound amount off.',
           'Enter the value.',
           'Optionally set start and end dates and a maximum number of uses.',
+          'Optionally tick one or more Course types to limit the code to those courses. Leave them all unticked for every course. A code cannot be limited to one venue.',
           'Click "Create code" to save.',
         ],
       },

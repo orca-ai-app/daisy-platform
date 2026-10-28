@@ -271,7 +271,7 @@ export function ShopListingDialog({ item, open, onClose }: ShopListingDialogProp
                     ? 'This is your own course, so you enrol the buyer yourself. Their confirmation email tells them their access details will follow separately, usually within 48 hours.'
                     : product.fulfilment_url
                       ? 'After paying, the customer is sent straight to the course by HQ. You have nothing to post.'
-                      : 'HQ has not set the course link for this item yet, so buyers cannot be sent to it. Contact HQ before putting it on your booking page.'}
+                      : 'There is no course link on this item, so you enrol the buyer yourself. Their confirmation email tells them their access details will follow separately, usually within 48 hours.'}
                 </p>
                 {product.fulfilment_notes ? (
                   <p className="text-daisy-muted mt-2 text-xs">{product.fulfilment_notes}</p>
