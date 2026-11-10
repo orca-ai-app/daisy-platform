@@ -9,7 +9,7 @@
  *
  * Wave 7B.
  */
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { formatInTimeZone } from 'date-fns-tz';
 import {
@@ -1043,9 +1043,11 @@ function DeleteTicketTypeDialog({
 function CourseBookingsCard({ courseInstanceId }: { courseInstanceId: string }) {
   const { data: bookings = [], isLoading } = useCourseBookings(courseInstanceId);
   if (isLoading || bookings.length === 0) return null;
-  const places = bookings
-    .filter((b) => b.booking_status !== 'cancelled')
-    .reduce((sum, b) => sum + (b.quantity || 1), 0);
+  // TRI-0082 (Feola): people still booked come first, so the list can be used
+  // as the register. Cancelled and unfinished checkouts go underneath.
+  const live = bookings.filter((b) => b.booking_status !== 'cancelled');
+  const gone = bookings.filter((b) => b.booking_status === 'cancelled');
+  const places = live.reduce((sum, b) => sum + (b.quantity || 1), 0);
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-daisy-line-soft bg-daisy-primary-tint border-b px-5 py-4">
@@ -1054,63 +1056,69 @@ function CourseBookingsCard({ courseInstanceId }: { courseInstanceId: string }) 
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 p-5">
-        {bookings.map((b) => (
-          <Link
-            key={b.id}
-            to={`/franchisee/bookings/${b.id}`}
-            // TRI-0011 (Hannah): tell BookingDetail we came from this class so
-            // its back link returns here, not to the main bookings list.
-            state={{ fromCourseId: courseInstanceId }}
-            className="hover:bg-daisy-primary-tint -mx-2 flex flex-wrap items-center gap-2 rounded-[6px] px-2 py-1 text-sm"
-          >
-            <span className="text-daisy-ink font-semibold">
-              {`${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim() ||
-                b.booking_reference}
-            </span>
-            {b.customer?.email ? (
-              // TRI-0005 (Hannah): the whole row navigates, which made the
-              // address impossible to select. Clicking the address itself now
-              // copies it instead of opening the booking.
-              <button
-                type="button"
-                title="Click to copy"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const email = b.customer?.email;
-                  if (!email) return;
-                  void navigator.clipboard
-                    .writeText(email)
-                    .then(() => toast.success(`Copied ${email}`))
-                    .catch(() => toast.error('Could not copy, sorry'));
-                }}
-                className="text-daisy-muted hover:text-daisy-primary text-xs underline-offset-2 hover:underline"
-              >
-                {b.customer.email}
-              </button>
+        {[...live, ...gone].map((b, i) => (
+          <Fragment key={b.id}>
+            {i === live.length && gone.length > 0 ? (
+              <p className="text-daisy-muted border-daisy-line-soft mt-2 border-t pt-3 text-xs font-bold tracking-[0.06em] uppercase">
+                No longer booked
+              </p>
             ) : null}
-            {b.ticket_type?.name ? (
-              <Badge variant="default" className="text-[11px]">
-                {b.ticket_type.name}
-                {b.quantity > 1 ? ` ×${b.quantity}` : ''}
-              </Badge>
-            ) : null}
-            {b.booking_status === 'cancelled' && b.payment_status === 'failed' ? (
-              // An online checkout that was never paid: the place was held,
-              // then released. Not a cancellation by the customer (Julie, 6 Oct).
-              <Badge variant="warning" className="text-[11px]">
-                didn&apos;t finish paying
-              </Badge>
-            ) : b.booking_status === 'cancelled' ? (
-              <Badge variant="danger" className="text-[11px]">
-                cancelled
-              </Badge>
-            ) : b.payment_status === 'pending' ? (
-              <Badge variant="warning" className="text-[11px]">
-                payment pending
-              </Badge>
-            ) : null}
-          </Link>
+            <Link
+              to={`/franchisee/bookings/${b.id}`}
+              // TRI-0011 (Hannah): tell BookingDetail we came from this class so
+              // its back link returns here, not to the main bookings list.
+              state={{ fromCourseId: courseInstanceId }}
+              className="hover:bg-daisy-primary-tint -mx-2 flex flex-wrap items-center gap-2 rounded-[6px] px-2 py-1 text-sm"
+            >
+              <span className="text-daisy-ink font-semibold">
+                {`${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim() ||
+                  b.booking_reference}
+              </span>
+              {b.customer?.email ? (
+                // TRI-0005 (Hannah): the whole row navigates, which made the
+                // address impossible to select. Clicking the address itself now
+                // copies it instead of opening the booking.
+                <button
+                  type="button"
+                  title="Click to copy"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const email = b.customer?.email;
+                    if (!email) return;
+                    void navigator.clipboard
+                      .writeText(email)
+                      .then(() => toast.success(`Copied ${email}`))
+                      .catch(() => toast.error('Could not copy, sorry'));
+                  }}
+                  className="text-daisy-muted hover:text-daisy-primary text-xs underline-offset-2 hover:underline"
+                >
+                  {b.customer.email}
+                </button>
+              ) : null}
+              {b.ticket_type?.name ? (
+                <Badge variant="default" className="text-[11px]">
+                  {b.ticket_type.name}
+                  {b.quantity > 1 ? ` ×${b.quantity}` : ''}
+                </Badge>
+              ) : null}
+              {b.booking_status === 'cancelled' && b.payment_status === 'failed' ? (
+                // An online checkout that was never paid: the place was held,
+                // then released. Not a cancellation by the customer (Julie, 6 Oct).
+                <Badge variant="warning" className="text-[11px]">
+                  didn&apos;t finish paying
+                </Badge>
+              ) : b.booking_status === 'cancelled' ? (
+                <Badge variant="danger" className="text-[11px]">
+                  cancelled
+                </Badge>
+              ) : b.payment_status === 'pending' ? (
+                <Badge variant="warning" className="text-[11px]">
+                  payment pending
+                </Badge>
+              ) : null}
+            </Link>
+          </Fragment>
         ))}
         <p className="text-daisy-muted mt-2 text-xs">
           Click a name to open the booking. The person named is whoever made the booking — their
