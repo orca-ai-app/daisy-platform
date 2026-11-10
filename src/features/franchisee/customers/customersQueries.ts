@@ -71,12 +71,14 @@ export function useOwnCustomers() {
       if (custErr) throw custErr;
       if (!customers || customers.length === 0) return [];
 
-      // Fetch booking counts for all visible customers in one query
-      const customerIds = (customers as Customer[]).map((c) => c.id);
+      // Booking counts. RLS already limits da_bookings to this franchisee's own
+      // bookings, and every visible customer comes from one of them, so read them
+      // all rather than passing the customer ids: an .in() list of ids goes in the
+      // URL and the API rejects it (400) above roughly 680 customers.
       const { data: bookings, error: bookErr } = await supabase
         .from('da_bookings')
         .select('customer_id')
-        .in('customer_id', customerIds);
+        .not('customer_id', 'is', null);
 
       if (bookErr) throw bookErr;
 
