@@ -93,6 +93,11 @@ function paymentStatusVariant(p: PaymentStatus): StatusVariant {
   return p === 'refunded' ? 'manual' : p;
 }
 
+// 'failed' is a checkout the customer left before paying, not a declined card (TRI-0081).
+function paymentStatusLabel(p: PaymentStatus): string {
+  return p === 'failed' ? "Didn't finish" : p;
+}
+
 function bookingStatusVariant(s: BookingStatus): StatusVariant {
   if (s === 'cancelled') return 'terminated';
   if (s === 'no_show') return 'failed';
@@ -606,7 +611,7 @@ export default function BookingDetail() {
             actions={
               <>
                 <StatusPill variant={paymentStatusVariant(booking.payment_status)}>
-                  {booking.payment_status}
+                  {paymentStatusLabel(booking.payment_status)}
                 </StatusPill>
                 <StatusPill variant={bookingStatusVariant(booking.booking_status)}>
                   {booking.booking_status.replace('_', ' ')}
@@ -802,7 +807,7 @@ export default function BookingDetail() {
                       label="Status"
                       value={
                         <StatusPill variant={paymentStatusVariant(booking.payment_status)}>
-                          {booking.payment_status}
+                          {paymentStatusLabel(booking.payment_status)}
                         </StatusPill>
                       }
                     />
@@ -914,7 +919,7 @@ export default function BookingDetail() {
                       </dt>
                       <dd className="mt-1">
                         <StatusPill variant={paymentStatusVariant(booking.payment_status)}>
-                          {booking.payment_status}
+                          {paymentStatusLabel(booking.payment_status)}
                         </StatusPill>
                       </dd>
                     </div>

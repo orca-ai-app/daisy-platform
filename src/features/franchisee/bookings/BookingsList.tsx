@@ -46,7 +46,7 @@ const PAYMENT_OPTIONS: ReadonlyArray<{ value: PaymentStatus | 'all'; label: stri
   { value: 'paid', label: 'Paid' },
   { value: 'manual', label: 'Manual' },
   { value: 'refunded', label: 'Refunded' },
-  { value: 'failed', label: 'Failed' },
+  { value: 'failed', label: "Didn't finish paying" },
 ];
 
 const BOOKING_OPTIONS: ReadonlyArray<{ value: BookingStatus | 'all'; label: string }> = [
@@ -78,6 +78,11 @@ function bookingStatusVariant(s: BookingStatus): StatusVariant {
 
 function paymentStatusVariant(p: PaymentStatus): StatusVariant {
   return p === 'refunded' ? 'manual' : p;
+}
+
+// 'failed' is a checkout the customer left before paying, not a declined card (TRI-0081).
+function paymentStatusLabel(p: PaymentStatus): string {
+  return p === 'failed' ? "Didn't finish" : p;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,13 +187,14 @@ function buildColumns(): ColumnDef<OwnBookingListRow>[] {
           Payment
           <FieldHelp>
             Manual means you marked it paid yourself, for example by cash or cheque. Pending means
-            payment has not arrived yet.
+            payment has not arrived yet. Didn&apos;t finish means the customer left the payment page
+            before paying, so nothing was charged and the place was released.
           </FieldHelp>
         </span>
       ),
       cell: ({ row }) => (
         <StatusPill variant={paymentStatusVariant(row.original.payment_status)}>
-          {row.original.payment_status}
+          {paymentStatusLabel(row.original.payment_status)}
         </StatusPill>
       ),
     },
