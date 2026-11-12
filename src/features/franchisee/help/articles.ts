@@ -191,6 +191,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           '"Spaces" means the number of places left on the course based on capacity minus the seats consumed by confirmed bookings. When spaces reach zero, the course shows as full.',
           "Customers can choose a mix of ticket types in one checkout, for example a Couple and a Single, so you don't need combined tickets for the usual mixes.",
           'You can add a ticket type to a class at any time, including after it is published and after people have booked: open the class (not Edit) and use "Add ticket type" in the Ticket types section. It shows on your booking page straight away.',
+          "Editing a ticket type's name or price also changes it on bookings already made with that ticket. To sell something different on a class people have already booked, add a new ticket type rather than editing the existing one. If bookings ever show the wrong ticket, send a triage form with the class date and we'll put them right.",
         ],
       },
       {
