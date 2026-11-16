@@ -32,6 +32,12 @@ export interface TemplateContext {
   customer_email?: string;
   customer_phone?: string;
   /**
+   * Product-sale keys only (migration 072, TRI-0084): the UK delivery address
+   * Stripe collected for a physical item bought on its own, one line per
+   * address line. Empty when none was collected. Escaped at render time.
+   */
+  delivery_address?: string;
+  /**
    * da_products.kind for the purchased item. Decides whether the buyer is told
    * their access details follow separately (e-learning) or that their
    * instructor will be in touch (physical). Missing = treated as physical.
@@ -409,6 +415,15 @@ function renderProductPurchase(ctx: TemplateContext): {
     accessText = `Your access details will be emailed to you separately, usually within 48 hours. We set your account up by hand, so it may take a little longer over a weekend or a bank holiday. You do not need to do anything in the meantime.${
       url ? `\n\nThe course lives here for when you are ready:\n${url}` : ''
     }`;
+  } else if ((ctx.delivery_address ?? '').trim()) {
+    // TRI-0084: the address was collected at checkout, so don't imply the
+    // buyer will be asked for it again.
+    const addr = (ctx.delivery_address ?? '').trim();
+    accessHtml = `<p>Your instructor will post this to you at:<br/>${addr
+      .split('\n')
+      .map(escapeHtml)
+      .join('<br/>')}</p>`;
+    accessText = `Your instructor will post this to you at:\n${addr}`;
   } else {
     accessHtml = `<p>Your instructor will be in touch about getting this to you.</p>`;
     accessText = 'Your instructor will be in touch about getting this to you.';
@@ -461,10 +476,19 @@ function renderProductSaleNotification(ctx: TemplateContext): {
   const quantity = ctx.product_quantity || '1';
   const amount = ctx.amount_paid ?? '';
   const isElearning = ctx.product_kind === 'elearning';
+  const address = (ctx.delivery_address ?? '').trim();
   const subject = `New shop order: ${productName} (${customerName})`;
 
   const elearningLine =
     'This customer has been told their e-learning access details will follow within 48 hours. Please set them up on elearnhere.';
+  // TRI-0084: a physical item bought on its own comes with a delivery address.
+  const physicalLine = address
+    ? 'Please post it to the address above.'
+    : 'Please get in touch with the customer about getting this to them.';
+  const addressHtml = address
+    ? `<p><strong>Post to:</strong><br/>${address.split('\n').map(escapeHtml).join('<br/>')}</p>`
+    : '';
+  const addressText = address ? `\n\nPost to:\n${address}` : '';
 
   const bodyHtml = `<p>A new order has come in from your online shop.</p>
       <p><strong>Product:</strong> ${escapeHtml(productName)}<br/>
@@ -473,17 +497,16 @@ function renderProductSaleNotification(ctx: TemplateContext): {
       <p><strong>Customer:</strong> ${escapeHtml(customerName)}<br/>
       <strong>Email:</strong> ${email ? `<a href="mailto:${escapeHtml(email)}" style="color:${DAISY_BLUE}">${escapeHtml(email)}</a>` : 'not given'}<br/>
       <strong>Phone:</strong> ${phone ? escapeHtml(phone) : 'not given'}</p>
+      ${addressHtml}
       ${
         isElearning
           ? `<p style="background:#edf5fa;border-radius:10px;padding:14px 16px"><strong>${elearningLine}</strong></p>`
-          : '<p>Please get in touch with the customer about getting this to them.</p>'
+          : `<p>${physicalLine}</p>`
       }
       <p style="font-size:13px;color:#5a7a8f">You can also find this order in the portal under Merchandise, on the Sales tab.</p>`;
 
-  const text = `A new order has come in from your online shop.\n\nProduct: ${productName}\nQuantity: ${quantity}\nAmount paid: ${amount}\n\nCustomer: ${customerName}\nEmail: ${email || 'not given'}\nPhone: ${phone || 'not given'}\n\n${
-    isElearning
-      ? elearningLine
-      : 'Please get in touch with the customer about getting this to them.'
+  const text = `A new order has come in from your online shop.\n\nProduct: ${productName}\nQuantity: ${quantity}\nAmount paid: ${amount}\n\nCustomer: ${customerName}\nEmail: ${email || 'not given'}\nPhone: ${phone || 'not given'}${addressText}\n\n${
+    isElearning ? elearningLine : physicalLine
   }\n\nYou can also find this order in the portal under Merchandise, on the Sales tab.\n\nKind regards,\nDaisy First Aid`;
 
   return {

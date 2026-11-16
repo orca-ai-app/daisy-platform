@@ -44,6 +44,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { buildJourneyRows, type SequenceRow } from '../_shared/emailSchedule.ts';
 import { logSystem } from '../_shared/log.ts';
 import { orderFinalisePlan, type OrderItemSnapshot } from '../_shared/basket.ts';
+import { formatDeliveryAddress } from './deliveryAddress.ts';
 
 // Transient failure in an idempotent handler — safe (and necessary) for Stripe
 // to redeliver. Without the retry, a booking whose finalise write failed stays
@@ -1089,9 +1090,12 @@ async function recordProductSale(admin: any, session: Stripe.Checkout.Session): 
   // is not filed to yesterday (billing periods are calendar months).
   const soldAt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
 
+  const deliveryAddress = formatDeliveryAddress(session);
+
   const saleRes = await admin
     .from('da_product_sales')
     .insert({
+      delivery_address: deliveryAddress,
       franchisee_id: listing.franchisee_id,
       product_id: listing.product_id,
       quantity,

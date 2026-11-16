@@ -245,7 +245,7 @@ Deno.serve(async (req: Request) => {
           const sale = await admin
             .from('da_product_sales')
             .select(
-              `id, quantity, total_pence,
+              `id, quantity, total_pence, delivery_address,
                product:da_products ( name, kind, fulfilment_url, fulfilment_notes ),
                franchisee:da_franchisees ( name, email, booking_email_message ),
                customer:da_customers ( first_name, last_name, email, phone )`,
@@ -290,6 +290,8 @@ Deno.serve(async (req: Request) => {
             // Trainer's alert only: who bought, and what they paid.
             customer_email: toFranchisee ? (s.customer?.email ?? '') : '',
             customer_phone: toFranchisee ? (s.customer?.phone ?? '') : '',
+            // TRI-0084: where to post a physical item bought on its own.
+            delivery_address: s.delivery_address ?? '',
             amount_paid: toFranchisee
               ? `£${(Math.round(s.total_pence ?? 0) / 100).toFixed(2)}`
               : '',

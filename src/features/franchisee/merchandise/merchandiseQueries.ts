@@ -101,6 +101,8 @@ export interface ProductSale {
   note: string | null;
   /** Null on rows written before the channel column shipped. */
   channel: ProductSaleChannel | null;
+  /** Migration 072 (TRI-0084): UK postal address for a physical online order, one line per address line. */
+  delivery_address?: string | null;
   created_at: string;
 }
 

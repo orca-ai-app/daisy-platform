@@ -99,3 +99,27 @@ describe('product_sale_notification', () => {
     expect(out?.html).toContain('href="https://example.com/unsub"');
   });
 });
+
+describe('delivery address (TRI-0084)', () => {
+  it('shows where to post a physical item when an address was collected', () => {
+    const { html, text } = render({
+      product_kind: 'physical',
+      delivery_address: 'Jo Bloggs\n12 Mill Lane\nGuildford\nGU1 1AA',
+    });
+    expect(html).toContain('Post to:');
+    expect(html).toContain('12 Mill Lane<br/>Guildford');
+    expect(html).toContain('Please post it to the address above.');
+    expect(text).toContain('Post to:\nJo Bloggs\n12 Mill Lane');
+  });
+
+  it('keeps the get-in-touch line when there is no address', () => {
+    const { html } = render({ product_kind: 'physical', delivery_address: '' });
+    expect(html).not.toContain('Post to:');
+    expect(html).toContain('Please get in touch with the customer');
+  });
+
+  it('escapes the address', () => {
+    const { html } = render({ product_kind: 'physical', delivery_address: '<b>x</b>' });
+    expect(html).toContain('&lt;b&gt;x&lt;/b&gt;');
+  });
+});

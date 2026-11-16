@@ -916,6 +916,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'new shop order',
       'who bought',
       'buyer',
+      'delivery address',
+      'post a book',
+      'postage',
       'order email',
       'elearnhere',
       '48 hours',
@@ -972,6 +975,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           'You get an email for every online shop order, titled "New shop order", with the item, the quantity, what they paid, and the buyer\'s name, email address and phone number.',
           "The order also shows in the portal: go to Merchandise, then the Sales tab. Online orders show the buyer's name, email and phone in the Buyer column, with the date of the order, and you can search the list by the buyer's name or email.",
           'For e-learning, the customer has been told their access details will follow within 48 hours. Please set them up on elearnhere within that time.',
+          'For a book or anything else you post, the customer gives their UK delivery address on the payment page, so you don\'t need to ask for it. It\'s on the "New shop order" email under "Post to", and in the Buyer column on the Sales tab. Their confirmation tells them you\'ll post it to that address. Items bought with a class booking don\'t ask for an address, because you hand them over on the day.',
         ],
       },
       {

@@ -862,6 +862,11 @@ async function createItemSession(
   // "Book × 3" priced per unit rather than one opaque total.
   const origin = safeOrigin(reqStr(body.origin));
   const stripe = new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' });
+  // TRI-0084 (Feola): a physical item bought on its own has to be posted, so
+  // Stripe's payment page asks for a UK delivery address. stripe-webhook saves
+  // it on the sale for the trainer. (Items bought with a class go through the
+  // course path and are handed over on the day.)
+  const isPhysical = (listing.product?.kind ?? 'physical') === 'physical';
   let session: Stripe.Checkout.Session;
   try {
     session = await stripe.checkout.sessions.create(
@@ -869,6 +874,7 @@ async function createItemSession(
         mode: 'payment',
         payment_method_types: ['card'],
         customer_email: email,
+        ...(isPhysical ? { shipping_address_collection: { allowed_countries: ['GB'] } } : {}),
         line_items: [
           {
             price_data: {

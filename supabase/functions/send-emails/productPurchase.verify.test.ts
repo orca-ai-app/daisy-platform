@@ -208,3 +208,17 @@ describe('booking confirmation', () => {
     expect(out?.html).not.toMatch(/A note from/i);
   });
 });
+
+describe('physical purchase with a delivery address (TRI-0084)', () => {
+  it('tells the buyer where it will be posted', () => {
+    const { html, text } = renderTemplate(
+      'product_purchase_confirmation',
+      ctx({ product_kind: 'physical', delivery_address: 'Jo Bloggs\n12 Mill Lane\nGU1 1AA' }),
+    )!;
+    expect(html).toContain(
+      'Your instructor will post this to you at:<br/>Jo Bloggs<br/>12 Mill Lane',
+    );
+    expect(text).toContain('Your instructor will post this to you at:\nJo Bloggs');
+    expect(html).not.toContain('will be in touch');
+  });
+});

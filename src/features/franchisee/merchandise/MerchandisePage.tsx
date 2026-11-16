@@ -361,6 +361,15 @@ function BuyerCell({ sale }: { sale: ProductSaleRow }) {
           {sale.buyer_phone}
         </a>
       ) : null}
+      {sale.delivery_address ? (
+        // TRI-0084: where to post a book bought on its own from the shop.
+        <span className="text-daisy-ink mt-1 whitespace-pre-line">
+          <span className="text-daisy-muted block text-[11px] font-bold tracking-[0.06em] uppercase">
+            Post to
+          </span>
+          {sale.delivery_address}
+        </span>
+      ) : null}
     </span>
   );
 }
