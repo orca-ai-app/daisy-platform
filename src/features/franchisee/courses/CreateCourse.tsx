@@ -583,9 +583,9 @@ function Step2Visibility({ form }: { form: ReturnType<typeof useForm<FormValues>
           059). A public class is normally at a fixed venue, so no customer
           address is needed. But franchisees also advertise home classes in the
           finder using just the area (e.g. SM1) — those run at the customer's
-          own address, which the booking flow must capture. Private classes are
-          always delivered at the customer's address, so the box is only offered
-          for public classes. */}
+          own address, which the booking flow must capture. For a private class
+          the server decides from the venue (none yet = the customer's address),
+          so the box is only offered for public classes. */}
       {visibility === 'public' ? (
         <label className="border-daisy-line flex items-start gap-2.5 rounded-[8px] border-2 bg-white p-3 text-sm">
           <input
@@ -1720,9 +1720,10 @@ export default function CreateCourse() {
       private_client_id: values.private_client_id ?? null,
       display_name: isPrivate ? values.display_name.trim() || null : null,
       venue_tbc: venueTbc,
-      // Migration 059: private courses are always delivered at the customer's
-      // address; a public course is only when the franchisee ticked the box.
-      delivered_at_address: isPrivate || values.delivered_at_address,
+      // Migration 059: a public course is at the customer's address only when
+      // the franchisee ticked the box. For a private course the server decides
+      // from the venue (no venue yet = at the customer's address).
+      delivered_at_address: !isPrivate && values.delivered_at_address,
       // G1 (migration 045): null falls back to the template description.
       description_override: values.description_override.trim() || null,
       // Migration 064: joining details, emailed to bookers only.

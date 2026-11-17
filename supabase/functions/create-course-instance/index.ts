@@ -27,6 +27,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { privateAtCustomerAddress } from '../_shared/courseAddress.ts';
 
 // ---------------------------------------------------------------------------
 // CORS
@@ -448,9 +449,10 @@ function validateBody(
           : null,
       display_name: typeof b.display_name === 'string' ? b.display_name.trim() || null : null,
       venue_tbc: venueTbc,
-      // Private classes are always delivered at the customer's address; public
-      // classes only when the franchisee ticked the box (migration 059).
-      delivered_at_address: b.visibility === 'private' || b.delivered_at_address === true,
+      // Public classes: only when the franchisee ticked the box (migration
+      // 059). Private classes are decided from the venue once the template has
+      // loaded (see privateAtCustomerAddress).
+      delivered_at_address: b.delivered_at_address === true,
       description_override:
         typeof b.description_override === 'string' ? b.description_override.trim() || null : null,
       joining_details:
@@ -792,7 +794,12 @@ Deno.serve(async (req: Request) => {
     venue_tbc: input.venue_tbc === true,
     // Migration 059: class runs at the customer's address (home/workplace), so
     // the booking flow captures the customer's address even on the public flow.
-    delivered_at_address: input.delivered_at_address === true,
+    // A private class is at the customer's address only when it has no venue
+    // (TBC); one at a named venue is not (Kirsty, 16 Nov 2026).
+    delivered_at_address:
+      input.visibility === 'private'
+        ? privateAtCustomerAddress(isOnline, input.venue_postcode)
+        : input.delivered_at_address === true,
     // Migration 045 (G1): franchisee-written customer-facing description.
     // NULL falls back to the template description on the booking page.
     description_override: input.description_override ?? null,

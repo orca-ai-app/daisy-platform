@@ -306,9 +306,9 @@ function EditCourseForm({
       description_override: instance.description_override ?? instance.template?.description ?? '',
       joining_details: instance.joining_details ?? '',
       bespoke_details: instance.bespoke_details ?? '',
-      // Migration 059: private classes are always delivered at the customer's
-      // address; public classes only when the franchisee ticked the box.
-      delivered_at_address: instance.delivered_at_address ?? isPrivate,
+      // Migration 059: public classes only when the franchisee ticked the box.
+      // Private classes are set by the server from the venue.
+      delivered_at_address: instance.delivered_at_address ?? false,
       // Pre-tick for a class that is already saved as free, so editing an
       // unrelated field on an existing free class is not blocked.
       allow_free: instance.price_pence === 0,
@@ -378,8 +378,9 @@ function EditCourseForm({
       fields.display_name = values.display_name.trim() || null;
     } else {
       // Migration 059: a public class can be flagged as a home/workplace class
-      // delivered at the customer's address. Private classes always are, so the
-      // toggle is only editable — and only sent — for public classes.
+      // delivered at the customer's address. For a private class the server
+      // sets it from the venue, so the toggle is only editable and sent for
+      // public classes.
       fields.delivered_at_address = values.delivered_at_address;
     }
 
@@ -482,8 +483,8 @@ function EditCourseForm({
             ) : null}
 
             {/* Home/workplace class listed publicly (Jenni, 18 Sep 2026,
-                migration 059). Offered only for public classes — private
-                classes always run at the customer's address. */}
+                migration 059). Offered only for public classes: the server
+                sets it for private classes from the venue. */}
             {!isPrivate ? (
               <label className="border-daisy-line flex items-start gap-2.5 rounded-[8px] border-2 bg-white p-3 text-sm">
                 <input

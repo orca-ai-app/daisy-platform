@@ -113,7 +113,7 @@ function toCard(r: any) {
     // even on the public flow, where venue_postcode is only the advertised area.
     delivered_at_address: r.delivered_at_address ?? false,
     // Needed so the widget can mirror the create-checkout-session address gate
-    // exactly (visibility === 'private' || delivered_at_address). Present on the
+    // (address required only when public AND delivered_at_address). Present on the
     // /book/:token path; null on public search (which only ever returns public
     // rows, so the widget falls back to the flag). Without it, a public venue
     // class shared by its /book/:token link wrongly demanded a customer address.

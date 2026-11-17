@@ -72,7 +72,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Where to get help',
         body: [
-          'Check the guides in this section first. If you cannot find the answer, contact HQ directly.',
+          'Check the guides in this section first. If you cannot find the answer, use the triage form: https://simmance.ai/triage?client=daisy. Please do not email HQ or the developer directly. See Getting help.',
         ],
       },
     ],
@@ -270,7 +270,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
           "When a customer searches a postcode or town, they see every public class within 15 miles, plus all the public classes of the trainer who covers that area, however far away. This protects each trainer's area, so your classes do not show in a neighbour's search when your venues are more than 15 miles from it.",
           'To reach customers further away, share your own booking page or a filtered link instead. It lists all your classes, wherever the customer lives.',
           'Private classes do not appear in the postcode search. Share the booking link directly with the group or client.',
-          'On a private class link the address box is optional, so a group can share one link even if some of them do not know where the class is. Whatever a booker enters shows on their booking under Class address. Put the address in the venue name when you create the class, and everyone sees it at the top of the booking page.',
+          'A private class at a venue (a baby hub, a nursery, a workplace) shows the venue on its booking page and does not ask the booker for an address. Fill in the venue name, address and postcode when you create the class.',
+          'If you tick "Venue to be confirmed" on a private class, the booking page says "At your home" and offers an optional address box, so a group can share one link even if some of them do not know where the class is. Whatever a booker enters shows on their booking under Class address. Once you know the venue, edit the class and fill it in, and the booking page shows it instead.',
         ],
       },
       {
@@ -1123,7 +1124,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     slug: 'getting-help',
     title: 'Getting help',
-    summary: 'Check these guides first, then contact HQ if you are still stuck.',
+    summary: 'Check these guides first, then use the triage form if you are still stuck.',
     keywords: [
       'help',
       'support',
@@ -1135,6 +1136,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'stripe',
       'website',
       'hq',
+      'triage',
+      'triage form',
+      'email',
+      'question',
     ],
     sections: [
       {
@@ -1146,15 +1151,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
       {
         heading: 'Quick answers to common questions',
         body: [
-          'Cannot log in: make sure you are clicking "Sign in with Google" and using your @daisyfirstaid.com email, the same one HQ has for you. There is no password. If it still will not let you in, reply to the announcement email and HQ will sort it.',
+          'Cannot log in: make sure you are clicking "Sign in with Google" and using your @daisyfirstaid.com email, the same one HQ has for you. There is no password. If it still will not let you in, send the triage form (it works without logging in).',
           'Customer cannot pay by card: check that your Stripe account is connected. Go to Payments, the status should show "Connected". If it shows the "Connect with Stripe" button, complete that step first.',
           'My class is not showing on the Daisy website: the class must be set to Public, the date must be in the future, and there must be at least one space remaining. Open the class in Courses and check the visibility and capacity settings.',
         ],
       },
       {
-        heading: 'Contacting HQ',
+        heading: 'Asking a question or reporting a problem',
         body: [
-          'If the guides do not answer your question, please contact support@daisyfirstaid.com. HQ will respond as quickly as possible.',
+          'If the guides do not answer your question, use the triage form: https://simmance.ai/triage?client=daisy. This is the only route for questions, problems and requests about the portal and the booking pages, so please use it every time, even for a quick question.',
+          'The form gives every question a reference number, so nothing gets lost, it goes straight to the people who can fix it, and HQ can see what has been asked. It also suggests the Help sections that match your question as you type, which often answers it there and then.',
+          'Please do not email HQ or the developer directly about the portal, even if you have had an email from them before. Emails sent outside the form are not logged and will be pointed back to the form, so they take longer to answer. Replying to an email about a reference you already have is fine.',
+          'When you fill it in, say which class or booking it is about (the date and name are enough) and add a screenshot if you can. That is usually all we need to find it.',
         ],
       },
     ],

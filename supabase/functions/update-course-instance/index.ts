@@ -25,6 +25,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { onePerOrder } from '../_shared/basket.ts';
+import { privateAtCustomerAddress } from '../_shared/courseAddress.ts';
 import {
   POST_COURSE_KEYS,
   PRE_CLASS_KEYS,
@@ -485,6 +486,14 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(
         { error: 'venue_postcode is required unless the venue is marked as to be confirmed' },
         400,
+      );
+    }
+    // A private class is at the customer's address only while it has no
+    // venue; the franchisee's tick box is for public classes (Kirsty, 16 Nov).
+    if (visibility === 'private') {
+      updateFields.delivered_at_address = privateAtCustomerAddress(
+        isOnline,
+        isOnline ? null : effectivePostcode,
       );
     }
   }
