@@ -249,7 +249,7 @@ Deno.serve(async (req: Request) => {
       const r = await admin
         .from('da_bookings')
         .select(
-          `id, booking_reference, ticket_type_id, quantity, discount_code, service_address, parking_notes, order_id, order_items,
+          `id, booking_reference, ticket_type_id, quantity, discount_code, service_address, parking_notes, attendee_details, heard_about, heard_about_other, order_id, order_items,
            customer:da_customers ( first_name, last_name, email, phone, postcode )`,
         )
         .eq('resume_token', resumeToken)
@@ -266,6 +266,10 @@ Deno.serve(async (req: Request) => {
           discount_code: d.discount_code ?? '',
           service_address: d.service_address ?? '',
           parking_notes: d.parking_notes ?? '',
+          // November batch (migration 073).
+          attendee_details: d.attendee_details ?? '',
+          heard_about: d.heard_about ?? '',
+          heard_about_other: d.heard_about_other ?? '',
           first_name: d.customer?.first_name ?? '',
           last_name: d.customer?.last_name ?? '',
           email: d.customer?.email ?? '',

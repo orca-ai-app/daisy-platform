@@ -464,6 +464,8 @@ export interface CourseBookingRow {
   booking_status: string;
   customer: { first_name: string; last_name: string; email: string | null } | null;
   ticket_type: { name: string } | null;
+  /** November batch (migration 073): names/emails the booker gave. */
+  attendee_details?: string | null;
 }
 
 export function useCourseBookings(courseInstanceId: string | undefined) {
@@ -474,7 +476,7 @@ export function useCourseBookings(courseInstanceId: string | undefined) {
       const { data, error } = await supabase
         .from('da_bookings')
         .select(
-          `id, booking_reference, quantity, payment_status, booking_status,
+          `id, booking_reference, quantity, payment_status, booking_status, attendee_details,
            customer:da_customers ( first_name, last_name, email ),
            ticket_type:da_ticket_types ( name )`,
         )

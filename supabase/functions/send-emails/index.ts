@@ -27,6 +27,8 @@ import {
   buildVatBlockHtml,
   buildServiceBlockHtml,
   buildServiceBlockText,
+  buildExtrasBlockHtml,
+  buildExtrasBlockText,
   renderTemplate,
   type TemplateContext,
 } from './templates.ts';
@@ -34,6 +36,7 @@ import { renderBlocks, fillMerge, type EmailBlock } from '../_shared/emailBlocks
 import { buildUnsubscribeUrl } from '../_shared/unsubscribeToken.ts';
 import { processBroadcast } from '../_shared/broadcastSender.ts';
 import { logSystem } from '../_shared/log.ts';
+import { heardAboutLabel } from '../_shared/bookerExtras.ts';
 import { checkEmailHealth } from './health.ts';
 import { RECOVERY_DELAY_MINUTES, newResumeToken, recoverySkipReason } from './recovery.ts';
 import {
@@ -331,6 +334,7 @@ Deno.serve(async (req: Request) => {
           .from('da_bookings')
           .select(
             `id, booking_reference, booking_status, payment_status, total_price_pence, quantity, discount_code, service_address, parking_notes,
+           attendee_details, heard_about, heard_about_other,
            created_at, customer_id, course_instance_id, resume_token, order_id, order_items,
            customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
@@ -575,6 +579,20 @@ Deno.serve(async (req: Request) => {
             : '',
           service_block_text: toFranchisee
             ? buildServiceBlockText(b.service_address, b.parking_notes)
+            : '',
+          // November batch (migration 073): trainer-only, never on the
+          // customer's own emails.
+          extras_block_html: toFranchisee
+            ? buildExtrasBlockHtml(
+                b.attendee_details,
+                heardAboutLabel(b.heard_about, b.heard_about_other),
+              )
+            : '',
+          extras_block_text: toFranchisee
+            ? buildExtrasBlockText(
+                b.attendee_details,
+                heardAboutLabel(b.heard_about, b.heard_about_other),
+              )
             : '',
           vat_block_html: toFranchisee
             ? ''

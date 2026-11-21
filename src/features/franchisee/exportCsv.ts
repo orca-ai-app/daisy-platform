@@ -8,6 +8,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { heardAboutLabel } from '@/lib/heardAbout';
 
 function csvEscape(value: unknown): string {
   const s = value == null ? '' : String(value);
@@ -91,7 +92,7 @@ export async function exportBookingsCsv(): Promise<number> {
     .from('da_bookings')
     .select(
       `booking_reference, created_at, quantity, total_price_pence, discount_code, discount_amount_pence,
-       payment_status, booking_status, notes,
+       payment_status, booking_status, notes, attendee_details, heard_about, heard_about_other,
        customer:da_customers ( first_name, last_name, email, phone ),
        course_instance:da_course_instances ( event_date, venue_name, venue_postcode, display_name,
          template:da_course_templates ( name ) ),
@@ -117,6 +118,8 @@ export async function exportBookingsCsv(): Promise<number> {
     b.payment_status,
     b.booking_status,
     b.notes ?? '',
+    b.attendee_details ?? '',
+    heardAboutLabel(b.heard_about, b.heard_about_other),
   ]);
   downloadCsv(
     `daisy-bookings-${today()}.csv`,
@@ -137,6 +140,8 @@ export async function exportBookingsCsv(): Promise<number> {
       'Payment',
       'Status',
       'Notes',
+      "Who's coming",
+      'Heard about us',
     ],
     rows,
   );

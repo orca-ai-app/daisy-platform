@@ -231,6 +231,29 @@ describe('buildBookingRows', () => {
     expect(rows[0].order_items).toEqual([BOOK]);
     expect('order_items' in rows[1]).toBe(false);
   });
+
+  it("puts lead-only fields (Who's coming, heard about) on the first line only", () => {
+    n = 0;
+    const rows = buildBookingRows({
+      isOrder: true,
+      newId,
+      leadReference: 'DA-2026-00075-901',
+      lines: [
+        { ticket_type_id: 't-double', quantity: 1, seats_consumed: 2 },
+        { ticket_type_id: 't-single', quantity: 1, seats_consumed: 1 },
+      ],
+      lineNet: [5000, 3000],
+      lineOff: [0, 0],
+      discountCode: null,
+      items: [],
+      common,
+      leadOnly: { attendee_details: 'Jo, Sam', heard_about: 'google' },
+    });
+    expect(rows[0].attendee_details).toBe('Jo, Sam');
+    expect(rows[0].heard_about).toBe('google');
+    expect('attendee_details' in rows[1]).toBe(false);
+    expect('heard_about' in rows[1]).toBe(false);
+  });
 });
 
 describe('buildStripeLineItems', () => {

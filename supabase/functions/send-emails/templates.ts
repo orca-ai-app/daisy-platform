@@ -72,6 +72,13 @@ export interface TemplateContext {
   service_block_html?: string;
   service_block_text?: string;
   /**
+   * November batch (migration 073): "Who's coming" and "Heard about us" for
+   * the franchisee's new-booking alert. Built in index.ts, already escaped;
+   * empty when the booker gave neither.
+   */
+  extras_block_html?: string;
+  extras_block_text?: string;
+  /**
    * checkout_recovery only (migration 066): the class's /book/:token page with
    * ?resume=<token>, which re-fills the customer's details. Built in index.ts.
    */
@@ -102,6 +109,35 @@ export function buildServiceBlockHtml(
   const park = (parking ?? '').trim();
   const parkLine = park ? `<br/><strong>Parking / access:</strong> ${escapeHtml(park)}` : '';
   return `<p><strong>Class address:</strong> ${escapeHtml(addr)}${parkLine}</p>`;
+}
+
+/**
+ * "Who's coming" and "Heard about us" for the franchisee's new-booking alert
+ * (migration 073). Empty when the booker gave neither. Customer free text is
+ * escaped and keeps its line breaks.
+ */
+export function buildExtrasBlockHtml(
+  attendeeDetails: string | null | undefined,
+  heardAbout: string,
+): string {
+  const who = (attendeeDetails ?? '').trim();
+  const parts: string[] = [];
+  if (who) {
+    parts.push(`<strong>Who's coming:</strong><br/>${escapeHtml(who).split('\n').join('<br/>')}`);
+  }
+  if (heardAbout) parts.push(`<strong>Heard about us:</strong> ${escapeHtml(heardAbout)}`);
+  return parts.length ? `<p>${parts.join('<br/>')}</p>` : '';
+}
+
+export function buildExtrasBlockText(
+  attendeeDetails: string | null | undefined,
+  heardAbout: string,
+): string {
+  const who = (attendeeDetails ?? '').trim();
+  let out = '';
+  if (who) out += `\nWho's coming:\n${who}`;
+  if (heardAbout) out += `\nHeard about us: ${heardAbout}`;
+  return out;
 }
 
 export function buildServiceBlockText(
@@ -292,8 +328,9 @@ const TEMPLATES: Record<string, RawTemplate> = {
       <strong>Amount paid:</strong> {{amount_paid}}<br/>
       <strong>Reference:</strong> {{booking_reference}}</p>
       {{order_block_html}}
-      {{service_block_html}}`,
-    text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nAmount paid: {{amount_paid}}\nReference: {{booking_reference}}{{order_block_text}}{{service_block_text}}`,
+      {{service_block_html}}
+      {{extras_block_html}}`,
+    text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nAmount paid: {{amount_paid}}\nReference: {{booking_reference}}{{order_block_text}}{{service_block_text}}{{extras_block_text}}`,
   },
   day_before_reminder: {
     subject: 'See you tomorrow — {{template_name}} ({{booking_reference}})',

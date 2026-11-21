@@ -308,12 +308,15 @@ export function buildBookingRows(args: {
   discountCode: string | null;
   items: OrderItemSnapshot[];
   common: Record<string, unknown>;
+  /** Fields for the first line only, e.g. "Who's coming?" (migration 073). */
+  leadOnly?: Record<string, unknown>;
 }): Array<Record<string, unknown>> {
   const leadId = args.isOrder ? args.newId() : null;
   return args.lines.map((l, i) => ({
     ...(args.isOrder ? { id: i === 0 ? leadId : args.newId(), order_id: leadId } : {}),
     booking_reference: lineReference(args.leadReference, i),
     ...args.common,
+    ...(i === 0 ? (args.leadOnly ?? {}) : {}),
     ticket_type_id: l.ticket_type_id,
     quantity: l.quantity,
     total_price_pence: args.lineNet[i],

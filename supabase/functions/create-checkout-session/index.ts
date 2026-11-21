@@ -71,6 +71,7 @@ import {
   parseOrderLines,
   type OrderItemSnapshot,
 } from '../_shared/basket.ts';
+import { parseBookerExtras } from '../_shared/bookerExtras.ts';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -136,6 +137,11 @@ interface RequestBody {
   // parking or access notes (migration 058). Ignored for public venue classes.
   service_address?: unknown;
   parking_notes?: unknown;
+  // November batch (migration 073), both optional: who the booker is booking
+  // for, and how they heard about the trainer. Stored on the first line only.
+  attendee_details?: unknown;
+  heard_about?: unknown;
+  heard_about_other?: unknown;
 }
 
 // Shared by both paths. Round 2 (G3): phone and postcode are now COMPULSORY,
@@ -264,6 +270,7 @@ Deno.serve(async (req: Request) => {
     instance.visibility !== 'private' && instance.delivered_at_address === true;
   const serviceAddress = reqStr(body.service_address);
   const parkingNotes = reqStr(body.parking_notes);
+  const bookerExtras = parseBookerExtras(body);
   if (addressRequired && !serviceAddress) {
     return jsonResponse(
       { error: 'Please provide the address where the class will take place.' },
@@ -562,6 +569,7 @@ Deno.serve(async (req: Request) => {
       service_address: serviceAddress,
       parking_notes: parkingNotes,
     },
+    leadOnly: { ...bookerExtras },
   });
   const leadId = isOrder ? (rowsToInsert[0].id as string) : null;
   const bookingRes = await admin.from('da_bookings').insert(rowsToInsert).select('id');

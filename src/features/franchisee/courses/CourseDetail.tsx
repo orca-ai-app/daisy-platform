@@ -1117,12 +1117,20 @@ function CourseBookingsCard({ courseInstanceId }: { courseInstanceId: string }) 
                   payment pending
                 </Badge>
               ) : null}
+              {b.attendee_details ? (
+                // November batch (migration 073): the names and emails the
+                // booker gave for the people they booked for.
+                <span className="text-daisy-muted basis-full pl-3 text-xs whitespace-pre-line">
+                  <span className="font-semibold">Who&apos;s coming:</span> {b.attendee_details}
+                </span>
+              ) : null}
             </Link>
           </Fragment>
         ))}
         <p className="text-daisy-muted mt-2 text-xs">
           Click a name to open the booking. The person named is whoever made the booking — their
-          ticket may cover more than one attendee.
+          ticket may cover more than one attendee. If they told you who&apos;s coming when they
+          booked, it shows under their name.
         </p>
       </CardContent>
     </Card>

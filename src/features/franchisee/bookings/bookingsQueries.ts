@@ -120,6 +120,11 @@ export interface OwnBookingDetail {
   /** Private/home/workplace bookings (migration 058): where the class runs + parking. */
   service_address: string | null;
   parking_notes: string | null;
+  /** November batch (migration 073): who the booker is booking for. */
+  attendee_details?: string | null;
+  /** November batch (migration 073): how they heard about the trainer. */
+  heard_about?: string | null;
+  heard_about_other?: string | null;
   customer: {
     id: string;
     first_name: string;
@@ -392,6 +397,9 @@ export function useBookingDetail(id: string | undefined) {
            created_at,
            service_address,
            parking_notes,
+           attendee_details,
+           heard_about,
+           heard_about_other,
            customer:da_customers ( id, first_name, last_name, email, phone, postcode ),
            course_instance:da_course_instances (
              id,

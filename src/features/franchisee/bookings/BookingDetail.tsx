@@ -20,6 +20,7 @@
  */
 
 import { useState } from 'react';
+import { heardAboutLabel } from '@/lib/heardAbout';
 import { Link, useLocation, useParams } from 'react-router';
 import { formatInTimeZone } from 'date-fns-tz';
 import { toast } from 'sonner';
@@ -734,6 +735,23 @@ export default function BookingDetail() {
                     ) : null}
                     {booking.parking_notes ? (
                       <Field label="Parking / access" value={booking.parking_notes} full />
+                    ) : null}
+                    {/* November batch (migration 073): what the booker told the
+                        trainer on the booking form. Only shown when given. */}
+                    {booking.attendee_details ? (
+                      <Field
+                        label="Who's coming"
+                        value={
+                          <span className="whitespace-pre-line">{booking.attendee_details}</span>
+                        }
+                        full
+                      />
+                    ) : null}
+                    {heardAboutLabel(booking.heard_about, booking.heard_about_other) ? (
+                      <Field
+                        label="Heard about us"
+                        value={heardAboutLabel(booking.heard_about, booking.heard_about_other)}
+                      />
                     ) : null}
                     <Field
                       label="Ticket type"
