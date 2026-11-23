@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   applyReanchor,
   isClassAnchored,
+  isOnlineBooking,
   journeyTimes,
   missingPreClassReminders,
   planReanchor,
@@ -202,5 +203,26 @@ describe('applyReanchor', () => {
       { set: { scheduled_for: 'T2' }, ids: ['c'], status: 'pending' },
       { set: { status: 'cancelled' }, ids: ['d'], status: 'pending' },
     ]);
+  });
+});
+
+describe('isOnlineBooking (TRI-0088)', () => {
+  it('online checkout, paid or free, is online', () => {
+    expect(isOnlineBooking({ stripe_checkout_session_id: 'cs_1', payment_status: 'paid' })).toBe(
+      true,
+    );
+    expect(isOnlineBooking({ stripe_checkout_session_id: null, payment_status: 'paid' })).toBe(
+      true,
+    );
+  });
+
+  it('a booking the trainer added is not, even after a move queued it a confirmation', () => {
+    expect(isOnlineBooking({ stripe_checkout_session_id: null, payment_status: 'manual' })).toBe(
+      false,
+    );
+    expect(isOnlineBooking({ stripe_checkout_session_id: null, payment_status: 'pending' })).toBe(
+      false,
+    );
+    expect(isOnlineBooking({})).toBe(false);
   });
 });

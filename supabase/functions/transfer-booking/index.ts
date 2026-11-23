@@ -53,6 +53,7 @@ import {
   POST_COURSE_KEYS,
   PRE_CLASS_KEYS,
   applyReanchor,
+  isOnlineBooking,
   missingPreClassReminders,
   planReanchor,
   type ClassTimes,
@@ -483,16 +484,23 @@ async function releaseSeats(admin: any, instanceId: string, seats: number): Prom
   if (upd.error) console.error('releaseSeats: failed to restore spots', upd.error);
 }
 
-/** Whether a booking had the online email journey (a booking confirmation). */
+/**
+ * Whether a booking was made online, so had the online email journey. A
+ * booking a trainer adds (create-booking) gets the trainer alert and the
+ * day-before reminder only.
+ *
+ * Decided from the booking itself, not its emails: a transfer queues a
+ * booking_confirmation for a trainer-added booking too, so "has a
+ * confirmation" made a second move give it a medical reminder (TRI-0088).
+ */
 async function hadOnlineJourney(admin: any, bookingId: string): Promise<boolean> {
   const r = await admin
-    .from('da_email_sequences')
-    .select('id')
-    .eq('booking_id', bookingId)
-    .eq('template_key', 'booking_confirmation')
-    .limit(1);
+    .from('da_bookings')
+    .select('stripe_checkout_session_id, payment_status')
+    .eq('id', bookingId)
+    .maybeSingle();
   if (r.error) throw new Error(`journey lookup failed: ${r.error.message}`);
-  return (r.data ?? []).length > 0;
+  return isOnlineBooking(r.data ?? {});
 }
 
 /**

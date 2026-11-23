@@ -39,6 +39,18 @@ export const POST_COURSE_KEYS = [
 const PRE = new Set<string>(PRE_CLASS_KEYS);
 const POST = new Set<string>(POST_COURSE_KEYS);
 
+/**
+ * Whether a booking was made through online checkout: paid through Stripe, or
+ * a free (100%-off) online booking, which is marked paid with no Stripe
+ * session. A booking a trainer adds is only ever 'manual' or 'pending'.
+ */
+export function isOnlineBooking(b: {
+  stripe_checkout_session_id?: string | null;
+  payment_status?: string | null;
+}): boolean {
+  return !!b.stripe_checkout_session_id || b.payment_status === 'paid';
+}
+
 /** Keys whose send time follows the class. Everything else is left alone. */
 export function isClassAnchored(key: string): boolean {
   return PRE.has(key) || POST.has(key);
