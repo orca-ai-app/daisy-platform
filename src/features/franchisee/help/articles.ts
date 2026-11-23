@@ -555,6 +555,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: 'What you get',
         body: [
           'A "New booking" email every time someone books one of your classes, with who, what, when and how much they paid. Bookings you add yourself send you one too.',
+          "The email has a \"View this booking in the portal\" link that opens that booking, with the customer's email address and phone number. Contact details stay in the portal and are never put in the email, because emails get forwarded and kept on phones. If you're signed out, the link opens the booking once you've signed in.",
           'An order with several ticket types or shop items sends you one email, listing every ticket and item in it and the total paid.',
         ],
       },

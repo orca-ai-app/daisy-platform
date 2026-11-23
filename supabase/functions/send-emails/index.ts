@@ -27,6 +27,8 @@ import {
   buildVatBlockHtml,
   buildServiceBlockHtml,
   buildServiceBlockText,
+  buildBookingLinkHtml,
+  buildBookingLinkText,
   buildExtrasBlockHtml,
   buildExtrasBlockText,
   renderTemplate,
@@ -594,6 +596,9 @@ Deno.serve(async (req: Request) => {
                 heardAboutLabel(b.heard_about, b.heard_about_other),
               )
             : '',
+          // TRI-0089: a link into the portal, never the customer's details.
+          booking_link_html: toFranchisee ? buildBookingLinkHtml(row.booking_id) : '',
+          booking_link_text: toFranchisee ? buildBookingLinkText(row.booking_id) : '',
           vat_block_html: toFranchisee
             ? ''
             : isOrder

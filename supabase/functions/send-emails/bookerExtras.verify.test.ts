@@ -2,6 +2,8 @@
 // franchisee's new-booking alert, never on the customer's confirmation.
 import { describe, it, expect } from 'vitest';
 import {
+  buildBookingLinkHtml,
+  buildBookingLinkText,
   buildExtrasBlockHtml,
   buildExtrasBlockText,
   renderTemplate,
@@ -51,5 +53,34 @@ describe("Who's coming and Heard about us on the trainer alert", () => {
       extras_block_html: buildExtrasBlockHtml(who, 'Google search'),
     })!;
     expect(t.html).not.toContain("Who's coming");
+  });
+});
+
+describe('link to the booking in the portal (TRI-0089)', () => {
+  const id = '489d6504-9202-4248-bde8-c04cf16a2f94';
+
+  it("is on the trainer alert, but never the customer's details", () => {
+    const t = renderTemplate('new_booking_notification', {
+      ...CTX,
+      booking_link_html: buildBookingLinkHtml(id),
+      booking_link_text: buildBookingLinkText(id),
+    })!;
+    expect(t.html).toContain(`href="https://app.daisyfirstaid.com/franchisee/bookings/${id}"`);
+    expect(t.html).toContain('View this booking in the portal');
+    expect(t.text).toContain(`https://app.daisyfirstaid.com/franchisee/bookings/${id}`);
+    expect(t.html).not.toContain('mailto:');
+  });
+
+  it('adds nothing without a booking id', () => {
+    expect(buildBookingLinkHtml(null)).toBe('');
+    expect(buildBookingLinkText('')).toBe('');
+  });
+
+  it("never appears on the customer's confirmation", () => {
+    const t = renderTemplate('booking_confirmation', {
+      ...CTX,
+      booking_link_html: buildBookingLinkHtml(id),
+    })!;
+    expect(t.html).not.toContain('/franchisee/bookings/');
   });
 });

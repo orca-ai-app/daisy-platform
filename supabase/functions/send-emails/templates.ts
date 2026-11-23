@@ -79,6 +79,13 @@ export interface TemplateContext {
   extras_block_html?: string;
   extras_block_text?: string;
   /**
+   * new_booking_notification only (TRI-0089): a link straight to the booking
+   * in the portal, so the trainer gets to the customer's contact details in
+   * one click. The details themselves never go in the email.
+   */
+  booking_link_html?: string;
+  booking_link_text?: string;
+  /**
    * checkout_recovery only (migration 066): the class's /book/:token page with
    * ?resume=<token>, which re-fills the customer's details. Built in index.ts.
    */
@@ -127,6 +134,24 @@ export function buildExtrasBlockHtml(
   }
   if (heardAbout) parts.push(`<strong>Heard about us:</strong> ${escapeHtml(heardAbout)}`);
   return parts.length ? `<p>${parts.join('<br/>')}</p>` : '';
+}
+
+export const PORTAL_URL = 'https://app.daisyfirstaid.com';
+
+/** The franchisee's own booking page. Signed-out, the portal returns here after sign-in. */
+export function portalBookingUrl(bookingId: string): string {
+  return `${PORTAL_URL}/franchisee/bookings/${encodeURIComponent(bookingId)}`;
+}
+
+export function buildBookingLinkHtml(bookingId: string | null | undefined): string {
+  if (!bookingId) return '';
+  const url = escapeHtml(portalBookingUrl(bookingId));
+  return `<p><a href="${url}" style="color:${DAISY_BLUE};font-weight:bold">View this booking in the portal</a><br/><span style="font-size:13px;color:#5a7a8f">The customer's email address and phone number are on the booking.</span></p>`;
+}
+
+export function buildBookingLinkText(bookingId: string | null | undefined): string {
+  if (!bookingId) return '';
+  return `\n\nView this booking in the portal (customer's email and phone are there):\n${portalBookingUrl(bookingId)}`;
 }
 
 export function buildExtrasBlockText(
@@ -329,8 +354,9 @@ const TEMPLATES: Record<string, RawTemplate> = {
       <strong>Reference:</strong> {{booking_reference}}</p>
       {{order_block_html}}
       {{service_block_html}}
-      {{extras_block_html}}`,
-    text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nAmount paid: {{amount_paid}}\nReference: {{booking_reference}}{{order_block_text}}{{service_block_text}}{{extras_block_text}}`,
+      {{extras_block_html}}
+      {{booking_link_html}}`,
+    text: `New booking.\n\nCustomer: {{customer_name}}\nCourse: {{template_name}}\nWhen: {{event_date}} at {{start_time}}\nWhere: {{venue}}\nAmount paid: {{amount_paid}}\nReference: {{booking_reference}}{{order_block_text}}{{service_block_text}}{{extras_block_text}}{{booking_link_text}}`,
   },
   day_before_reminder: {
     subject: 'See you tomorrow — {{template_name}} ({{booking_reference}})',
