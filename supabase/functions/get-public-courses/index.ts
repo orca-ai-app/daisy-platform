@@ -250,6 +250,7 @@ Deno.serve(async (req: Request) => {
         .from('da_bookings')
         .select(
           `id, booking_reference, ticket_type_id, quantity, discount_code, service_address, parking_notes, attendee_details, heard_about, heard_about_other, order_id, order_items,
+           booked_first_name, booked_last_name,
            customer:da_customers ( first_name, last_name, email, phone, postcode )`,
         )
         .eq('resume_token', resumeToken)
@@ -270,8 +271,9 @@ Deno.serve(async (req: Request) => {
           attendee_details: d.attendee_details ?? '',
           heard_about: d.heard_about ?? '',
           heard_about_other: d.heard_about_other ?? '',
-          first_name: d.customer?.first_name ?? '',
-          last_name: d.customer?.last_name ?? '',
+          // Migration 074: the name this booking was made under.
+          first_name: d.booked_first_name || d.customer?.first_name || '',
+          last_name: d.booked_last_name || d.customer?.last_name || '',
           email: d.customer?.email ?? '',
           phone: d.customer?.phone ?? '',
           postcode: d.customer?.postcode ?? '',

@@ -82,7 +82,7 @@ Deno.serve(async (req: Request) => {
     const bRes = await admin
       .from('da_bookings')
       .select(
-        'booking_reference, quantity, total_price_pence, payment_status, booking_status, created_at, course_instance:da_course_instances(event_date, venue_postcode, template:da_course_templates(name))',
+        'booking_reference, booked_first_name, booked_last_name, quantity, total_price_pence, payment_status, booking_status, created_at, course_instance:da_course_instances(event_date, venue_postcode, template:da_course_templates(name))',
       )
       .eq('customer_id', customerId);
     bookings = bRes.data ?? [];

@@ -229,7 +229,9 @@ Deno.serve(async (req: Request) => {
   if (courseInstanceId) {
     const bookingsRes = await admin
       .from('da_bookings')
-      .select('id, customer:da_customers ( email, first_name, last_name )')
+      .select(
+        'id, booked_first_name, booked_last_name, customer:da_customers ( email, first_name, last_name )',
+      )
       .eq('course_instance_id', courseInstanceId)
       .neq('booking_status', 'cancelled');
     const bookings = (bookingsRes.data ?? []) as any[];
@@ -237,10 +239,14 @@ Deno.serve(async (req: Request) => {
     if (bookerReference && bookings.length > 0) {
       const ref = bookerReference.toLowerCase();
       const byEmail = bookings.filter((b) => (b.customer?.email ?? '').toLowerCase() === ref);
+      // Migration 074: match the name the booking was made under, or the
+      // contact's current name.
+      const fullName = (f: unknown, l: unknown) =>
+        `${(f as string) ?? ''} ${(l as string) ?? ''}`.trim().toLowerCase();
       const byName = bookings.filter(
         (b) =>
-          `${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim().toLowerCase() ===
-          ref,
+          fullName(b.booked_first_name, b.booked_last_name) === ref ||
+          fullName(b.customer?.first_name, b.customer?.last_name) === ref,
       );
       const matched = byEmail.length === 1 ? byEmail[0] : byName.length === 1 ? byName[0] : null;
       if (matched) {

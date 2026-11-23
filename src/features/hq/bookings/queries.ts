@@ -11,6 +11,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { ActivityRow, BookingStatus, PaymentStatus } from '@/types/franchisee';
+import { withBookedName } from '@/lib/bookedName';
 
 /** Postgrest "relation does not exist" — match Wave 2A's defensive helper. */
 const TABLE_MISSING_CODES = new Set(['42P01', 'PGRST205']);
@@ -134,6 +135,7 @@ export function useBookings(filters: BookingsListFilters = {}) {
            payment_status,
            booking_status,
            created_at,
+           booked_first_name, booked_last_name,
            customer:da_customers ( first_name, last_name, email ),
            course_instance:da_course_instances (
              event_date,
@@ -193,24 +195,26 @@ export function useBookings(filters: BookingsListFilters = {}) {
         franchisee: { id: string; number: string; name: string } | null;
       };
 
-      const rows: BookingListRow[] = ((data ?? []) as unknown as Joined[]).map((row) => ({
-        id: row.id,
-        booking_reference: row.booking_reference,
-        total_price_pence: row.total_price_pence,
-        payment_status: row.payment_status,
-        booking_status: row.booking_status,
-        created_at: row.created_at,
-        customer_first_name: row.customer?.first_name ?? '',
-        customer_last_name: row.customer?.last_name ?? '',
-        customer_email: row.customer?.email ?? '',
-        course_template_name: row.course_instance?.template?.name ?? null,
-        course_event_date: row.course_instance?.event_date ?? null,
-        course_venue_postcode: row.course_instance?.venue_postcode ?? null,
-        ticket_type_name: row.ticket_type?.name ?? null,
-        franchisee_id: row.franchisee?.id ?? '',
-        franchisee_number: row.franchisee?.number ?? '',
-        franchisee_name: row.franchisee?.name ?? '',
-      }));
+      const rows: BookingListRow[] = ((data ?? []) as unknown as Joined[])
+        .map(withBookedName)
+        .map((row) => ({
+          id: row.id,
+          booking_reference: row.booking_reference,
+          total_price_pence: row.total_price_pence,
+          payment_status: row.payment_status,
+          booking_status: row.booking_status,
+          created_at: row.created_at,
+          customer_first_name: row.customer?.first_name ?? '',
+          customer_last_name: row.customer?.last_name ?? '',
+          customer_email: row.customer?.email ?? '',
+          course_template_name: row.course_instance?.template?.name ?? null,
+          course_event_date: row.course_instance?.event_date ?? null,
+          course_venue_postcode: row.course_instance?.venue_postcode ?? null,
+          ticket_type_name: row.ticket_type?.name ?? null,
+          franchisee_id: row.franchisee?.id ?? '',
+          franchisee_number: row.franchisee?.number ?? '',
+          franchisee_name: row.franchisee?.name ?? '',
+        }));
 
       return { rows, totalCount: count ?? 0 };
     },
@@ -295,6 +299,7 @@ export function useBooking(id: string | undefined) {
            notes,
            quantity,
            created_at,
+           booked_first_name, booked_last_name,
            customer:da_customers ( id, first_name, last_name, email, phone, postcode ),
            course_instance:da_course_instances (
              id,
@@ -314,7 +319,7 @@ export function useBooking(id: string | undefined) {
         if (isTableMissing(error.code)) return null;
         throw error;
       }
-      return data as unknown as BookingDetail | null;
+      return data ? withBookedName(data as unknown as BookingDetail) : null;
     },
   });
 }

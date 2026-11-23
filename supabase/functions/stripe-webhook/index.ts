@@ -906,6 +906,9 @@ async function handleCheckoutSessionCompleted(admin: any, event: Stripe.Event): 
       course_instance_id: courseInstanceId,
       franchisee_id: franchiseeId,
       customer_id: customerId,
+      // Migration 074: this booking's own name.
+      booked_first_name: firstName,
+      booked_last_name: lastName || 'Unknown',
       private_client_id: instance.private_client_id ?? null,
       ticket_type_id: ticketTypeId,
       quantity,

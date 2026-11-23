@@ -61,6 +61,12 @@ function isUuid(v: unknown): v is string {
 
 interface RequestBody {
   customer_id?: unknown;
+  /**
+   * Optional (migration 074): the booking the edit was made from. A name
+   * change then also corrects that booking's own name, which is what the
+   * portal shows for it. Other bookings by the same email keep theirs.
+   */
+  booking_id?: unknown;
   first_name?: unknown;
   last_name?: unknown;
   phone?: unknown;
@@ -258,6 +264,23 @@ Deno.serve(async (req: Request) => {
   if (updated.error) {
     console.error('customer update failed', updated.error);
     return jsonResponse({ error: 'Failed to update customer' }, 500);
+  }
+
+  // Migration 074: correct the name on the booking the edit came from.
+  const nameChange: Record<string, string> = {};
+  if (typeof updatePayload.first_name === 'string')
+    nameChange.booked_first_name = updatePayload.first_name as string;
+  if (typeof updatePayload.last_name === 'string')
+    nameChange.booked_last_name = updatePayload.last_name as string;
+  if (isUuid(body.booking_id) && Object.keys(nameChange).length > 0) {
+    let q = admin
+      .from('da_bookings')
+      .update(nameChange)
+      .eq('id', body.booking_id)
+      .eq('customer_id', customerId);
+    if (!caller.is_hq) q = q.eq('franchisee_id', caller.id);
+    const bu = await q;
+    if (bu.error) console.error('booking name update failed', bu.error);
   }
 
   // ---------------------------------------------------------------------------

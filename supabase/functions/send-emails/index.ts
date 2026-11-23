@@ -338,6 +338,7 @@ Deno.serve(async (req: Request) => {
             `id, booking_reference, booking_status, payment_status, total_price_pence, quantity, discount_code, service_address, parking_notes,
            attendee_details, heard_about, heard_about_other,
            created_at, customer_id, course_instance_id, resume_token, order_id, order_items,
+           booked_first_name, booked_last_name,
            customer:da_customers ( first_name, last_name, email, marketing_opt_out ),
            course_instance:da_course_instances (
              event_date, start_time, venue_name, venue_address, venue_postcode, status,
@@ -514,8 +515,11 @@ Deno.serve(async (req: Request) => {
         }
 
         const ctx: TemplateContext = {
-          first_name: b.customer?.first_name ?? 'there',
-          customer_name: `${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim(),
+          // Migration 074: this booking's own name, not the contact's latest.
+          first_name: b.booked_first_name || b.customer?.first_name || 'there',
+          customer_name: `${b.booked_first_name || b.customer?.first_name || ''} ${
+            b.booked_last_name || b.customer?.last_name || ''
+          }`.trim(),
           template_name: b.course_instance?.template?.name ?? 'your class',
           event_date: formatDate(b.course_instance?.event_date ?? null),
           start_time: (b.course_instance?.start_time ?? '').slice(0, 5),

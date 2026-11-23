@@ -19,6 +19,7 @@
  * Key factory: franchiseeKeys (frozen contract in ./queryKeys).
  */
 
+import { withBookedName } from '@/lib/bookedName';
 import {
   useMutation,
   useQuery,
@@ -477,13 +478,14 @@ export function useCourseBookings(courseInstanceId: string | undefined) {
         .from('da_bookings')
         .select(
           `id, booking_reference, quantity, payment_status, booking_status, attendee_details,
+           booked_first_name, booked_last_name,
            customer:da_customers ( first_name, last_name, email ),
            ticket_type:da_ticket_types ( name )`,
         )
         .eq('course_instance_id', courseInstanceId!)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      return (data ?? []) as unknown as CourseBookingRow[];
+      return ((data ?? []) as unknown as CourseBookingRow[]).map(withBookedName);
     },
   });
 }

@@ -7,6 +7,7 @@ import type {
   FranchiseeStatus,
   Territory,
 } from '@/types/franchisee';
+import { withBookedName } from '@/lib/bookedName';
 
 export interface FranchiseeListFilters {
   /** Free-text search across name / number / email. */
@@ -225,6 +226,7 @@ export function useFranchiseeBookings(id: string | undefined, limit = 20) {
            payment_status,
            booking_status,
            created_at,
+           booked_first_name, booked_last_name,
            customer:da_customers ( first_name, last_name ),
            course_instance:da_course_instances (
              event_date,
@@ -250,7 +252,7 @@ export function useFranchiseeBookings(id: string | undefined, limit = 20) {
         } | null;
       };
 
-      return ((data ?? []) as unknown as Joined[]).map((row) => ({
+      return ((data ?? []) as unknown as Joined[]).map(withBookedName).map((row) => ({
         id: row.id,
         booking_reference: row.booking_reference,
         total_price_pence: row.total_price_pence,

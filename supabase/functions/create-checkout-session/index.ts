@@ -564,6 +564,10 @@ Deno.serve(async (req: Request) => {
       course_instance_id: instance.id,
       franchisee_id: instance.franchisee_id,
       customer_id: customerId,
+      // Migration 074: the booking keeps the name it was made under, whatever
+      // later bookings with the same email do to da_customers.
+      booked_first_name: firstName,
+      booked_last_name: lastName,
       private_client_id: privateClientId,
       // Private/home/workplace bookings only (migration 058); null otherwise.
       service_address: serviceAddress,

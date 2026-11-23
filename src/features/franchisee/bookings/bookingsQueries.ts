@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { franchiseeKeys } from '@/features/franchisee/queryKeys';
 import type { ActivityRow, BookingStatus, PaymentStatus } from '@/types/franchisee';
+import { withBookedName } from '@/lib/bookedName';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -185,7 +186,10 @@ export interface TransferBookingPayload {
 }
 
 export interface UpdateCustomerPayload {
-  /** Used for cache invalidation only — not sent to the Edge Function. */
+  /**
+   * The booking the edit was made from: a name change also corrects that
+   * booking's own name (migration 074), and its cache is invalidated.
+   */
   booking_id: string;
   customer_id: string;
   first_name?: string;
@@ -270,6 +274,7 @@ export function useOwnBookings(filters: OwnBookingsFilters = {}) {
            payment_status,
            booking_status,
            created_at,
+           booked_first_name, booked_last_name,
            customer:da_customers ( first_name, last_name, email ),
            course_instance:da_course_instances (
              event_date,
@@ -310,11 +315,21 @@ export function useOwnBookings(filters: OwnBookingsFilters = {}) {
             : []),
         ].join(',');
         const matches = await supabase.from('da_customers').select('id').or(nameOr).limit(500);
+        // Migration 074: the name given on the booking itself, which can
+        // differ from the contact's latest name.
+        const bookedOr = [
+          `booking_reference.ilike.%${escaped}%`,
+          `booked_first_name.ilike.%${escaped}%`,
+          `booked_last_name.ilike.%${escaped}%`,
+          ...(words.length > 1
+            ? [
+                `and(booked_first_name.ilike.%${words[0]}%,booked_last_name.ilike.%${words.slice(1).join(' ')}%)`,
+              ]
+            : []),
+        ].join(',');
         const ids = ((matches.data ?? []) as Array<{ id: string }>).map((c) => c.id);
         qb =
-          ids.length > 0
-            ? qb.or(`booking_reference.ilike.%${escaped}%,customer_id.in.(${ids.join(',')})`)
-            : qb.ilike('booking_reference', `%${escaped}%`);
+          ids.length > 0 ? qb.or(`${bookedOr},customer_id.in.(${ids.join(',')})`) : qb.or(bookedOr);
       }
 
       const from = page * pageSize;
@@ -340,20 +355,22 @@ export function useOwnBookings(filters: OwnBookingsFilters = {}) {
         ticket_type: { name: string } | null;
       };
 
-      const rows: OwnBookingListRow[] = ((data ?? []) as unknown as Joined[]).map((row) => ({
-        id: row.id,
-        booking_reference: row.booking_reference,
-        total_price_pence: row.total_price_pence,
-        payment_status: row.payment_status,
-        booking_status: row.booking_status,
-        created_at: row.created_at,
-        customer_first_name: row.customer?.first_name ?? '',
-        customer_last_name: row.customer?.last_name ?? '',
-        customer_email: row.customer?.email ?? '',
-        course_template_name: row.course_instance?.template?.name ?? null,
-        course_event_date: row.course_instance?.event_date ?? null,
-        ticket_type_name: row.ticket_type?.name ?? null,
-      }));
+      const rows: OwnBookingListRow[] = ((data ?? []) as unknown as Joined[])
+        .map(withBookedName)
+        .map((row) => ({
+          id: row.id,
+          booking_reference: row.booking_reference,
+          total_price_pence: row.total_price_pence,
+          payment_status: row.payment_status,
+          booking_status: row.booking_status,
+          created_at: row.created_at,
+          customer_first_name: row.customer?.first_name ?? '',
+          customer_last_name: row.customer?.last_name ?? '',
+          customer_email: row.customer?.email ?? '',
+          course_template_name: row.course_instance?.template?.name ?? null,
+          course_event_date: row.course_instance?.event_date ?? null,
+          ticket_type_name: row.ticket_type?.name ?? null,
+        }));
 
       return { rows, totalCount: count ?? 0 };
     },
@@ -400,6 +417,7 @@ export function useBookingDetail(id: string | undefined) {
            attendee_details,
            heard_about,
            heard_about_other,
+           booked_first_name, booked_last_name,
            customer:da_customers ( id, first_name, last_name, email, phone, postcode ),
            course_instance:da_course_instances (
              id,
@@ -419,7 +437,7 @@ export function useBookingDetail(id: string | undefined) {
         if (isTableMissing(error.code)) return null;
         throw error;
       }
-      return data as unknown as OwnBookingDetail | null;
+      return data ? withBookedName(data as unknown as OwnBookingDetail) : null;
     },
   });
 }
@@ -596,8 +614,7 @@ export function useTransferBooking() {
 export function useUpdateCustomer() {
   const queryClient = useQueryClient();
   return useMutation<unknown, Error, UpdateCustomerPayload>({
-    mutationFn: ({ booking_id: _bookingId, ...payload }) =>
-      callEdgeFunction('update-customer', payload),
+    mutationFn: (payload) => callEdgeFunction('update-customer', payload),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: franchiseeKeys.bookings() });
       void queryClient.invalidateQueries({

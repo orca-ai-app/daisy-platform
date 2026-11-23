@@ -13,6 +13,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { franchiseeKeys } from './queryKeys';
+import { withBookedName } from '@/lib/bookedName';
 
 const STALE_TIME = 5 * 60_000;
 
@@ -175,6 +176,7 @@ export function useRecentBookings(limit = 5) {
            booking_status,
            payment_status,
            created_at,
+           booked_first_name, booked_last_name,
            customer:da_customers ( first_name, last_name ),
            course_instance:da_course_instances (
              event_date,
@@ -189,7 +191,7 @@ export function useRecentBookings(limit = 5) {
         throw error;
       }
 
-      return ((data ?? []) as unknown as RecentBookingJoined[]).map((row) => ({
+      return ((data ?? []) as unknown as RecentBookingJoined[]).map(withBookedName).map((row) => ({
         id: row.id,
         booking_reference: row.booking_reference,
         total_price_pence: row.total_price_pence,

@@ -9,6 +9,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { heardAboutLabel } from '@/lib/heardAbout';
+import { withBookedName } from '@/lib/bookedName';
 
 function csvEscape(value: unknown): string {
   const s = value == null ? '' : String(value);
@@ -93,7 +94,8 @@ export async function exportBookingsCsv(): Promise<number> {
     .select(
       `booking_reference, created_at, quantity, total_price_pence, discount_code, discount_amount_pence,
        payment_status, booking_status, notes, attendee_details, heard_about, heard_about_other,
-       customer:da_customers ( first_name, last_name, email, phone ),
+       booked_first_name, booked_last_name,
+           customer:da_customers ( first_name, last_name, email, phone ),
        course_instance:da_course_instances ( event_date, venue_name, venue_postcode, display_name,
          template:da_course_templates ( name ) ),
        ticket_type:da_ticket_types ( name )`,
@@ -101,26 +103,28 @@ export async function exportBookingsCsv(): Promise<number> {
     .order('created_at', { ascending: false });
   if (error) throw error;
 
-  const rows = (data ?? []).map((b: any) => [
-    b.booking_reference,
-    (b.created_at ?? '').slice(0, 10),
-    b.course_instance?.display_name || b.course_instance?.template?.name || '',
-    b.course_instance?.event_date ?? '',
-    b.course_instance?.venue_name || b.course_instance?.venue_postcode || '',
-    `${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim(),
-    b.customer?.email ?? '',
-    b.customer?.phone ?? '',
-    b.ticket_type?.name ?? '',
-    b.quantity,
-    pounds(b.total_price_pence),
-    b.discount_code ?? '',
-    pounds(b.discount_amount_pence),
-    b.payment_status,
-    b.booking_status,
-    b.notes ?? '',
-    b.attendee_details ?? '',
-    heardAboutLabel(b.heard_about, b.heard_about_other),
-  ]);
+  const rows = (data ?? [])
+    .map(withBookedName)
+    .map((b: any) => [
+      b.booking_reference,
+      (b.created_at ?? '').slice(0, 10),
+      b.course_instance?.display_name || b.course_instance?.template?.name || '',
+      b.course_instance?.event_date ?? '',
+      b.course_instance?.venue_name || b.course_instance?.venue_postcode || '',
+      `${b.customer?.first_name ?? ''} ${b.customer?.last_name ?? ''}`.trim(),
+      b.customer?.email ?? '',
+      b.customer?.phone ?? '',
+      b.ticket_type?.name ?? '',
+      b.quantity,
+      pounds(b.total_price_pence),
+      b.discount_code ?? '',
+      pounds(b.discount_amount_pence),
+      b.payment_status,
+      b.booking_status,
+      b.notes ?? '',
+      b.attendee_details ?? '',
+      heardAboutLabel(b.heard_about, b.heard_about_other),
+    ]);
   downloadCsv(
     `daisy-bookings-${today()}.csv`,
     [
